@@ -42,10 +42,16 @@ class DashboardViewModel @Inject constructor(
 
     private fun loadStats(period: StatsPeriod) {
         viewModelScope.launch {
-            val since = calculateSince(period)
-            val stats = repository.getStatsSince(since)
-            _uiState.update {
-                it.copy(stats = stats, isLoading = false)
+            try {
+                val since = calculateSince(period)
+                val stats = repository.getStatsSince(since)
+                _uiState.update {
+                    it.copy(stats = stats, isLoading = false)
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(stats = PeriodStats(), isLoading = false)
+                }
             }
         }
     }

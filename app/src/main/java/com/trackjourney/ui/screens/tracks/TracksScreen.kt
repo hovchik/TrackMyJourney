@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,11 +58,11 @@ class TracksViewModel @Inject constructor(
 
 // ─── Sort options ────────────────────────────────────
 
-enum class TrackSortOption(val label: String, val icon: ImageVector) {
-    DATE_DESC("Newest first", Icons.Filled.ArrowDownward),
-    DATE_ASC("Oldest first", Icons.Filled.ArrowUpward),
-    DISTANCE("Longest distance", Icons.Filled.Straighten),
-    DURATION("Longest duration", Icons.Filled.Schedule)
+enum class TrackSortOption(val label: String) {
+    DATE_DESC("Newest first"),
+    DATE_ASC("Oldest first"),
+    DISTANCE("Longest distance"),
+    DURATION("Longest duration")
 }
 
 // ─── TRACKS LIST SCREEN ─────────────────────────────
@@ -128,20 +129,11 @@ fun TracksScreen(
                                     )
                                 },
                                 leadingIcon = {
-                                    Icon(
-                                        option.icon,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
-                                        tint = if (sortOption == option) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                },
-                                trailingIcon = {
                                     if (sortOption == option) {
                                         Icon(
                                             Icons.Filled.Check,
                                             contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
+                                            modifier = Modifier.size(20.dp),
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
@@ -358,7 +350,7 @@ private fun EmptyTracksState(hasFilter: Boolean, filterName: String?) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 20.sp,
                 modifier = Modifier.widthIn(max = 260.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = TextAlign.Center
             )
         }
     }

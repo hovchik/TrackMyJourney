@@ -10,9 +10,6 @@ import com.trackjourney.data.model.WearableType
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
 import java.util.UUID
-import javax.inject.Inject
-import javax.inject.Singleton
-
 // ─────────────────────────────────────────────────────────
 //  STANDARD BLE GATT SERVICE / CHARACTERISTIC UUIDs
 // ─────────────────────────────────────────────────────────
@@ -66,8 +63,7 @@ sealed class WearableConnectionState {
 //  BLE WEARABLE MANAGER
 // ─────────────────────────────────────────────────────────
 
-@Singleton
-class WearableManager @Inject constructor(
+class WearableManager(
     private val context: Context
 ) {
     companion object {

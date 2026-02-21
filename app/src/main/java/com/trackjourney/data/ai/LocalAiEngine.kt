@@ -11,8 +11,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlin.math.*
 
 /**
@@ -26,8 +24,7 @@ import kotlin.math.*
  * "activity_classifier.tflite" in app/src/main/assets/.
  * You can train your own model or use Google's Activity Recognition TFLite model.
  */
-@Singleton
-class LocalAiEngine @Inject constructor(
+class LocalAiEngine(
     private val context: Context
 ) {
     companion object {

@@ -15,11 +15,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-import javax.inject.Inject
-import javax.inject.Singleton
-
-@Singleton
-class TrackRepository @Inject constructor(
+class TrackRepository(
     private val context: Context,
     private val trackDao: TrackDao,
     private val trackPointDao: TrackPointDao,

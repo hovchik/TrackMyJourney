@@ -8,13 +8,9 @@ import com.trackjourney.data.model.ExportFormat
 import com.trackjourney.data.model.TrackingSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import javax.inject.Inject
-import javax.inject.Singleton
-
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "tracking_settings")
 
-@Singleton
-class SettingsDataStore @Inject constructor(
+class SettingsDataStore(
     private val context: Context
 ) {
     companion object {

@@ -5,31 +5,62 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Winding route/path from bottom to upper area -->
+    <!-- Outer ring — compass / globe feel -->
     <path
-        android:pathData="M54,80 C40,72 32,66 36,58 C40,50 56,52 60,46 C64,40 56,36 54,34"
-        android:strokeWidth="5"
+        android:pathData="M54,22 A32,32 0 1,1 53.99,22Z"
+        android:strokeWidth="2.5"
         android:strokeColor="#FFFFFF"
-        android:strokeLineCap="round"
+        android:strokeAlpha="0.3"
         android:fillColor="#00000000" />
 
-    <!-- Location pin: teardrop shape -->
+    <!-- Curved route path — winding journey line -->
     <path
-        android:pathData="M54,34 C54,34 45,33 45,25 C45,20 49,16 54,16 C59,16 63,20 63,25 C63,33 54,34 54,34Z"
-        android:fillColor="#FFFFFF" />
-
-    <!-- Pin inner dot (brand color shows through) -->
-    <path
-        android:pathData="M54,24 A3.5,3.5 0,1 1,54.01,24Z"
-        android:fillColor="#1B8A6B" />
-
-    <!-- Heartbeat/pulse line integrated along the route -->
-    <path
-        android:pathData="M36,66 L40,66 L42,61 L46,71 L48,66 L52,66"
-        android:strokeWidth="2.5"
+        android:pathData="M34,72 C36,64 42,60 46,56 C50,52 44,46 48,40 C52,34 58,38 60,42 C62,46 56,50 60,56 C64,62 70,58 74,52"
+        android:strokeWidth="4"
         android:strokeColor="#FFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:fillColor="#00000000" />
+
+    <!-- Start dot -->
+    <path
+        android:pathData="M34,72 A3,3 0 1,1 34.01,72Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Location pin at destination — modern teardrop -->
+    <path
+        android:pathData="M74,52 C74,52 67,50 67,43 C67,38.5 70,35 74,35 C78,35 81,38.5 81,43 C81,50 74,52 74,52Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Pin inner circle — brand accent -->
+    <path
+        android:pathData="M74,42.5 A2.5,2.5 0 1,1 74.01,42.5Z"
+        android:fillColor="#1B8A6B" />
+
+    <!-- Small crosshair tick marks on compass ring -->
+    <path
+        android:pathData="M54,22 L54,26"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,82 L54,86"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M22,54 L26,54"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M82,54 L86,54"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.5"
+        android:strokeLineCap="round" />
 
 </vector>

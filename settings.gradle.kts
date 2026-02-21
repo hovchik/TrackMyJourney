@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TrackMyJourney"
+rootProject.name = "Pathwise"
 include(":app")

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Winding route/path from bottom to upper area -->
+    <path
+        android:pathData="M54,80 C40,72 32,66 36,58 C40,50 56,52 60,46 C64,40 56,36 54,34"
+        android:strokeWidth="5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Location pin: teardrop shape -->
+    <path
+        android:pathData="M54,34 C54,34 45,33 45,25 C45,20 49,16 54,16 C59,16 63,20 63,25 C63,33 54,34 54,34Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Pin inner dot (brand color shows through) -->
+    <path
+        android:pathData="M54,24 A3.5,3.5 0,1 1,54.01,24Z"
+        android:fillColor="#1B8A6B" />
+
+    <!-- Heartbeat/pulse line integrated along the route -->
+    <path
+        android:pathData="M36,66 L40,66 L42,61 L46,71 L48,66 L52,66"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+</vector>

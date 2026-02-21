@@ -25,7 +25,6 @@ import com.trackjourney.ui.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -38,22 +37,12 @@ class TracksViewModel @Inject constructor(
     val tracks: StateFlow<List<TrackSession>> = repository.getAllTracks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _exportResult = MutableSharedFlow<File?>()
-    val exportResult: SharedFlow<File?> = _exportResult.asSharedFlow()
-
     fun deleteTrack(trackId: String) {
         viewModelScope.launch { repository.deleteTrack(trackId) }
     }
 
-    fun renameTrack(trackId: String, name: String) {
-        viewModelScope.launch { repository.renameTrack(trackId, name) }
-    }
-
     fun exportTrack(trackId: String) {
-        viewModelScope.launch {
-            val file = repository.exportTrackToJson(trackId)
-            _exportResult.emit(file)
-        }
+        viewModelScope.launch { repository.exportTrackToJson(trackId) }
     }
 
     fun reanalyzeTrack(trackId: String) {
@@ -257,7 +246,7 @@ private fun TrackCard(
             ) {
                 TrackStat(
                     label = "Distance",
-                    value = String.format("%.2f km", track.distanceMeters / 1000)
+                    value = String.format(Locale.US, "%.2f km", track.distanceMeters / 1000)
                 )
                 TrackStat(
                     label = "Duration",
@@ -265,7 +254,7 @@ private fun TrackCard(
                 )
                 TrackStat(
                     label = "Avg Speed",
-                    value = String.format("%.1f km/h", track.avgSpeedKmh)
+                    value = String.format(Locale.US, "%.1f km/h", track.avgSpeedKmh)
                 )
                 track.avgHeartRate?.let {
                     TrackStat(label = "Avg HR", value = "$it bpm")
@@ -275,7 +264,8 @@ private fun TrackCard(
             // Expanded section
             if (expanded) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
+                @Suppress("DEPRECATION")
+                Divider()
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // AI Summary

@@ -11,6 +11,13 @@ sealed class Screen(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
+    data object Dashboard : Screen(
+        route = "dashboard",
+        title = "Dashboard",
+        selectedIcon = Icons.Filled.Dashboard,
+        unselectedIcon = Icons.Outlined.Dashboard
+    )
+
     data object Map : Screen(
         route = "map",
         title = "Map",
@@ -49,6 +56,6 @@ sealed class Screen(
     }
 
     companion object {
-        val bottomNavItems = listOf(Map, Tracks, Analysis, Settings)
+        val bottomNavItems = listOf(Dashboard, Map, Tracks, Analysis, Settings)
     }
 }

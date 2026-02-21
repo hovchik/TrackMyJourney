@@ -69,6 +69,16 @@ class TrackRepository @Inject constructor(
         )
     }
 
+    suspend fun getStatsSince(since: Long): PeriodStats {
+        return PeriodStats(
+            trackCount = trackDao.getTrackCountSince(since),
+            totalDistanceKm = (trackDao.getTotalDistanceSince(since) ?: 0.0) / 1000.0,
+            totalDurationMs = trackDao.getTotalDurationSince(since) ?: 0L,
+            averageSpeedKmh = trackDao.getAverageSpeedSince(since) ?: 0.0,
+            maxSpeedKmh = trackDao.getMaxSpeedSince(since) ?: 0.0
+        )
+    }
+
     // ─── TRACKING LIFECYCLE ─────────────────────────────
 
     suspend fun startNewTrack(name: String = ""): TrackSession {
@@ -327,4 +337,12 @@ data class TrackingStats(
     val totalTracks: Int,
     val totalDistanceKm: Double,
     val averageSpeedKmh: Double
+)
+
+data class PeriodStats(
+    val trackCount: Int = 0,
+    val totalDistanceKm: Double = 0.0,
+    val totalDurationMs: Long = 0L,
+    val averageSpeedKmh: Double = 0.0,
+    val maxSpeedKmh: Double = 0.0
 )

@@ -95,6 +95,21 @@ interface TrackDao {
 
     @Query("SELECT AVG(avg_speed_kmh) FROM tracks WHERE avg_speed_kmh > 0")
     suspend fun getAverageSpeed(): Double?
+
+    @Query("SELECT COUNT(*) FROM tracks WHERE start_time >= :since")
+    suspend fun getTrackCountSince(since: Long): Int
+
+    @Query("SELECT SUM(distance_meters) FROM tracks WHERE start_time >= :since")
+    suspend fun getTotalDistanceSince(since: Long): Double?
+
+    @Query("SELECT AVG(avg_speed_kmh) FROM tracks WHERE start_time >= :since AND avg_speed_kmh > 0")
+    suspend fun getAverageSpeedSince(since: Long): Double?
+
+    @Query("SELECT MAX(max_speed_kmh) FROM tracks WHERE start_time >= :since")
+    suspend fun getMaxSpeedSince(since: Long): Double?
+
+    @Query("SELECT SUM(COALESCE(end_time, start_time) - start_time) FROM tracks WHERE start_time >= :since AND end_time IS NOT NULL")
+    suspend fun getTotalDurationSince(since: Long): Long?
 }
 
 // ─────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
 import com.trackjourney.ui.navigation.Screen
 import com.trackjourney.ui.screens.analysis.AnalysisScreen
+import com.trackjourney.ui.screens.dashboard.DashboardScreen
 import com.trackjourney.ui.screens.map.MapScreen
 import com.trackjourney.ui.screens.settings.SettingsScreen
 import com.trackjourney.ui.screens.tracks.TracksScreen
@@ -69,9 +70,12 @@ fun TrackMyJourneyApp() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Map.route,
+            startDestination = Screen.Dashboard.route,
             modifier = Modifier.padding(innerPadding)
         ) {
+            composable(Screen.Dashboard.route) {
+                DashboardScreen()
+            }
             composable(Screen.Map.route) {
                 MapScreen()
             }

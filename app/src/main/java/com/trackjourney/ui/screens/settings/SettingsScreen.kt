@@ -1,5 +1,14 @@
 package com.trackjourney.ui.screens.settings
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,10 +18,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.trackjourney.data.model.ExportFormat
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,8 +49,22 @@ fun SettingsScreen(
             )
         }
 
+        // ── PERMISSIONS ────────────────────────────────
+        item {
+            Text(
+                "Permissions",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        item { PermissionsSection() }
+
         // ── RECORDING SETTINGS ──────────────────────────
         item {
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 "Recording",
                 style = MaterialTheme.typography.titleSmall,
@@ -259,6 +289,156 @@ fun SettingsScreen(
         }
 
         item { Spacer(modifier = Modifier.height(80.dp)) }
+    }
+}
+
+private data class PermissionItem(
+    val permission: String,
+    val label: String,
+    val icon: ImageVector,
+    val minSdk: Int = 0
+)
+
+private val requiredPermissions = buildList {
+    add(PermissionItem(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        "Location",
+        Icons.Filled.LocationOn
+    ))
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        add(PermissionItem(
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            "Background Location",
+            Icons.Filled.MyLocation,
+            minSdk = Build.VERSION_CODES.Q
+        ))
+        add(PermissionItem(
+            Manifest.permission.ACTIVITY_RECOGNITION,
+            "Activity Recognition",
+            Icons.Filled.DirectionsRun,
+            minSdk = Build.VERSION_CODES.Q
+        ))
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        add(PermissionItem(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            "Bluetooth",
+            Icons.Filled.Bluetooth,
+            minSdk = Build.VERSION_CODES.S
+        ))
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        add(PermissionItem(
+            Manifest.permission.POST_NOTIFICATIONS,
+            "Notifications",
+            Icons.Filled.Notifications,
+            minSdk = Build.VERSION_CODES.TIRAMISU
+        ))
+    }
+}
+
+@Composable
+private fun PermissionsSection() {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Re-check permissions when returning from app settings
+    var refreshKey by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshKey++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val permissionStates = remember(refreshKey) {
+        requiredPermissions.map { item ->
+            item to (ContextCompat.checkSelfPermission(context, item.permission)
+                    == PackageManager.PERMISSION_GRANTED)
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { refreshKey++ }
+
+    val grantedColor = Color(0xFF2E7D32)
+    val deniedColor = Color(0xFFC62828)
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            permissionStates.forEachIndexed { index, (item, granted) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (!granted) {
+                                // Background location must be requested separately after location is granted
+                                if (item.permission == Manifest.permission.ACCESS_BACKGROUND_LOCATION) {
+                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", context.packageName, null)
+                                    }
+                                    context.startActivity(intent)
+                                } else {
+                                    permissionLauncher.launch(item.permission)
+                                }
+                            }
+                        }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = if (granted) grantedColor.copy(alpha = 0.15f) else deniedColor.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                item.icon,
+                                contentDescription = null,
+                                tint = if (granted) grantedColor else deniedColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(item.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        Text(
+                            if (granted) "Granted" else "Tap to grant",
+                            fontSize = 12.sp,
+                            color = if (granted) grantedColor else deniedColor
+                        )
+                    }
+                    Surface(
+                        color = if (granted) grantedColor else deniedColor,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            if (granted) Icons.Filled.Check else Icons.Filled.Close,
+                            contentDescription = if (granted) "Granted" else "Denied",
+                            tint = Color.White,
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .size(16.dp)
+                        )
+                    }
+                }
+                if (index < permissionStates.lastIndex) {
+                    @Suppress("DEPRECATION")
+                    Divider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                }
+            }
+        }
     }
 }
 

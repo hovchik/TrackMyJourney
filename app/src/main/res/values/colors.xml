@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary brand palette -->
+    <color name="pathwise_green">#FF1B8A6B</color>
+    <color name="pathwise_green_dark">#FF146B53</color>
+    <color name="pathwise_green_light">#FF2DB88E</color>
+
+    <!-- Icon colors -->
+    <color name="ic_launcher_background">#FF1B8A6B</color>
+
+    <!-- Neutral -->
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>

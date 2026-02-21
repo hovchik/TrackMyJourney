@@ -145,6 +145,7 @@ fun TracksScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TrackCard(
     track: TrackSession,

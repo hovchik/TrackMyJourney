@@ -9,6 +9,7 @@ import com.trackjourney.data.model.TrackingSettings
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -60,8 +61,7 @@ class LocationTracker @Inject constructor(
     @SuppressLint("MissingPermission")
     suspend fun getLastKnownLocation(): Location? {
         return try {
-            val task = fusedLocationClient.lastLocation
-            kotlinx.coroutines.tasks.await(task)
+            fusedLocationClient.lastLocation.await()
         } catch (e: Exception) {
             null
         }

@@ -219,7 +219,7 @@ private fun SuggestionCard(suggestion: com.trackjourney.data.ai.LocalAiEngine.Tr
             if (suggestion.score > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
-                    progress = { suggestion.score },
+                    progress = suggestion.score,
                     modifier = Modifier.fillMaxWidth(),
                     color = PrimaryLight,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant

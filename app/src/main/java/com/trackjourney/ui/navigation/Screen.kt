@@ -1,0 +1,54 @@
+package com.trackjourney.ui.navigation
+
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.graphics.vector.ImageVector
+
+sealed class Screen(
+    val route: String,
+    val title: String,
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector
+) {
+    data object Map : Screen(
+        route = "map",
+        title = "Map",
+        selectedIcon = Icons.Filled.Map,
+        unselectedIcon = Icons.Outlined.Map
+    )
+
+    data object Tracks : Screen(
+        route = "tracks",
+        title = "Tracks",
+        selectedIcon = Icons.Filled.Route,
+        unselectedIcon = Icons.Outlined.Route
+    )
+
+    data object Analysis : Screen(
+        route = "analysis",
+        title = "AI Insights",
+        selectedIcon = Icons.Filled.Analytics,
+        unselectedIcon = Icons.Outlined.Analytics
+    )
+
+    data object Settings : Screen(
+        route = "settings",
+        title = "Settings",
+        selectedIcon = Icons.Filled.Settings,
+        unselectedIcon = Icons.Outlined.Settings
+    )
+
+    data object TrackDetail : Screen(
+        route = "track_detail/{trackId}",
+        title = "Track Detail",
+        selectedIcon = Icons.Filled.Info,
+        unselectedIcon = Icons.Outlined.Info
+    ) {
+        fun createRoute(trackId: String) = "track_detail/$trackId"
+    }
+
+    companion object {
+        val bottomNavItems = listOf(Map, Tracks, Analysis, Settings)
+    }
+}

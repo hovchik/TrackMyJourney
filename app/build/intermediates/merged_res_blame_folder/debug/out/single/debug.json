@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.trackjourney.app-merged_res-67:/drawable_ic_stop.xml.flat",
+        "source": "com.trackjourney.app-main-69:/drawable/ic_stop.xml"
+    },
+    {
+        "merged": "com.trackjourney.app-merged_res-67:/drawable_ic_tracking.xml.flat",
+        "source": "com.trackjourney.app-main-69:/drawable/ic_tracking.xml"
+    }
+]

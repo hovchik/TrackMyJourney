@@ -105,72 +105,69 @@ fun MapScreen(
                     .clickable { showWearableSheet = true }
             )
 
-            // Bottom controls
+            // Activity badge at bottom center
+            if (uiState.isTracking) {
+                ActivityBadge(
+                    activity = uiState.currentActivity,
+                    speed = uiState.currentSpeed,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp)
+                )
+            }
+
+            // Control buttons — bottom end
             Column(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 16.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Activity badge
                 if (uiState.isTracking) {
-                    ActivityBadge(
-                        activity = uiState.currentActivity,
-                        speed = uiState.currentSpeed
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
+                    // Pause/Resume
+                    SmallFloatingActionButton(
+                        onClick = {
+                            if (uiState.isPaused) viewModel.resumeTracking()
+                            else viewModel.pauseTracking()
+                        },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Icon(
+                            if (uiState.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                            contentDescription = if (uiState.isPaused) "Resume" else "Pause",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
 
-                // Control buttons
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (uiState.isTracking) {
-                        // Pause/Resume
-                        SmallFloatingActionButton(
-                            onClick = {
-                                if (uiState.isPaused) viewModel.resumeTracking()
-                                else viewModel.pauseTracking()
-                            },
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        ) {
-                            Icon(
-                                if (uiState.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                                contentDescription = if (uiState.isPaused) "Resume" else "Pause",
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        // Stop
-                        FloatingActionButton(
-                            onClick = { viewModel.stopTracking() },
-                            containerColor = MaterialTheme.colorScheme.error,
-                            shape = CircleShape,
-                            modifier = Modifier.size(52.dp)
-                        ) {
-                            Icon(
-                                Icons.Filled.Stop,
-                                contentDescription = "Stop",
-                                modifier = Modifier.size(22.dp),
-                                tint = Color.White
-                            )
-                        }
-                    } else {
-                        // Start
-                        FloatingActionButton(
-                            onClick = { showTrackNameDialog = true },
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            shape = CircleShape,
-                            modifier = Modifier.size(52.dp)
-                        ) {
-                            Icon(
-                                Icons.Filled.PlayArrow,
-                                contentDescription = "Start",
-                                modifier = Modifier.size(24.dp),
-                                tint = Color.White
-                            )
-                        }
+                    // Stop
+                    FloatingActionButton(
+                        onClick = { viewModel.stopTracking() },
+                        containerColor = MaterialTheme.colorScheme.error,
+                        shape = CircleShape,
+                        modifier = Modifier.size(52.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Stop,
+                            contentDescription = "Stop",
+                            modifier = Modifier.size(22.dp),
+                            tint = Color.White
+                        )
+                    }
+                } else {
+                    // Start
+                    FloatingActionButton(
+                        onClick = { showTrackNameDialog = true },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        shape = CircleShape,
+                        modifier = Modifier.size(52.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.PlayArrow,
+                            contentDescription = "Start",
+                            modifier = Modifier.size(24.dp),
+                            tint = Color.White
+                        )
                     }
                 }
             }
@@ -321,7 +318,7 @@ private fun StatItem(
 // --- ACTIVITY BADGE ---
 
 @Composable
-private fun ActivityBadge(activity: ActivityType, speed: Float) {
+private fun ActivityBadge(activity: ActivityType, speed: Float, modifier: Modifier = Modifier) {
     val (icon, color, label) = when (activity) {
         ActivityType.WALKING    -> Triple(Icons.Filled.DirectionsWalk, Walking, "Walking")
         ActivityType.RUNNING    -> Triple(Icons.Filled.DirectionsRun, Running, "Running")
@@ -333,6 +330,7 @@ private fun ActivityBadge(activity: ActivityType, speed: Float) {
     }
 
     Card(
+        modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.9f)),
         shape = RoundedCornerShape(24.dp)
     ) {

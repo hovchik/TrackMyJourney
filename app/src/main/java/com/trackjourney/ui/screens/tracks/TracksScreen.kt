@@ -452,6 +452,32 @@ private fun TrackCard(
                                 )
                             }
                         }
+                        // Place names
+                        if (track.startPlaceName != null || track.endPlaceName != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Filled.Place,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    buildString {
+                                        track.startPlaceName?.let { append(it) }
+                                        if (track.startPlaceName != null && track.endPlaceName != null
+                                            && track.startPlaceName != track.endPlaceName) {
+                                            append("  \u2192  ")
+                                            append(track.endPlaceName)
+                                        }
+                                    },
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
 
                     if (track.isActive) {

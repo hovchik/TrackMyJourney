@@ -495,8 +495,14 @@ private val requiredPermissions = buildList {
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         add(PermissionItem(
+            Manifest.permission.BLUETOOTH_SCAN,
+            "Bluetooth Scan",
+            Icons.Filled.BluetoothSearching,
+            minSdk = Build.VERSION_CODES.S
+        ))
+        add(PermissionItem(
             Manifest.permission.BLUETOOTH_CONNECT,
-            "Bluetooth",
+            "Bluetooth Connect",
             Icons.Filled.Bluetooth,
             minSdk = Build.VERSION_CODES.S
         ))

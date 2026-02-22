@@ -43,6 +43,12 @@ data class TrackSession(
     @ColumnInfo(name = "ai_summary")
     val aiSummary: String? = null,
 
+    @ColumnInfo(name = "start_place_name")
+    val startPlaceName: String? = null,
+
+    @ColumnInfo(name = "end_place_name")
+    val endPlaceName: String? = null,
+
     @ColumnInfo(name = "is_active")
     val isActive: Boolean = true
 )
@@ -99,7 +105,10 @@ data class TrackPoint(
     val spO2: Int? = null,               // Blood oxygen % from wearable
 
     @ColumnInfo(name = "activity_type")
-    val activityType: ActivityType = ActivityType.UNKNOWN
+    val activityType: ActivityType = ActivityType.UNKNOWN,
+
+    @ColumnInfo(name = "place_name")
+    val placeName: String? = null
 )
 
 // ─────────────────────────────────────────────────────────
@@ -239,7 +248,9 @@ data class TrackSessionExport(
     @SerializedName("max_speed_kmh") val maxSpeedKmh: Double,
     @SerializedName("activity_type") val activityType: String,
     @SerializedName("avg_heart_rate") val avgHeartRate: Int?,
-    @SerializedName("avg_spo2") val avgSpO2: Int?
+    @SerializedName("avg_spo2") val avgSpO2: Int?,
+    @SerializedName("start_place_name") val startPlaceName: String?,
+    @SerializedName("end_place_name") val endPlaceName: String?
 )
 
 data class TrackPointExport(
@@ -252,7 +263,8 @@ data class TrackPointExport(
     val timestamp: Long,
     @SerializedName("heart_rate") val heartRate: Int?,
     @SerializedName("spo2") val spO2: Int?,
-    @SerializedName("activity_type") val activityType: String
+    @SerializedName("activity_type") val activityType: String,
+    @SerializedName("place_name") val placeName: String?
 )
 
 data class HealthDataExport(

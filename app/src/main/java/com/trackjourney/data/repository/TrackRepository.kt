@@ -1,6 +1,7 @@
 package com.trackjourney.data.repository
 
 import android.content.Context
+import android.location.Geocoder
 import android.location.Location
 import android.util.Log
 import com.google.gson.GsonBuilder
@@ -31,6 +32,26 @@ class TrackRepository(
     }
 
     private val gson = GsonBuilder().setPrettyPrinting().create()
+    private val geocoder = Geocoder(context, Locale.getDefault())
+
+    // ─── GEOCODING ─────────────────────────────────────────
+
+    private fun resolveplaceName(latitude: Double, longitude: Double): String? {
+        return try {
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocation(latitude, longitude, 1)
+            addresses?.firstOrNull()?.let { addr ->
+                // Build a concise place name: locality or sub-admin area, fallback to address line
+                addr.locality
+                    ?: addr.subAdminArea
+                    ?: addr.adminArea
+                    ?: addr.getAddressLine(0)?.split(",")?.firstOrNull()?.trim()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Geocoding failed: ${e.message}")
+            null
+        }
+    }
 
     // ─── SETTINGS ────────────────────────────────────────
 
@@ -108,6 +129,12 @@ class TrackRepository(
             previousAltitude = lastPoint?.altitude
         )
 
+        // Resolve place name for the first point of a track
+        val isFirstPoint = lastPoint == null
+        val placeName = if (isFirstPoint) {
+            withContext(Dispatchers.IO) { resolveplaceName(location.latitude, location.longitude) }
+        } else null
+
         val point = TrackPoint(
             trackId = trackId,
             latitude = location.latitude,
@@ -120,10 +147,20 @@ class TrackRepository(
             timestamp = System.currentTimeMillis(),
             heartRate = healthReading?.heartRate,
             spO2 = healthReading?.spO2,
-            activityType = activity
+            activityType = activity,
+            placeName = placeName
         )
 
         trackPointDao.insert(point)
+
+        // Set start place name on the track session
+        if (isFirstPoint && placeName != null) {
+            trackDao.getTrackById(trackId)?.let { track ->
+                if (track.startPlaceName == null) {
+                    trackDao.update(track.copy(startPlaceName = placeName))
+                }
+            }
+        }
 
         // Store separate health data record if available
         if (healthReading != null && (healthReading.heartRate != null || healthReading.spO2 != null)) {
@@ -180,9 +217,17 @@ class TrackRepository(
 
     suspend fun endTrack(trackId: String): TrackSession? {
         val track = trackDao.getTrackById(trackId) ?: return null
+
+        // Resolve end place name from the last point
+        val lastPoint = trackPointDao.getLastPoint(trackId)
+        val endPlaceName = lastPoint?.let {
+            withContext(Dispatchers.IO) { resolveplaceName(it.latitude, it.longitude) }
+        }
+
         val updatedTrack = track.copy(
             endTime = System.currentTimeMillis(),
-            isActive = false
+            isActive = false,
+            endPlaceName = endPlaceName
         )
         trackDao.update(updatedTrack)
 
@@ -264,7 +309,9 @@ class TrackRepository(
                     maxSpeedKmh = track.maxSpeedKmh,
                     activityType = track.activityType.name,
                     avgHeartRate = track.avgHeartRate,
-                    avgSpO2 = track.avgSpO2
+                    avgSpO2 = track.avgSpO2,
+                    startPlaceName = track.startPlaceName,
+                    endPlaceName = track.endPlaceName
                 ),
                 points = points.map { pt ->
                     TrackPointExport(
@@ -277,7 +324,8 @@ class TrackRepository(
                         timestamp = pt.timestamp,
                         heartRate = pt.heartRate,
                         spO2 = pt.spO2,
-                        activityType = pt.activityType.name
+                        activityType = pt.activityType.name,
+                        placeName = pt.placeName
                     )
                 },
                 healthData = health.map { hd ->

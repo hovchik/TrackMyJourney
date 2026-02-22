@@ -44,6 +44,11 @@ fun OsmMapView(
             minZoomLevel = 3.0
             maxZoomLevel = 20.0
 
+            // Disable built-in zoom buttons (pinch-to-zoom is sufficient)
+            zoomController.setVisibility(
+                org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER
+            )
+
             // Performance
             isTilesScaledToDpi = true
             setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
@@ -135,8 +140,8 @@ fun OsmMapView(
                 position = GeoPoint(startPoint.latitude, startPoint.longitude)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                 icon = createCircleMarker(mapView, PrimaryLight.toArgb(), 30, 5)
-                title = "Start"
-                snippet = "Track started here"
+                title = startPoint.placeName ?: "Start"
+                snippet = if (startPoint.placeName != null) "Track started here" else null
             }
             mapView.overlays.add(startMarker)
 
@@ -146,7 +151,7 @@ fun OsmMapView(
                 position = GeoPoint(lastPoint.latitude, lastPoint.longitude)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                 icon = createCircleMarker(mapView, Secondary.toArgb(), 30, 5)
-                title = "Current"
+                title = lastPoint.placeName ?: "Current"
                 snippet = "${String.format(Locale.US, "%.1f", lastPoint.speedKmh)} km/h"
             }
             mapView.overlays.add(endMarker)

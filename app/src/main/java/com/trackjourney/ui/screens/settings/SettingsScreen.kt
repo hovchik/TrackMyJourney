@@ -77,6 +77,7 @@ fun SettingsScreen(
         }
 
         item {
+            val isActive = satelliteInfo.totalVisible > 0 || satelliteInfo.usedInFix > 0
             Card(
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -87,11 +88,11 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
-                            color = when {
+                            color = if (isActive) when {
                                 satelliteInfo.usedInFix >= 8 -> PrimaryLight.copy(alpha = 0.15f)
                                 satelliteInfo.usedInFix >= 4 -> Accent.copy(alpha = 0.15f)
                                 else -> Error.copy(alpha = 0.15f)
-                            },
+                            } else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.size(40.dp)
                         ) {
@@ -99,11 +100,11 @@ fun SettingsScreen(
                                 Icon(
                                     Icons.Filled.SatelliteAlt,
                                     contentDescription = null,
-                                    tint = when {
+                                    tint = if (isActive) when {
                                         satelliteInfo.usedInFix >= 8 -> PrimaryLight
                                         satelliteInfo.usedInFix >= 4 -> Accent
                                         else -> Error
-                                    },
+                                    } else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
@@ -111,25 +112,33 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("GPS Satellites", fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "Available: ${satelliteInfo.totalVisible}  |  Connected: ${satelliteInfo.usedInFix}",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                when {
-                                    satelliteInfo.usedInFix >= 8 -> "Excellent signal"
-                                    satelliteInfo.usedInFix >= 4 -> "Good signal"
-                                    satelliteInfo.usedInFix >= 1 -> "Weak signal"
-                                    else -> "No signal"
-                                },
-                                fontSize = 12.sp,
-                                color = when {
-                                    satelliteInfo.usedInFix >= 8 -> PrimaryLight
-                                    satelliteInfo.usedInFix >= 4 -> Accent
-                                    else -> Error
-                                }
-                            )
+                            if (isActive) {
+                                Text(
+                                    "Available: ${satelliteInfo.totalVisible}  |  Connected: ${satelliteInfo.usedInFix}",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    when {
+                                        satelliteInfo.usedInFix >= 8 -> "Excellent signal"
+                                        satelliteInfo.usedInFix >= 4 -> "Good signal"
+                                        satelliteInfo.usedInFix >= 1 -> "Weak signal"
+                                        else -> "No signal"
+                                    },
+                                    fontSize = 12.sp,
+                                    color = when {
+                                        satelliteInfo.usedInFix >= 8 -> PrimaryLight
+                                        satelliteInfo.usedInFix >= 4 -> Accent
+                                        else -> Error
+                                    }
+                                )
+                            } else {
+                                Text(
+                                    "Start tracking to see GPS status",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

@@ -76,15 +76,17 @@ fun MapScreen(
                 TrackingStatsBar(uiState)
             }
 
-            // GPS Satellite chip — top end
-            GpsSatelliteChip(
-                totalVisible = uiState.satelliteInfo.totalVisible,
-                usedInFix = uiState.satelliteInfo.usedInFix,
-                accuracy = uiState.gpsAccuracy,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 60.dp, end = 16.dp)
-            )
+            // GPS Satellite chip — top end, only visible during tracking
+            if (uiState.isTracking) {
+                GpsSatelliteChip(
+                    totalVisible = uiState.satelliteInfo.totalVisible,
+                    usedInFix = uiState.satelliteInfo.usedInFix,
+                    accuracy = uiState.gpsAccuracy,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 60.dp, end = 16.dp)
+                )
+            }
 
             // Activity badge at bottom center
             if (uiState.isTracking) {

@@ -31,38 +31,53 @@ class TrackingStateViewModel @Inject constructor(
     val state: StateFlow<TrackingBarState> = _state.asStateFlow()
 
     private var pointsJob: Job? = null
+    private var satelliteJob: Job? = null
 
     init {
         viewModelScope.launch {
             repository.observeActiveTrack().collect { track ->
+                val isNowTracking = track?.isActive == true
+
                 _state.update {
                     it.copy(
-                        isTracking = track?.isActive == true,
+                        isTracking = isNowTracking,
                         trackName = track?.name ?: "",
                         distanceKm = (track?.distanceMeters ?: 0.0) / 1000.0
                     )
                 }
 
                 pointsJob?.cancel()
-                track?.id?.let { trackId ->
-                    pointsJob = launch {
-                        repository.getPointsForTrack(trackId).collect { points ->
-                            _state.update {
-                                it.copy(
-                                    pointCount = points.size,
-                                    currentSpeedKmh = points.lastOrNull()?.speedKmh ?: 0f
-                                )
+                satelliteJob?.cancel()
+
+                if (isNowTracking) {
+                    // Only observe points and satellites while tracking
+                    track?.id?.let { trackId ->
+                        pointsJob = launch {
+                            repository.getPointsForTrack(trackId).collect { points ->
+                                _state.update {
+                                    it.copy(
+                                        pointCount = points.size,
+                                        currentSpeedKmh = points.lastOrNull()?.speedKmh ?: 0f
+                                    )
+                                }
                             }
                         }
                     }
+                    satelliteJob = launch {
+                        repository.satelliteInfo.collect { satInfo ->
+                            _state.update { it.copy(satelliteInfo = satInfo) }
+                        }
+                    }
+                } else {
+                    // Clear satellite info when not tracking
+                    _state.update {
+                        it.copy(
+                            pointCount = 0,
+                            currentSpeedKmh = 0f,
+                            satelliteInfo = SatelliteInfo()
+                        )
+                    }
                 }
-            }
-        }
-
-        // Observe satellite info
-        viewModelScope.launch {
-            repository.satelliteInfo.collect { satInfo ->
-                _state.update { it.copy(satelliteInfo = satInfo) }
             }
         }
     }

@@ -40,40 +40,38 @@ class MapViewModel @Inject constructor(
 
     init {
         observeActiveTrack()
-        observeSatellites()
         observeSettings()
-        fetchCurrentLocation()
-    }
-
-    private fun fetchCurrentLocation() {
-        viewModelScope.launch {
-            try {
-                val location = repository.getCurrentLocation()
-                location?.let { loc ->
-                    _uiState.update {
-                        it.copy(
-                            currentLatitude = loc.latitude,
-                            currentLongitude = loc.longitude
-                        )
-                    }
-                }
-            } catch (_: Exception) {
-                // Location may not be available yet
-            }
-        }
     }
 
     private fun observeActiveTrack() {
         viewModelScope.launch {
             repository.observeActiveTrack().collect { track ->
+                val wasTracking = _uiState.value.isTracking
+                val isNowTracking = track?.isActive == true
+
                 _uiState.update {
                     it.copy(
                         currentTrack = track,
-                        isTracking = track?.isActive == true
+                        isTracking = isNowTracking
                     )
                 }
 
-                // Observe points for active track
+                // Only observe satellite info and location when actively tracking
+                if (isNowTracking && !wasTracking) {
+                    observeSatellites()
+                }
+
+                // Clear satellite info when tracking stops
+                if (!isNowTracking && wasTracking) {
+                    _uiState.update {
+                        it.copy(
+                            satelliteInfo = SatelliteInfo(),
+                            gpsAccuracy = null
+                        )
+                    }
+                }
+
+                // Observe points only for active track
                 track?.id?.let { trackId ->
                     repository.getPointsForTrack(trackId).collect { points ->
                         val lastPoint = points.lastOrNull()

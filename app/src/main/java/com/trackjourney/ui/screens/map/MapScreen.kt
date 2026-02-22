@@ -86,7 +86,7 @@ fun MapScreen(
             )
 
             // Top stats bar (shown during tracking)
-            AnimatedVisibility(
+            androidx.compose.animation.AnimatedVisibility(
                 visible = uiState.isTracking,
                 modifier = Modifier.align(Alignment.TopCenter),
                 enter = slideInVertically() + fadeIn(),

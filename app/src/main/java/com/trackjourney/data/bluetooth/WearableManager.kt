@@ -1,11 +1,14 @@
 package com.trackjourney.data.bluetooth
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.ParcelUuid
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.trackjourney.data.model.WearableType
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
@@ -103,9 +106,19 @@ class WearableManager(
      */
     @SuppressLint("MissingPermission")
     fun scanForDevices(): Flow<WearableDevice> = callbackFlow {
+        // Check BLUETOOTH_SCAN permission at runtime (required on Android 12+)
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            _connectionState.value = WearableConnectionState.Error("Bluetooth scan permission not granted")
+            close()
+            return@callbackFlow
+        }
+
         val scanner = bluetoothAdapter?.bluetoothLeScanner
         if (scanner == null) {
-            close(IllegalStateException("Bluetooth LE scanner not available"))
+            _connectionState.value = WearableConnectionState.Error("Bluetooth LE not available")
+            close()
             return@callbackFlow
         }
 

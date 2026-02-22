@@ -32,11 +32,15 @@ class SettingsViewModel @Inject constructor(
 
     fun scanForWearables() {
         viewModelScope.launch {
-            _discoveredDevices.value = emptyList()
-            repository.scanForWearables().collect { device ->
-                _discoveredDevices.update { devices ->
-                    if (devices.none { it.address == device.address }) devices + device else devices
+            try {
+                _discoveredDevices.value = emptyList()
+                repository.scanForWearables().collect { device ->
+                    _discoveredDevices.update { devices ->
+                        if (devices.none { it.address == device.address }) devices + device else devices
+                    }
                 }
+            } catch (_: Exception) {
+                // Permission denied or BLE not available
             }
         }
     }

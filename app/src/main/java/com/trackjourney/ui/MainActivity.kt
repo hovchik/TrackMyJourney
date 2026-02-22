@@ -152,61 +152,46 @@ private fun TrackingToggleBar(
 ) {
     Surface(
         color = if (state.isTracking)
-            MaterialTheme.colorScheme.primaryContainer
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
         else
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        tonalElevation = 2.dp
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (state.isTracking) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(PrimaryLight)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-            }
-
             Icon(
                 if (state.isTracking) Icons.Filled.MyLocation else Icons.Filled.LocationOff,
                 contentDescription = null,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(16.dp),
                 tint = if (state.isTracking)
                     MaterialTheme.colorScheme.primary
                 else
                     MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    if (state.isTracking) "Tracking Active" else "Location Tracking",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (state.isTracking)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (state.isTracking) {
-                    Text(
-                        "${state.pointCount} pts • ${String.format(Locale.US, "%.2f", state.distanceKm)} km • ${String.format(Locale.US, "%.1f", state.currentSpeedKmh)} km/h",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    )
-                }
-            }
+            Text(
+                if (state.isTracking)
+                    "${state.pointCount} pts  •  ${String.format(Locale.US, "%.2f", state.distanceKm)} km  •  ${String.format(Locale.US, "%.1f", state.currentSpeedKmh)} km/h"
+                else
+                    "Location Tracking",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (state.isTracking)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
 
             Switch(
                 checked = state.isTracking,
                 onCheckedChange = onToggle,
+                modifier = Modifier.height(28.dp),
                 colors = SwitchDefaults.colors(
                     checkedTrackColor = MaterialTheme.colorScheme.primary,
                     checkedThumbColor = MaterialTheme.colorScheme.onPrimary

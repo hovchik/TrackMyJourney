@@ -1,6 +1,9 @@
 package com.trackjourney.ui.components
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.drawable.BitmapDrawable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -77,6 +80,7 @@ fun OsmMapView(
             val marker = Marker(mapView).apply {
                 position = GeoPoint(currentLatitude, currentLongitude)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                icon = createCircleMarker(mapView, PrimaryLight.toArgb(), 28, 4)
                 title = "You are here"
                 snippet = "Current position"
             }
@@ -90,28 +94,47 @@ fun OsmMapView(
         mapView.overlays.clear()
 
         if (trackPoints.isNotEmpty()) {
-            if (showActivityColors) {
-                drawActivityColoredTrack(mapView, trackPoints)
-            } else {
-                val polyline = Polyline().apply {
-                    outlinePaint.apply {
-                        color = Primary.toArgb()
-                        strokeWidth = 10f
-                        style = Paint.Style.STROKE
-                        isAntiAlias = true
-                        strokeCap = Paint.Cap.ROUND
-                        strokeJoin = Paint.Join.ROUND
+            // Draw road-style polyline when there are 2+ points
+            if (trackPoints.size >= 2) {
+                if (showActivityColors) {
+                    drawActivityColoredTrack(mapView, trackPoints)
+                } else {
+                    // Dark border line underneath
+                    val borderLine = Polyline().apply {
+                        outlinePaint.apply {
+                            color = android.graphics.Color.argb(80, 0, 0, 0)
+                            strokeWidth = 16f
+                            style = Paint.Style.STROKE
+                            isAntiAlias = true
+                            strokeCap = Paint.Cap.ROUND
+                            strokeJoin = Paint.Join.ROUND
+                        }
+                        setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
                     }
-                    setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
+                    mapView.overlays.add(borderLine)
+
+                    // Main colored line on top
+                    val polyline = Polyline().apply {
+                        outlinePaint.apply {
+                            color = Primary.toArgb()
+                            strokeWidth = 10f
+                            style = Paint.Style.STROKE
+                            isAntiAlias = true
+                            strokeCap = Paint.Cap.ROUND
+                            strokeJoin = Paint.Join.ROUND
+                        }
+                        setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
+                    }
+                    mapView.overlays.add(polyline)
                 }
-                mapView.overlays.add(polyline)
             }
 
             // Start marker
             val startPoint = trackPoints.first()
             val startMarker = Marker(mapView).apply {
                 position = GeoPoint(startPoint.latitude, startPoint.longitude)
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                icon = createCircleMarker(mapView, PrimaryLight.toArgb(), 30, 5)
                 title = "Start"
                 snippet = "Track started here"
             }
@@ -121,7 +144,8 @@ fun OsmMapView(
             val lastPoint = trackPoints.last()
             val endMarker = Marker(mapView).apply {
                 position = GeoPoint(lastPoint.latitude, lastPoint.longitude)
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                icon = createCircleMarker(mapView, Secondary.toArgb(), 30, 5)
                 title = "Current"
                 snippet = "${String.format(Locale.US, "%.1f", lastPoint.speedKmh)} km/h"
             }
@@ -136,6 +160,7 @@ fun OsmMapView(
             val marker = Marker(mapView).apply {
                 position = GeoPoint(currentLatitude, currentLongitude)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                icon = createCircleMarker(mapView, PrimaryLight.toArgb(), 28, 4)
                 title = "You are here"
                 snippet = "Current position"
             }
@@ -151,9 +176,67 @@ fun OsmMapView(
     )
 }
 
+/**
+ * Creates a circle marker drawable with a filled center and white border.
+ */
+private fun createCircleMarker(
+    mapView: MapView,
+    fillColor: Int,
+    sizeDp: Int,
+    borderWidthDp: Int
+): BitmapDrawable {
+    val density = mapView.context.resources.displayMetrics.density
+    val sizePx = (sizeDp * density).toInt()
+    val borderPx = borderWidthDp * density
+
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val center = sizePx / 2f
+    val radius = center - borderPx / 2f
+
+    // White border
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(center, center, radius, borderPaint)
+
+    // Colored fill
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = fillColor
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(center, center, radius - borderPx, fillPaint)
+
+    // Inner white dot
+    val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(center, center, radius * 0.3f, dotPaint)
+
+    return BitmapDrawable(mapView.context.resources, bitmap)
+}
+
 private fun drawActivityColoredTrack(mapView: MapView, points: List<TrackPoint>) {
     if (points.size < 2) return
 
+    // First pass: draw dark border for the entire track
+    val allGeoPoints = points.map { GeoPoint(it.latitude, it.longitude) }
+    val borderLine = Polyline().apply {
+        outlinePaint.apply {
+            color = android.graphics.Color.argb(80, 0, 0, 0)
+            strokeWidth = 16f
+            style = Paint.Style.STROKE
+            isAntiAlias = true
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        setPoints(allGeoPoints)
+    }
+    mapView.overlays.add(borderLine)
+
+    // Second pass: draw colored segments on top
     var segmentStart = 0
     var currentActivity = points[0].activityType
 

@@ -118,52 +118,56 @@ fun MapScreen(
                         activity = uiState.currentActivity,
                         speed = uiState.currentSpeed
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                 }
 
                 // Control buttons
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (uiState.isTracking) {
                         // Pause/Resume
-                        FloatingActionButton(
+                        SmallFloatingActionButton(
                             onClick = {
                                 if (uiState.isPaused) viewModel.resumeTracking()
                                 else viewModel.pauseTracking()
                             },
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            modifier = Modifier.size(48.dp)
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
                         ) {
                             Icon(
                                 if (uiState.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                                contentDescription = if (uiState.isPaused) "Resume" else "Pause"
+                                contentDescription = if (uiState.isPaused) "Resume" else "Pause",
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         // Stop
-                        LargeFloatingActionButton(
+                        FloatingActionButton(
                             onClick = { viewModel.stopTracking() },
-                            containerColor = MaterialTheme.colorScheme.error
+                            containerColor = MaterialTheme.colorScheme.error,
+                            shape = CircleShape,
+                            modifier = Modifier.size(52.dp)
                         ) {
                             Icon(
                                 Icons.Filled.Stop,
-                                contentDescription = "Stop Tracking",
-                                modifier = Modifier.size(36.dp),
+                                contentDescription = "Stop",
+                                modifier = Modifier.size(22.dp),
                                 tint = Color.White
                             )
                         }
                     } else {
                         // Start
-                        LargeFloatingActionButton(
+                        FloatingActionButton(
                             onClick = { showTrackNameDialog = true },
-                            containerColor = MaterialTheme.colorScheme.primary
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            shape = CircleShape,
+                            modifier = Modifier.size(52.dp)
                         ) {
                             Icon(
                                 Icons.Filled.PlayArrow,
-                                contentDescription = "Start Tracking",
-                                modifier = Modifier.size(36.dp),
+                                contentDescription = "Start",
+                                modifier = Modifier.size(24.dp),
                                 tint = Color.White
                             )
                         }

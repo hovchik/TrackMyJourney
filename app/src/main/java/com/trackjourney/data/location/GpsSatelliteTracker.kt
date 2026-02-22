@@ -4,14 +4,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.location.GnssStatus
 import android.location.LocationManager
-import android.os.Build
 import android.util.Log
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.callbackFlow
 
 data class SatelliteInfo(
     val totalVisible: Int = 0,
@@ -23,6 +19,8 @@ class GpsSatelliteTracker(
 ) {
     companion object {
         private const val TAG = "GpsSatelliteTracker"
+        // Throttle state updates to avoid excessive recomposition
+        private const val MIN_UPDATE_INTERVAL_MS = 2000L
     }
 
     private val locationManager: LocationManager? =
@@ -32,6 +30,7 @@ class GpsSatelliteTracker(
     val satelliteInfo: StateFlow<SatelliteInfo> = _satelliteInfo.asStateFlow()
 
     private var gnssCallback: GnssStatus.Callback? = null
+    private var lastUpdateTime = 0L
 
     @SuppressLint("MissingPermission")
     fun startMonitoring() {
@@ -40,6 +39,11 @@ class GpsSatelliteTracker(
 
         gnssCallback = object : GnssStatus.Callback() {
             override fun onSatelliteStatusChanged(status: GnssStatus) {
+                val now = System.currentTimeMillis()
+                // Throttle updates to save CPU
+                if (now - lastUpdateTime < MIN_UPDATE_INTERVAL_MS) return
+                lastUpdateTime = now
+
                 val total = status.satelliteCount
                 var used = 0
                 for (i in 0 until total) {
@@ -47,10 +51,11 @@ class GpsSatelliteTracker(
                         used++
                     }
                 }
-                _satelliteInfo.value = SatelliteInfo(
-                    totalVisible = total,
-                    usedInFix = used
-                )
+                val newInfo = SatelliteInfo(totalVisible = total, usedInFix = used)
+                // Only emit if values actually changed
+                if (_satelliteInfo.value != newInfo) {
+                    _satelliteInfo.value = newInfo
+                }
             }
         }
 
@@ -64,9 +69,12 @@ class GpsSatelliteTracker(
 
     fun stopMonitoring() {
         gnssCallback?.let {
-            locationManager?.unregisterGnssStatusCallback(it)
+            try {
+                locationManager?.unregisterGnssStatusCallback(it)
+            } catch (_: Exception) { }
         }
         gnssCallback = null
         _satelliteInfo.value = SatelliteInfo()
+        lastUpdateTime = 0L
     }
 }

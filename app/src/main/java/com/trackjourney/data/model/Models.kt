@@ -105,7 +105,13 @@ data class TrackPoint(
     val activityType: ActivityType = ActivityType.UNKNOWN,
 
     @ColumnInfo(name = "place_name")
-    val placeName: String? = null
+    val placeName: String? = null,
+
+    @ColumnInfo(name = "satellites_used")
+    val satellitesUsed: Int? = null,
+
+    @ColumnInfo(name = "is_accurate")
+    val isAccurate: Boolean = true
 )
 
 // ─────────────────────────────────────────────────────────
@@ -263,7 +269,9 @@ data class TrackPointExport(
     @SerializedName("heart_rate") val heartRate: Int?,
     val cadence: Int?,
     @SerializedName("activity_type") val activityType: String,
-    @SerializedName("place_name") val placeName: String?
+    @SerializedName("place_name") val placeName: String?,
+    @SerializedName("satellites_used") val satellitesUsed: Int?,
+    @SerializedName("is_accurate") val isAccurate: Boolean
 )
 
 data class HealthDataExport(

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.repository.PeriodStats
 import com.trackjourney.data.repository.TrackRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.*
@@ -31,26 +32,32 @@ class DashboardViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
+    private var observeJob: Job? = null
+
     init {
-        loadStats(StatsPeriod.WEEK)
+        selectPeriod(StatsPeriod.WEEK)
     }
 
     fun selectPeriod(period: StatsPeriod) {
         _uiState.update { it.copy(selectedPeriod = period, isLoading = true) }
-        loadStats(period)
+        observeStats(period)
     }
 
-    private fun loadStats(period: StatsPeriod) {
-        viewModelScope.launch {
-            try {
-                val since = calculateSince(period)
-                val stats = repository.getStatsSince(since)
-                _uiState.update {
-                    it.copy(stats = stats, isLoading = false)
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(stats = PeriodStats(), isLoading = false)
+    private fun observeStats(period: StatsPeriod) {
+        observeJob?.cancel()
+        observeJob = viewModelScope.launch {
+            // Re-compute stats every time the tracks table changes
+            repository.getAllTracks().collect {
+                try {
+                    val since = calculateSince(period)
+                    val stats = repository.getStatsSince(since)
+                    _uiState.update {
+                        it.copy(stats = stats, isLoading = false)
+                    }
+                } catch (e: Exception) {
+                    _uiState.update {
+                        it.copy(stats = PeriodStats(), isLoading = false)
+                    }
                 }
             }
         }

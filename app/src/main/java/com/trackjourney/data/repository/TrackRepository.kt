@@ -29,6 +29,8 @@ class TrackRepository(
 ) {
     companion object {
         private const val TAG = "TrackRepository"
+        const val MIN_SATELLITES_FOR_ACCURATE_FIX = 4
+        const val MAX_ACCURACY_METERS = 50f // reject points worse than this
     }
 
     private val gson = GsonBuilder().setPrettyPrinting().create()
@@ -121,9 +123,27 @@ class TrackRepository(
         trackId: String,
         location: Location,
         healthReading: com.trackjourney.data.bluetooth.WearableReading? = null
-    ): TrackPoint {
+    ): TrackPoint? {
         val lastPoint = trackPointDao.getLastPoint(trackId)
         val speedKmh = LocationTracker.msToKmh(location.speed)
+        val satInfo = gpsSatelliteTracker.satelliteInfo.value
+        val accuracyMeters = if (location.hasAccuracy()) location.accuracy else null
+
+        // Determine accuracy based on satellites and GPS accuracy
+        val isAccurate = satInfo.usedInFix >= MIN_SATELLITES_FOR_ACCURATE_FIX
+                && (accuracyMeters == null || accuracyMeters <= MAX_ACCURACY_METERS)
+
+        // Log inaccurate records
+        if (!isAccurate) {
+            Log.w(TAG, "INACCURATE GPS: sats=${satInfo.usedInFix}/${satInfo.totalVisible}, " +
+                    "accuracy=${accuracyMeters}m, lat=${location.latitude}, lon=${location.longitude}")
+        }
+
+        // Skip entirely if accuracy is extremely poor (>100m) — saves storage
+        if (accuracyMeters != null && accuracyMeters > 100f) {
+            Log.w(TAG, "SKIPPED point: accuracy ${accuracyMeters}m exceeds 100m threshold")
+            return null
+        }
 
         // AI-based real-time activity detection
         val activity = aiEngine.detectActivity(
@@ -146,12 +166,14 @@ class TrackRepository(
             speedMs = location.speed,
             speedKmh = speedKmh,
             bearing = if (location.hasBearing()) location.bearing else null,
-            accuracy = if (location.hasAccuracy()) location.accuracy else null,
+            accuracy = accuracyMeters,
             timestamp = System.currentTimeMillis(),
             heartRate = healthReading?.heartRate,
             cadence = healthReading?.cadence,
             activityType = activity,
-            placeName = placeName
+            placeName = placeName,
+            satellitesUsed = satInfo.usedInFix,
+            isAccurate = isAccurate
         )
 
         trackPointDao.insert(point)
@@ -326,7 +348,9 @@ class TrackRepository(
                         heartRate = pt.heartRate,
                         cadence = pt.cadence,
                         activityType = pt.activityType.name,
-                        placeName = pt.placeName
+                        placeName = pt.placeName,
+                        satellitesUsed = pt.satellitesUsed,
+                        isAccurate = pt.isAccurate
                     )
                 },
                 healthData = health.map { hd ->

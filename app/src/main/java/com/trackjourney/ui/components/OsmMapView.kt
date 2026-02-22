@@ -57,6 +57,8 @@ fun OsmMapView(
 
     // Track whether we've centered on initial position
     var hasCenteredOnInitial by remember { mutableStateOf(false) }
+    // Track last drawn point count so we only do incremental updates
+    var lastDrawnPointCount by remember { mutableIntStateOf(0) }
 
     // Lifecycle management
     DisposableEffect(lifecycleOwner) {
@@ -80,7 +82,6 @@ fun OsmMapView(
             mapView.controller.animateTo(GeoPoint(currentLatitude, currentLongitude))
             hasCenteredOnInitial = true
 
-            // Add current position marker
             mapView.overlays.removeAll { it is Marker && (it as Marker).title == "You are here" }
             val marker = Marker(mapView).apply {
                 position = GeoPoint(currentLatitude, currentLongitude)
@@ -94,74 +95,99 @@ fun OsmMapView(
         }
     }
 
-    // Update track overlay when points change
-    LaunchedEffect(trackPoints) {
-        mapView.overlays.clear()
+    // Update track overlay — full redraw only when point count resets (new track)
+    // or on first draw; otherwise just update the end marker position
+    LaunchedEffect(trackPoints.size) {
+        val pointCount = trackPoints.size
+        val needsFullRedraw = pointCount < lastDrawnPointCount || lastDrawnPointCount == 0
 
         if (trackPoints.isNotEmpty()) {
-            // Draw road-style polyline when there are 2+ points
-            if (trackPoints.size >= 2) {
-                if (showActivityColors) {
-                    drawActivityColoredTrack(mapView, trackPoints)
-                } else {
-                    // Dark border line underneath
-                    val borderLine = Polyline().apply {
-                        outlinePaint.apply {
-                            color = android.graphics.Color.argb(80, 0, 0, 0)
-                            strokeWidth = 16f
-                            style = Paint.Style.STROKE
-                            isAntiAlias = true
-                            strokeCap = Paint.Cap.ROUND
-                            strokeJoin = Paint.Join.ROUND
-                        }
-                        setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
-                    }
-                    mapView.overlays.add(borderLine)
+            if (needsFullRedraw) {
+                // Full redraw — new track or first load
+                mapView.overlays.clear()
 
-                    // Main colored line on top
-                    val polyline = Polyline().apply {
-                        outlinePaint.apply {
-                            color = Primary.toArgb()
-                            strokeWidth = 10f
-                            style = Paint.Style.STROKE
-                            isAntiAlias = true
-                            strokeCap = Paint.Cap.ROUND
-                            strokeJoin = Paint.Join.ROUND
+                if (trackPoints.size >= 2) {
+                    if (showActivityColors) {
+                        drawActivityColoredTrack(mapView, trackPoints)
+                    } else {
+                        val borderLine = Polyline().apply {
+                            outlinePaint.apply {
+                                color = android.graphics.Color.argb(80, 0, 0, 0)
+                                strokeWidth = 16f
+                                style = Paint.Style.STROKE
+                                isAntiAlias = true
+                                strokeCap = Paint.Cap.ROUND
+                                strokeJoin = Paint.Join.ROUND
+                            }
+                            setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
                         }
-                        setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
+                        mapView.overlays.add(borderLine)
+
+                        val polyline = Polyline().apply {
+                            outlinePaint.apply {
+                                color = Primary.toArgb()
+                                strokeWidth = 10f
+                                style = Paint.Style.STROKE
+                                isAntiAlias = true
+                                strokeCap = Paint.Cap.ROUND
+                                strokeJoin = Paint.Join.ROUND
+                            }
+                            setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
+                        }
+                        mapView.overlays.add(polyline)
                     }
-                    mapView.overlays.add(polyline)
+                }
+
+                // Start marker
+                val startPoint = trackPoints.first()
+                val startMarker = Marker(mapView).apply {
+                    position = GeoPoint(startPoint.latitude, startPoint.longitude)
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    icon = createCircleMarker(mapView, PrimaryLight.toArgb(), 30, 5)
+                    title = startPoint.placeName ?: "Start"
+                    snippet = if (startPoint.placeName != null) "Track started here" else null
+                }
+                mapView.overlays.add(startMarker)
+
+                // End marker
+                val lastPoint = trackPoints.last()
+                val endMarker = Marker(mapView).apply {
+                    position = GeoPoint(lastPoint.latitude, lastPoint.longitude)
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    icon = createCircleMarker(mapView, Secondary.toArgb(), 30, 5)
+                    title = lastPoint.placeName ?: "Current"
+                    snippet = "${String.format(Locale.US, "%.1f", lastPoint.speedKmh)} km/h"
+                }
+                mapView.overlays.add(endMarker)
+            } else {
+                // Incremental update — just update polyline points and move end marker
+                val allGeoPoints = trackPoints.map { GeoPoint(it.latitude, it.longitude) }
+
+                // Update existing polylines in place
+                mapView.overlays.filterIsInstance<Polyline>().forEach { polyline ->
+                    polyline.setPoints(allGeoPoints)
+                }
+
+                // Move end marker to latest position
+                val lastPoint = trackPoints.last()
+                val endMarkers = mapView.overlays.filterIsInstance<Marker>()
+                    .filter { it.title != "Start" && it.title != "You are here" && !(it.title?.startsWith("Track") == true) }
+                endMarkers.lastOrNull()?.let { marker ->
+                    marker.position = GeoPoint(lastPoint.latitude, lastPoint.longitude)
+                    marker.snippet = "${String.format(Locale.US, "%.1f", lastPoint.speedKmh)} km/h"
                 }
             }
 
-            // Start marker
-            val startPoint = trackPoints.first()
-            val startMarker = Marker(mapView).apply {
-                position = GeoPoint(startPoint.latitude, startPoint.longitude)
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                icon = createCircleMarker(mapView, PrimaryLight.toArgb(), 30, 5)
-                title = startPoint.placeName ?: "Start"
-                snippet = if (startPoint.placeName != null) "Track started here" else null
-            }
-            mapView.overlays.add(startMarker)
-
-            // Current position / end marker
-            val lastPoint = trackPoints.last()
-            val endMarker = Marker(mapView).apply {
-                position = GeoPoint(lastPoint.latitude, lastPoint.longitude)
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                icon = createCircleMarker(mapView, Secondary.toArgb(), 30, 5)
-                title = lastPoint.placeName ?: "Current"
-                snippet = "${String.format(Locale.US, "%.1f", lastPoint.speedKmh)} km/h"
-            }
-            mapView.overlays.add(endMarker)
+            lastDrawnPointCount = pointCount
 
             // Center map on latest point
             if (centerOnUser) {
+                val lastPoint = trackPoints.last()
                 mapView.controller.animateTo(GeoPoint(lastPoint.latitude, lastPoint.longitude))
             }
         } else if (currentLatitude != null && currentLongitude != null) {
-            // No track points — show current position marker
+            mapView.overlays.clear()
+            lastDrawnPointCount = 0
             val marker = Marker(mapView).apply {
                 position = GeoPoint(currentLatitude, currentLongitude)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
@@ -170,6 +196,9 @@ fun OsmMapView(
                 snippet = "Current position"
             }
             mapView.overlays.add(marker)
+        } else {
+            mapView.overlays.clear()
+            lastDrawnPointCount = 0
         }
 
         mapView.invalidate()
@@ -181,9 +210,6 @@ fun OsmMapView(
     )
 }
 
-/**
- * Creates a circle marker drawable with a filled center and white border.
- */
 private fun createCircleMarker(
     mapView: MapView,
     fillColor: Int,

@@ -27,28 +27,30 @@ class AnalysisViewModel @Inject constructor(
     val uiState: StateFlow<AnalysisUiState> = _uiState.asStateFlow()
 
     init {
-        loadData()
+        observeData()
     }
 
     fun loadData() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+        // Force a re-emission by triggering the flow observation
+        observeData()
+    }
 
-            val stats = repository.getStats()
-            val suggestions = repository.suggestBestTrips()
-
-            _uiState.update {
-                it.copy(
-                    stats = stats,
-                    suggestions = suggestions,
-                    isLoading = false
-                )
-            }
-        }
-
+    private fun observeData() {
+        // Reactively re-compute stats and suggestions whenever tracks change
         viewModelScope.launch {
             repository.getAllTracks().collect { tracks ->
-                _uiState.update { it.copy(recentTracks = tracks.take(5)) }
+                _uiState.update { it.copy(isLoading = true, recentTracks = tracks.take(5)) }
+
+                val stats = repository.getStats()
+                val suggestions = repository.suggestBestTrips()
+
+                _uiState.update {
+                    it.copy(
+                        stats = stats,
+                        suggestions = suggestions,
+                        isLoading = false
+                    )
+                }
             }
         }
     }

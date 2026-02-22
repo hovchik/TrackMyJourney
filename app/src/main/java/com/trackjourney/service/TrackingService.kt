@@ -55,7 +55,7 @@ class TrackingService : Service() {
     @Inject lateinit var satelliteTracker: GpsSatelliteTracker
     @Inject lateinit var settingsDataStore: SettingsDataStore
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var trackingJob: Job? = null
     private var currentTrackId: String? = null
     private var isPaused = false
@@ -116,16 +116,26 @@ class TrackingService : Service() {
     }
 
     private suspend fun trackWithSettings(trackId: String, settings: TrackingSettings) {
+        var lastNotificationTime = 0L
+
         locationTracker.locationUpdates(settings).collect { location ->
             if (!isPaused) {
-                repository.addTrackPoint(trackId, location, null)
-                pointCount++
+                val point = repository.addTrackPoint(trackId, location, null)
+                if (point != null) {
+                    pointCount++
+                }
 
-                val satInfo = satelliteTracker.satelliteInfo.value
-                val speedKmh = LocationTracker.msToKmh(location.speed)
-                updateNotification(
-                    "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}"
-                )
+                // Throttle notification updates to at most once per 2 seconds
+                val now = System.currentTimeMillis()
+                if (now - lastNotificationTime >= 2000L) {
+                    lastNotificationTime = now
+                    val satInfo = satelliteTracker.satelliteInfo.value
+                    val speedKmh = LocationTracker.msToKmh(location.speed)
+                    val accuracyStr = if (point?.isAccurate == false) " [!]" else ""
+                    updateNotification(
+                        "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}$accuracyStr"
+                    )
+                }
             }
         }
     }

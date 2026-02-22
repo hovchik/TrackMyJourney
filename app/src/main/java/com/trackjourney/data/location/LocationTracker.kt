@@ -32,7 +32,8 @@ class LocationTracker(
             setMinUpdateDistanceMeters(settings.minDistanceMeters)
             setWaitForAccurateLocation(true)
             setGranularity(Granularity.GRANULARITY_FINE)
-            setMaxUpdateDelayMillis(0)
+            // Allow batching up to half the interval — saves battery by reducing wake-ups
+            setMaxUpdateDelayMillis(settings.recordIntervalMs / 2)
         }.build()
 
         locationCallback = object : LocationCallback() {

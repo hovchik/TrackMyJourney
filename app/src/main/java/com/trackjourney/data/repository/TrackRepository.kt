@@ -146,7 +146,7 @@ class TrackRepository(
             accuracy = if (location.hasAccuracy()) location.accuracy else null,
             timestamp = System.currentTimeMillis(),
             heartRate = healthReading?.heartRate,
-            spO2 = healthReading?.spO2,
+            cadence = healthReading?.cadence,
             activityType = activity,
             placeName = placeName
         )
@@ -163,11 +163,12 @@ class TrackRepository(
         }
 
         // Store separate health data record if available
-        if (healthReading != null && (healthReading.heartRate != null || healthReading.spO2 != null)) {
+        if (healthReading != null && healthReading.heartRate != null) {
             healthDataDao.insert(HealthData(
                 trackId = trackId,
                 heartRate = healthReading.heartRate,
-                spO2 = healthReading.spO2,
+                batteryLevel = healthReading.batteryLevel,
+                cadence = healthReading.cadence,
                 deviceName = healthReading.deviceName,
                 deviceType = healthReading.deviceType
             ))
@@ -196,7 +197,6 @@ class TrackRepository(
         val avgSpeed = trackPointDao.getAverageSpeed(trackId) ?: 0f
         val maxSpeed = trackPointDao.getMaxSpeed(trackId) ?: 0f
         val avgHr = healthDataDao.getAverageHeartRate(trackId)
-        val avgSpO2 = healthDataDao.getAverageSpO2(trackId)
 
         // Determine dominant activity from latest points
         val recentActivities = points.takeLast(20).map { it.activityType }
@@ -210,8 +210,7 @@ class TrackRepository(
             avgSpeedKmh = avgSpeed.toDouble(),
             maxSpeedKmh = maxSpeed.toDouble(),
             activityType = dominant,
-            avgHeartRate = avgHr,
-            avgSpO2 = avgSpO2
+            avgHeartRate = avgHr
         ))
     }
 
@@ -309,7 +308,6 @@ class TrackRepository(
                     maxSpeedKmh = track.maxSpeedKmh,
                     activityType = track.activityType.name,
                     avgHeartRate = track.avgHeartRate,
-                    avgSpO2 = track.avgSpO2,
                     startPlaceName = track.startPlaceName,
                     endPlaceName = track.endPlaceName
                 ),
@@ -323,7 +321,7 @@ class TrackRepository(
                         accuracy = pt.accuracy,
                         timestamp = pt.timestamp,
                         heartRate = pt.heartRate,
-                        spO2 = pt.spO2,
+                        cadence = pt.cadence,
                         activityType = pt.activityType.name,
                         placeName = pt.placeName
                     )
@@ -332,7 +330,8 @@ class TrackRepository(
                     HealthDataExport(
                         timestamp = hd.timestamp,
                         heartRate = hd.heartRate,
-                        spO2 = hd.spO2,
+                        batteryLevel = hd.batteryLevel,
+                        cadence = hd.cadence,
                         deviceName = hd.deviceName,
                         deviceType = hd.deviceType.name
                     )

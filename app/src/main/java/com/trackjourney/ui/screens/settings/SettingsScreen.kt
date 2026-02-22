@@ -177,18 +177,6 @@ fun SettingsScreen(
             }
         }
 
-        item {
-            SettingsCard {
-                SettingsSwitch(
-                    icon = Icons.Filled.Air,
-                    title = "SpO2 Monitoring",
-                    subtitle = "Record blood oxygen saturation",
-                    checked = settings.enableSpO2,
-                    onCheckedChange = { viewModel.updateSpO2(it) }
-                )
-            }
-        }
-
         // ── AI SETTINGS ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
@@ -340,9 +328,13 @@ private fun WearableConnectionSection(viewModel: SettingsViewModel) {
                                 Text(
                                     buildString {
                                         reading.heartRate?.let { append("HR: $it bpm") }
-                                        reading.spO2?.let {
+                                        reading.cadence?.let {
                                             if (isNotEmpty()) append(" | ")
-                                            append("SpO2: $it%")
+                                            append("Cadence: $it")
+                                        }
+                                        reading.batteryLevel?.let {
+                                            if (isNotEmpty()) append(" | ")
+                                            append("Battery: $it%")
                                         }
                                     },
                                     fontSize = 12.sp,

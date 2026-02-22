@@ -268,16 +268,12 @@ private fun TrackingStatsBar(state: MapUiState) {
                     }
                 )
             }
-            state.wearableReading?.spO2?.let { spo2 ->
+            state.wearableReading?.cadence?.let { cad ->
                 StatItem(
-                    value = "$spo2%",
+                    value = cad.toString(),
                     unit = "",
-                    label = "SpO2",
-                    valueColor = when {
-                        spo2 < 90 -> Error
-                        spo2 < 95 -> Accent
-                        else -> PrimaryLight
-                    }
+                    label = "Cadence",
+                    valueColor = PrimaryLight
                 )
             }
         }
@@ -356,8 +352,8 @@ private fun WearableStatusChip(
     val (text, color) = when (state) {
         is WearableConnectionState.Connected -> {
             val hr = reading?.heartRate?.let { "❤ $it" } ?: ""
-            val spo2 = reading?.spO2?.let { " | O₂ $it%" } ?: ""
-            "${state.device.name} $hr$spo2" to PrimaryLight
+            val bat = reading?.batteryLevel?.let { " | 🔋$it%" } ?: ""
+            "${state.device.name} $hr$bat" to PrimaryLight
         }
         is WearableConnectionState.Connecting -> "Connecting..." to Accent
         is WearableConnectionState.Scanning -> "Scanning..." to Secondary
@@ -445,14 +441,25 @@ private fun WearableBottomSheet(
                                     Text(
                                         buildString {
                                             reading.heartRate?.let { append("❤ $it bpm") }
-                                            reading.spO2?.let {
+                                            reading.cadence?.let {
                                                 if (isNotEmpty()) append(" • ")
-                                                append("O₂ $it%")
+                                                append("Cadence: $it")
+                                            }
+                                            reading.batteryLevel?.let {
+                                                if (isNotEmpty()) append(" • ")
+                                                append("Battery: $it%")
                                             }
                                         },
                                         fontSize = 13.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    reading.modelNumber?.let { model ->
+                                        Text(
+                                            model,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
                                 }
                             }
                             TextButton(onClick = onDisconnect) {
@@ -531,8 +538,9 @@ private fun WearableBottomSheet(
 
             // Info text
             Text(
-                "Supports Garmin and Samsung Galaxy watches via Bluetooth LE. " +
-                    "Heart rate and SpO2 data will be recorded alongside your track.",
+                "Supports Garmin Fenix, Forerunner, Venu and Samsung Galaxy watches via Bluetooth LE. " +
+                    "Heart rate, cadence, and battery data will be recorded alongside your track. " +
+                    "For Garmin: enable Broadcast Heart Rate in watch settings.",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -71,12 +71,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun updateSpO2(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.updateSettings { updateEnableSpO2(enabled) }
-        }
-    }
-
     fun updateAutoDetect(enabled: Boolean) {
         viewModelScope.launch {
             repository.updateSettings { updateAutoDetectActivity(enabled) }

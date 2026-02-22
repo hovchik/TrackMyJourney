@@ -559,13 +559,6 @@ private fun TrackCard(
                                 value = "$it bpm"
                             )
                         }
-                        track.avgSpO2?.let {
-                            DetailItem(
-                                modifier = Modifier.weight(1f),
-                                label = "Avg SpO2",
-                                value = "$it%"
-                            )
-                        }
                     }
 
                     // AI Summary

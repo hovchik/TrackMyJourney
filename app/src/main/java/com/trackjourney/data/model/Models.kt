@@ -37,9 +37,6 @@ data class TrackSession(
     @ColumnInfo(name = "avg_heart_rate")
     val avgHeartRate: Int? = null,
 
-    @ColumnInfo(name = "avg_spo2")
-    val avgSpO2: Int? = null,
-
     @ColumnInfo(name = "ai_summary")
     val aiSummary: String? = null,
 
@@ -101,8 +98,8 @@ data class TrackPoint(
     @ColumnInfo(name = "heart_rate")
     val heartRate: Int? = null,           // BPM from wearable
 
-    @ColumnInfo(name = "spo2")
-    val spO2: Int? = null,               // Blood oxygen % from wearable
+    @ColumnInfo(name = "cadence")
+    val cadence: Int? = null,            // steps/min or cycling rpm
 
     @ColumnInfo(name = "activity_type")
     val activityType: ActivityType = ActivityType.UNKNOWN,
@@ -138,8 +135,11 @@ data class HealthData(
     @ColumnInfo(name = "heart_rate")
     val heartRate: Int? = null,
 
-    @ColumnInfo(name = "spo2")
-    val spO2: Int? = null,
+    @ColumnInfo(name = "battery_level")
+    val batteryLevel: Int? = null,
+
+    @ColumnInfo(name = "cadence")
+    val cadence: Int? = null,
 
     @ColumnInfo(name = "device_name")
     val deviceName: String? = null,
@@ -248,7 +248,6 @@ data class TrackSessionExport(
     @SerializedName("max_speed_kmh") val maxSpeedKmh: Double,
     @SerializedName("activity_type") val activityType: String,
     @SerializedName("avg_heart_rate") val avgHeartRate: Int?,
-    @SerializedName("avg_spo2") val avgSpO2: Int?,
     @SerializedName("start_place_name") val startPlaceName: String?,
     @SerializedName("end_place_name") val endPlaceName: String?
 )
@@ -262,7 +261,7 @@ data class TrackPointExport(
     val accuracy: Float?,
     val timestamp: Long,
     @SerializedName("heart_rate") val heartRate: Int?,
-    @SerializedName("spo2") val spO2: Int?,
+    val cadence: Int?,
     @SerializedName("activity_type") val activityType: String,
     @SerializedName("place_name") val placeName: String?
 )
@@ -270,7 +269,8 @@ data class TrackPointExport(
 data class HealthDataExport(
     val timestamp: Long,
     @SerializedName("heart_rate") val heartRate: Int?,
-    @SerializedName("spo2") val spO2: Int?,
+    @SerializedName("battery_level") val batteryLevel: Int?,
+    val cadence: Int?,
     @SerializedName("device_name") val deviceName: String?,
     @SerializedName("device_type") val deviceType: String
 )
@@ -311,7 +311,6 @@ data class TrackingSettings(
     val recordIntervalMs: Long = 3000L,           // 3 seconds default
     val minDistanceMeters: Float = 5f,            // minimum displacement
     val enableHeartRate: Boolean = true,
-    val enableSpO2: Boolean = true,
     val autoDetectActivity: Boolean = true,
     val keepScreenOn: Boolean = false,
     val exportFormat: ExportFormat = ExportFormat.JSON

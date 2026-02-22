@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [TrackSession::class, TrackPoint::class, HealthData::class, AiAnalysis::class],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -166,8 +166,8 @@ interface HealthDataDao {
     @Query("SELECT AVG(heart_rate) FROM health_data WHERE track_id = :trackId AND heart_rate IS NOT NULL")
     suspend fun getAverageHeartRate(trackId: String): Int?
 
-    @Query("SELECT AVG(spo2) FROM health_data WHERE track_id = :trackId AND spo2 IS NOT NULL")
-    suspend fun getAverageSpO2(trackId: String): Int?
+    @Query("SELECT AVG(cadence) FROM health_data WHERE track_id = :trackId AND cadence IS NOT NULL")
+    suspend fun getAverageCadence(trackId: String): Int?
 }
 
 // ─────────────────────────────────────────────────────────

@@ -394,7 +394,7 @@ class LocalAiEngine(
         if (healthData.isEmpty()) return null
 
         val heartRates = healthData.mapNotNull { it.heartRate }
-        val spO2Values = healthData.mapNotNull { it.spO2 }
+        val cadenceValues = healthData.mapNotNull { it.cadence }
 
         val insights = mutableListOf<String>()
 
@@ -406,22 +406,20 @@ class LocalAiEngine(
             insights.add("Heart Rate: avg $avgHr bpm, range $minHr-$maxHr bpm")
 
             when {
-                avgHr > 160 -> insights.add("⚠️ High average heart rate — consider reducing intensity")
+                avgHr > 160 -> insights.add("High average heart rate — consider reducing intensity")
                 avgHr in 100..140 -> insights.add("Good cardio zone for fitness improvement")
                 avgHr < 60 && stats.avgSpeedKmh > 5 -> insights.add("Low heart rate during activity — excellent cardiovascular fitness")
             }
         }
 
-        if (spO2Values.isNotEmpty()) {
-            val avgSpO2 = spO2Values.average().toInt()
-            val minSpO2 = spO2Values.min()
-
-            insights.add("SpO2: avg $avgSpO2%, min $minSpO2%")
+        if (cadenceValues.isNotEmpty()) {
+            val avgCadence = cadenceValues.average().toInt()
+            insights.add("Cadence: avg $avgCadence steps/min")
 
             when {
-                minSpO2 < 90 -> insights.add("⚠️ SpO2 dropped below 90% — consider consulting a healthcare provider")
-                avgSpO2 < 94 -> insights.add("SpO2 slightly below normal range — monitor closely")
-                avgSpO2 >= 95 -> insights.add("Blood oxygen levels are in healthy range")
+                avgCadence in 170..185 -> insights.add("Optimal running cadence for efficiency")
+                avgCadence < 160 && stats.avgSpeedKmh > 8 -> insights.add("Consider increasing cadence for better running form")
+                avgCadence > 190 -> insights.add("High cadence — good for speed work")
             }
         }
 

@@ -17,7 +17,6 @@ class SettingsDataStore(
         val RECORD_INTERVAL_MS = longPreferencesKey("record_interval_ms")
         val MIN_DISTANCE_METERS = floatPreferencesKey("min_distance_meters")
         val ENABLE_HEART_RATE = booleanPreferencesKey("enable_heart_rate")
-        val ENABLE_SPO2 = booleanPreferencesKey("enable_spo2")
         val AUTO_DETECT_ACTIVITY = booleanPreferencesKey("auto_detect_activity")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val EXPORT_FORMAT = stringPreferencesKey("export_format")
@@ -28,7 +27,6 @@ class SettingsDataStore(
             recordIntervalMs = prefs[RECORD_INTERVAL_MS] ?: 3000L,
             minDistanceMeters = prefs[MIN_DISTANCE_METERS] ?: 5f,
             enableHeartRate = prefs[ENABLE_HEART_RATE] ?: true,
-            enableSpO2 = prefs[ENABLE_SPO2] ?: true,
             autoDetectActivity = prefs[AUTO_DETECT_ACTIVITY] ?: true,
             keepScreenOn = prefs[KEEP_SCREEN_ON] ?: false,
             exportFormat = try {
@@ -51,10 +49,6 @@ class SettingsDataStore(
         context.dataStore.edit { it[ENABLE_HEART_RATE] = enabled }
     }
 
-    suspend fun updateEnableSpO2(enabled: Boolean) {
-        context.dataStore.edit { it[ENABLE_SPO2] = enabled }
-    }
-
     suspend fun updateAutoDetectActivity(enabled: Boolean) {
         context.dataStore.edit { it[AUTO_DETECT_ACTIVITY] = enabled }
     }
@@ -72,7 +66,6 @@ class SettingsDataStore(
             prefs[RECORD_INTERVAL_MS] = settings.recordIntervalMs
             prefs[MIN_DISTANCE_METERS] = settings.minDistanceMeters
             prefs[ENABLE_HEART_RATE] = settings.enableHeartRate
-            prefs[ENABLE_SPO2] = settings.enableSpO2
             prefs[AUTO_DETECT_ACTIVITY] = settings.autoDetectActivity
             prefs[KEEP_SCREEN_ON] = settings.keepScreenOn
             prefs[EXPORT_FORMAT] = settings.exportFormat.name

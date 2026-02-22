@@ -310,7 +310,6 @@ data class TrackWithPoints(
 data class TrackingSettings(
     val recordIntervalMs: Long = 3000L,           // 3 seconds default
     val minDistanceMeters: Float = 5f,            // minimum displacement
-    val enableHeartRate: Boolean = true,
     val autoDetectActivity: Boolean = true,
     val keepScreenOn: Boolean = false,
     val exportFormat: ExportFormat = ExportFormat.JSON

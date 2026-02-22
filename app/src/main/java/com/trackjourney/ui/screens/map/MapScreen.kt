@@ -4,10 +4,7 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,13 +13,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.ActivityType
 import com.trackjourney.ui.components.OsmMapView
 import com.trackjourney.ui.theme.*
@@ -33,7 +28,6 @@ fun MapScreen(
     viewModel: MapViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showWearableSheet by remember { mutableStateOf(false) }
     var showTrackNameDialog by remember { mutableStateOf(false) }
     var trackName by remember { mutableStateOf("") }
 
@@ -57,20 +51,7 @@ fun MapScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Top app bar
         TopAppBar(
-            title = { Text("Map", fontWeight = FontWeight.Bold) },
-            actions = {
-                // Wearable button in app bar
-                IconButton(onClick = { showWearableSheet = true }) {
-                    Icon(
-                        Icons.Filled.Watch,
-                        contentDescription = "Wearable",
-                        tint = when (uiState.wearableState) {
-                            is WearableConnectionState.Connected -> PrimaryLight
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                }
-            }
+            title = { Text("Map", fontWeight = FontWeight.Bold) }
         )
 
         // Map area — takes remaining space
@@ -95,14 +76,14 @@ fun MapScreen(
                 TrackingStatsBar(uiState)
             }
 
-            // Wearable indicator
-            WearableStatusChip(
-                state = uiState.wearableState,
-                reading = uiState.wearableReading,
+            // GPS Satellite chip — top end
+            GpsSatelliteChip(
+                totalVisible = uiState.satelliteInfo.totalVisible,
+                usedInFix = uiState.satelliteInfo.usedInFix,
+                accuracy = uiState.gpsAccuracy,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = 60.dp, end = 16.dp)
-                    .clickable { showWearableSheet = true }
             )
 
             // Activity badge at bottom center
@@ -208,17 +189,6 @@ fun MapScreen(
             }
         )
     }
-
-    // Wearable bottom sheet
-    if (showWearableSheet) {
-        WearableBottomSheet(
-            uiState = uiState,
-            onDismiss = { showWearableSheet = false },
-            onScan = { viewModel.scanForWearables() },
-            onConnect = { viewModel.connectWearable(it) },
-            onDisconnect = { viewModel.disconnectWearable() }
-        )
-    }
 }
 
 // --- TRACKING STATS BAR ---
@@ -256,24 +226,26 @@ private fun TrackingStatsBar(state: MapUiState) {
                 unit = "pts",
                 label = "Points"
             )
-            state.wearableReading?.heartRate?.let { hr ->
+            StatItem(
+                value = "${state.satelliteInfo.usedInFix}/${state.satelliteInfo.totalVisible}",
+                unit = "",
+                label = "Satellites",
+                valueColor = when {
+                    state.satelliteInfo.usedInFix >= 8 -> PrimaryLight
+                    state.satelliteInfo.usedInFix >= 4 -> Accent
+                    else -> Error
+                }
+            )
+            state.gpsAccuracy?.let { acc ->
                 StatItem(
-                    value = hr.toString(),
-                    unit = "bpm",
-                    label = "Heart Rate",
+                    value = String.format("%.1f", acc),
+                    unit = "m",
+                    label = "Accuracy",
                     valueColor = when {
-                        hr > 160 -> Error
-                        hr > 120 -> Accent
-                        else -> PrimaryLight
+                        acc <= 5f -> PrimaryLight
+                        acc <= 15f -> Accent
+                        else -> Error
                     }
-                )
-            }
-            state.wearableReading?.cadence?.let { cad ->
-                StatItem(
-                    value = cad.toString(),
-                    unit = "",
-                    label = "Cadence",
-                    valueColor = PrimaryLight
                 )
             }
         }
@@ -341,211 +313,48 @@ private fun ActivityBadge(activity: ActivityType, speed: Float, modifier: Modifi
     }
 }
 
-// --- WEARABLE STATUS CHIP ---
+// --- GPS SATELLITE CHIP ---
 
 @Composable
-private fun WearableStatusChip(
-    state: WearableConnectionState,
-    reading: com.trackjourney.data.bluetooth.WearableReading?,
+private fun GpsSatelliteChip(
+    totalVisible: Int,
+    usedInFix: Int,
+    accuracy: Float?,
     modifier: Modifier = Modifier
 ) {
-    val (text, color) = when (state) {
-        is WearableConnectionState.Connected -> {
-            val hr = reading?.heartRate?.let { "❤ $it" } ?: ""
-            val bat = reading?.batteryLevel?.let { " | 🔋$it%" } ?: ""
-            "${state.device.name} $hr$bat" to PrimaryLight
-        }
-        is WearableConnectionState.Connecting -> "Connecting..." to Accent
-        is WearableConnectionState.Scanning -> "Scanning..." to Secondary
-        is WearableConnectionState.Error -> "Error" to Error
-        WearableConnectionState.Disconnected -> return // Don't show chip
+    if (totalVisible == 0 && usedInFix == 0) return
+
+    val signalColor = when {
+        usedInFix >= 8 -> PrimaryLight
+        usedInFix >= 4 -> Accent
+        else -> Error
     }
 
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.9f)),
+        colors = CardDefaults.cardColors(containerColor = signalColor.copy(alpha = 0.9f)),
         shape = RoundedCornerShape(20.dp)
     ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-// --- WEARABLE BOTTOM SHEET ---
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun WearableBottomSheet(
-    uiState: MapUiState,
-    onDismiss: () -> Unit,
-    onScan: () -> Unit,
-    onConnect: (com.trackjourney.data.bluetooth.WearableDevice) -> Unit,
-    onDisconnect: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState()
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp)
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                "Smartwatch Connection",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
+            Icon(
+                Icons.Filled.SatelliteAlt,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(14.dp)
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Connection status
-            when (val state = uiState.wearableState) {
-                is WearableConnectionState.Connected -> {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = PrimaryLight.copy(alpha = 0.1f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Filled.Watch,
-                                contentDescription = null,
-                                tint = PrimaryLight,
-                                modifier = Modifier.size(32.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    state.device.name,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    "Connected • ${state.device.type.name}",
-                                    fontSize = 13.sp,
-                                    color = PrimaryLight
-                                )
-                                uiState.wearableReading?.let { reading ->
-                                    Text(
-                                        buildString {
-                                            reading.heartRate?.let { append("❤ $it bpm") }
-                                            reading.cadence?.let {
-                                                if (isNotEmpty()) append(" • ")
-                                                append("Cadence: $it")
-                                            }
-                                            reading.batteryLevel?.let {
-                                                if (isNotEmpty()) append(" • ")
-                                                append("Battery: $it%")
-                                            }
-                                        },
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    reading.modelNumber?.let { model ->
-                                        Text(
-                                            model,
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                }
-                            }
-                            TextButton(onClick = onDisconnect) {
-                                Text("Disconnect", color = Error)
-                            }
-                        }
-                    }
-                }
-
-                else -> {
-                    Button(
-                        onClick = onScan,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = uiState.wearableState !is WearableConnectionState.Scanning
-                    ) {
-                        Icon(Icons.Filled.BluetoothSearching, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            if (uiState.wearableState is WearableConnectionState.Scanning)
-                                "Scanning..." else "Scan for Devices"
-                        )
-                    }
-
-                    if (uiState.discoveredDevices.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "Discovered Devices",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        LazyColumn {
-                            items(uiState.discoveredDevices) { device ->
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
-                                        .clickable { onConnect(device) },
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        val icon = when (device.type) {
-                                            com.trackjourney.data.model.WearableType.GARMIN -> Icons.Filled.Watch
-                                            com.trackjourney.data.model.WearableType.SAMSUNG -> Icons.Filled.Watch
-                                            else -> Icons.Filled.Bluetooth
-                                        }
-                                        Icon(icon, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(device.name, fontWeight = FontWeight.Medium)
-                                            Text(
-                                                "${device.type.name} • Signal: ${device.rssi}dBm",
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Icon(
-                                            Icons.Filled.ChevronRight,
-                                            contentDescription = "Connect"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Info text
             Text(
-                "Supports Garmin Fenix, Forerunner, Venu and Samsung Galaxy watches via Bluetooth LE. " +
-                    "Heart rate, cadence, and battery data will be recorded alongside your track. " +
-                    "For Garmin: enable Broadcast Heart Rate in watch settings.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = buildString {
+                    append("$usedInFix/$totalVisible")
+                    accuracy?.let { append(" | ${String.format("%.0f", it)}m") }
+                },
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
             )
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

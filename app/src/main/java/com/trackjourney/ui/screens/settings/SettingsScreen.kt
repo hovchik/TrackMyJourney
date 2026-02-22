@@ -29,9 +29,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.ExportFormat
-import com.trackjourney.ui.components.LoadingIndicator
 import com.trackjourney.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,6 +38,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val settings by viewModel.settings.collectAsState()
+    val satelliteInfo by viewModel.satelliteInfo.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -64,6 +63,78 @@ fun SettingsScreen(
         }
 
         item { PermissionsSection() }
+
+        // ── GPS STATUS ────────────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "GPS Status",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = when {
+                                satelliteInfo.usedInFix >= 8 -> PrimaryLight.copy(alpha = 0.15f)
+                                satelliteInfo.usedInFix >= 4 -> Accent.copy(alpha = 0.15f)
+                                else -> Error.copy(alpha = 0.15f)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.SatelliteAlt,
+                                    contentDescription = null,
+                                    tint = when {
+                                        satelliteInfo.usedInFix >= 8 -> PrimaryLight
+                                        satelliteInfo.usedInFix >= 4 -> Accent
+                                        else -> Error
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("GPS Satellites", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Available: ${satelliteInfo.totalVisible}  |  Connected: ${satelliteInfo.usedInFix}",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                when {
+                                    satelliteInfo.usedInFix >= 8 -> "Excellent signal"
+                                    satelliteInfo.usedInFix >= 4 -> "Good signal"
+                                    satelliteInfo.usedInFix >= 1 -> "Weak signal"
+                                    else -> "No signal"
+                                },
+                                fontSize = 12.sp,
+                                color = when {
+                                    satelliteInfo.usedInFix >= 8 -> PrimaryLight
+                                    satelliteInfo.usedInFix >= 4 -> Accent
+                                    else -> Error
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         // ── RECORDING SETTINGS ──────────────────────────
         item {
@@ -148,32 +219,6 @@ fun SettingsScreen(
                         Text("50m", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-            }
-        }
-
-        // ── WEARABLE SETTINGS ───────────────────────────
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Wearable",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
-
-        item { WearableConnectionSection(viewModel) }
-
-        item {
-            SettingsCard {
-                SettingsSwitch(
-                    icon = Icons.Filled.FavoriteBorder,
-                    title = "Heart Rate Monitoring",
-                    subtitle = "Record heart rate from connected watch",
-                    checked = settings.enableHeartRate,
-                    onCheckedChange = { viewModel.updateHeartRate(it) }
-                )
             }
         }
 
@@ -272,7 +317,7 @@ fun SettingsScreen(
                     Text("Version 1.0.0", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "GPS tracking with OpenStreetMap, smartwatch integration, and on-device AI analysis. All data stored locally.",
+                        "GPS tracking with OpenStreetMap and on-device AI analysis. Maximum precision satellite positioning. All data stored locally.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp
@@ -282,179 +327,6 @@ fun SettingsScreen(
         }
 
         item { Spacer(modifier = Modifier.height(80.dp)) }
-    }
-}
-
-@Composable
-private fun WearableConnectionSection(viewModel: SettingsViewModel) {
-    val wearableState by viewModel.wearableState.collectAsState()
-    val wearableReading by viewModel.wearableReading.collectAsState()
-    val discoveredDevices by viewModel.discoveredDevices.collectAsState()
-
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            when (val state = wearableState) {
-                is WearableConnectionState.Connected -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            color = PrimaryLight.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Filled.Watch,
-                                    contentDescription = null,
-                                    tint = PrimaryLight,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(state.device.name, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "Connected",
-                                fontSize = 13.sp,
-                                color = PrimaryLight
-                            )
-                            wearableReading?.let { reading ->
-                                Text(
-                                    buildString {
-                                        reading.heartRate?.let { append("HR: $it bpm") }
-                                        reading.cadence?.let {
-                                            if (isNotEmpty()) append(" | ")
-                                            append("Cadence: $it")
-                                        }
-                                        reading.batteryLevel?.let {
-                                            if (isNotEmpty()) append(" | ")
-                                            append("Battery: $it%")
-                                        }
-                                    },
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        TextButton(onClick = { viewModel.disconnectWearable() }) {
-                            Text("Disconnect", color = Error, fontSize = 13.sp)
-                        }
-                    }
-                }
-
-                is WearableConnectionState.Connecting -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        LoadingIndicator(size = 20.dp, strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Connecting...", fontSize = 14.sp)
-                    }
-                }
-
-                else -> {
-                    // Disconnected / Scanning / Error
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Filled.Watch,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Smartwatch", fontWeight = FontWeight.Medium)
-                            Text(
-                                if (state is WearableConnectionState.Error) state.message
-                                else "No device connected",
-                                fontSize = 13.sp,
-                                color = if (state is WearableConnectionState.Error) Error
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Button(
-                            onClick = { viewModel.scanForWearables() },
-                            enabled = wearableState !is WearableConnectionState.Scanning,
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            if (wearableState is WearableConnectionState.Scanning) {
-                                LoadingIndicator(
-                                    size = 16.dp,
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Scanning", fontSize = 13.sp)
-                            } else {
-                                Icon(
-                                    Icons.Filled.BluetoothSearching,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Scan", fontSize = 13.sp)
-                            }
-                        }
-                    }
-
-                    // Discovered devices list
-                    if (discoveredDevices.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        @Suppress("DEPRECATION")
-                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Found Devices",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        discoveredDevices.forEach { device ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { viewModel.connectWearable(device) }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Filled.Bluetooth,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = Secondary
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(device.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text(
-                                        "${device.type.name} | ${device.rssi} dBm",
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Icon(
-                                    Icons.Filled.ChevronRight,
-                                    contentDescription = "Connect",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -483,20 +355,6 @@ private val requiredPermissions = buildList {
             "Activity Recognition",
             Icons.Filled.DirectionsRun,
             minSdk = Build.VERSION_CODES.Q
-        ))
-    }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        add(PermissionItem(
-            Manifest.permission.BLUETOOTH_SCAN,
-            "Bluetooth Scan",
-            Icons.Filled.BluetoothSearching,
-            minSdk = Build.VERSION_CODES.S
-        ))
-        add(PermissionItem(
-            Manifest.permission.BLUETOOTH_CONNECT,
-            "Bluetooth Connect",
-            Icons.Filled.Bluetooth,
-            minSdk = Build.VERSION_CODES.S
         ))
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -551,7 +409,6 @@ private fun PermissionsSection() {
                         .fillMaxWidth()
                         .clickable {
                             if (!granted) {
-                                // Background location must be requested separately after location is granted
                                 if (item.permission == Manifest.permission.ACCESS_BACKGROUND_LOCATION) {
                                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                         data = Uri.fromParts("package", context.packageName, null)

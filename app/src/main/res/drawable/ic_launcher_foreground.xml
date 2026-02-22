@@ -5,62 +5,112 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Outer ring — compass / globe feel -->
+    <!-- GPS crosshair outer ring -->
     <path
-        android:pathData="M54,22 A32,32 0 1,1 53.99,22Z"
-        android:strokeWidth="2.5"
+        android:pathData="M54,24 A30,30 0 1,1 53.99,24Z"
+        android:strokeWidth="2"
         android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.3"
+        android:strokeAlpha="0.25"
         android:fillColor="#00000000" />
 
-    <!-- Curved route path — winding journey line -->
+    <!-- GPS crosshair inner ring -->
     <path
-        android:pathData="M34,72 C36,64 42,60 46,56 C50,52 44,46 48,40 C52,34 58,38 60,42 C62,46 56,50 60,56 C64,62 70,58 74,52"
-        android:strokeWidth="4"
+        android:pathData="M54,34 A20,20 0 1,1 53.99,34Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.35"
+        android:fillColor="#00000000" />
+
+    <!-- Crosshair vertical line top -->
+    <path
+        android:pathData="M54,18 L54,28"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.6"
+        android:strokeLineCap="round" />
+
+    <!-- Crosshair vertical line bottom -->
+    <path
+        android:pathData="M54,80 L54,90"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.6"
+        android:strokeLineCap="round" />
+
+    <!-- Crosshair horizontal line left -->
+    <path
+        android:pathData="M18,54 L28,54"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.6"
+        android:strokeLineCap="round" />
+
+    <!-- Crosshair horizontal line right -->
+    <path
+        android:pathData="M80,54 L90,54"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.6"
+        android:strokeLineCap="round" />
+
+    <!-- Satellite orbit arc 1 -->
+    <path
+        android:pathData="M36,30 Q54,20 72,30"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.4"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round" />
+
+    <!-- Satellite orbit arc 2 -->
+    <path
+        android:pathData="M30,36 Q20,54 30,72"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.4"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round" />
+
+    <!-- Small satellite dot 1 -->
+    <path
+        android:pathData="M40,28 A2,2 0 1,1 40.01,28Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.7" />
+
+    <!-- Small satellite dot 2 -->
+    <path
+        android:pathData="M28,44 A2,2 0 1,1 28.01,44Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.7" />
+
+    <!-- Small satellite dot 3 -->
+    <path
+        android:pathData="M68,28 A2,2 0 1,1 68.01,28Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.7" />
+
+    <!-- Route path through center -->
+    <path
+        android:pathData="M38,70 C40,62 46,58 50,54 C54,50 48,44 52,38 C56,32 62,36 64,40 C66,44 60,48 64,54 C68,60 72,56 76,48"
+        android:strokeWidth="3.5"
         android:strokeColor="#FFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:fillColor="#00000000" />
 
-    <!-- Start dot -->
+    <!-- Start point circle -->
     <path
-        android:pathData="M34,72 A3,3 0 1,1 34.01,72Z"
+        android:pathData="M38,70 A3.5,3.5 0 1,1 38.01,70Z"
         android:fillColor="#FFFFFF" />
 
-    <!-- Location pin at destination — modern teardrop -->
+    <!-- Location pin at end -->
     <path
-        android:pathData="M74,52 C74,52 67,50 67,43 C67,38.5 70,35 74,35 C78,35 81,38.5 81,43 C81,50 74,52 74,52Z"
+        android:pathData="M76,48 C76,48 70,46 70,40 C70,36 72.5,33 76,33 C79.5,33 82,36 82,40 C82,46 76,48 76,48Z"
         android:fillColor="#FFFFFF" />
 
-    <!-- Pin inner circle — brand accent -->
+    <!-- Pin inner dot -->
     <path
-        android:pathData="M74,42.5 A2.5,2.5 0 1,1 74.01,42.5Z"
-        android:fillColor="#1B8A6B" />
-
-    <!-- Small crosshair tick marks on compass ring -->
-    <path
-        android:pathData="M54,22 L54,26"
-        android:strokeWidth="2"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.5"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M54,82 L54,86"
-        android:strokeWidth="2"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.5"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M22,54 L26,54"
-        android:strokeWidth="2"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.5"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M82,54 L86,54"
-        android:strokeWidth="2"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.5"
-        android:strokeLineCap="round" />
+        android:pathData="M76,39.5 A2.5,2.5 0 1,1 76.01,39.5Z"
+        android:fillColor="#1B6B4A" />
 
 </vector>

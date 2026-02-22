@@ -7,16 +7,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -176,7 +173,7 @@ private fun TrackingToggleBar(
 
             Text(
                 if (state.isTracking)
-                    "${state.pointCount} pts  •  ${String.format(Locale.US, "%.2f", state.distanceKm)} km  •  ${String.format(Locale.US, "%.1f", state.currentSpeedKmh)} km/h"
+                    "${state.pointCount} pts  •  ${String.format(Locale.US, "%.2f", state.distanceKm)} km  •  ${String.format(Locale.US, "%.1f", state.currentSpeedKmh)} km/h  •  SAT ${state.satelliteInfo.usedInFix}/${state.satelliteInfo.totalVisible}"
                 else
                     "Location Tracking",
                 fontSize = 12.sp,

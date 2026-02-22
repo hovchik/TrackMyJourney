@@ -19,7 +19,8 @@ class LocationTracker(
     private var locationCallback: LocationCallback? = null
 
     /**
-     * Emits location updates as a cold Flow, respecting the user's configured interval.
+     * Emits location updates as a cold Flow with maximum GPS precision.
+     * Uses PRIORITY_HIGH_ACCURACY and setGranularity(FINE) for best possible fix.
      */
     @SuppressLint("MissingPermission")
     fun locationUpdates(settings: TrackingSettings): Flow<Location> = callbackFlow {
@@ -30,6 +31,8 @@ class LocationTracker(
             setMinUpdateIntervalMillis(settings.recordIntervalMs / 2)
             setMinUpdateDistanceMeters(settings.minDistanceMeters)
             setWaitForAccurateLocation(true)
+            setGranularity(Granularity.GRANULARITY_FINE)
+            setMaxUpdateDelayMillis(0)
         }.build()
 
         locationCallback = object : LocationCallback() {

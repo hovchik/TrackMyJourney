@@ -6,8 +6,8 @@ import android.location.Location
 import android.util.Log
 import com.google.gson.GsonBuilder
 import com.trackjourney.data.ai.LocalAiEngine
-import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.*
+import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.Dispatchers
@@ -23,9 +23,9 @@ class TrackRepository(
     private val healthDataDao: HealthDataDao,
     private val aiAnalysisDao: AiAnalysisDao,
     private val locationTracker: LocationTracker,
-    private val wearableManager: WearableManager,
     private val aiEngine: LocalAiEngine,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val gpsSatelliteTracker: GpsSatelliteTracker
 ) {
     companion object {
         private const val TAG = "TrackRepository"
@@ -41,7 +41,6 @@ class TrackRepository(
             @Suppress("DEPRECATION")
             val addresses = geocoder.getFromLocation(latitude, longitude, 1)
             addresses?.firstOrNull()?.let { addr ->
-                // Build a concise place name: locality or sub-admin area, fallback to address line
                 addr.locality
                     ?: addr.subAdminArea
                     ?: addr.adminArea
@@ -60,6 +59,10 @@ class TrackRepository(
     suspend fun updateSettings(block: suspend SettingsDataStore.() -> Unit) {
         block(settingsDataStore)
     }
+
+    // ─── GPS SATELLITE INFO ────────────────────────────────
+
+    val satelliteInfo = gpsSatelliteTracker.satelliteInfo
 
     // ─── TRACKS ──────────────────────────────────────────
 
@@ -343,7 +346,7 @@ class TrackRepository(
                         summary = a.summary,
                         suggestions = a.suggestions.split("|").filter { it.isNotBlank() },
                         healthInsights = a.healthInsights,
-                        segmentActivities = null // Could parse from JSON string if needed
+                        segmentActivities = null
                     )
                 }
             )
@@ -368,18 +371,6 @@ class TrackRepository(
     suspend fun getCurrentLocation(): android.location.Location? {
         return locationTracker.getLastKnownLocation()
     }
-
-    // ─── WEARABLE DELEGATION ────────────────────────────
-
-    val wearableConnectionState = wearableManager.connectionState
-    val wearableReading = wearableManager.latestReading
-
-    fun scanForWearables() = wearableManager.scanForDevices()
-
-    fun connectWearable(device: com.trackjourney.data.bluetooth.WearableDevice) =
-        wearableManager.connectToDevice(device)
-
-    fun disconnectWearable() = wearableManager.disconnect()
 }
 
 data class TrackingStats(

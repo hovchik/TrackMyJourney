@@ -3,6 +3,7 @@ package com.trackjourney.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.trackjourney.data.location.SatelliteInfo
 import com.trackjourney.data.repository.TrackRepository
 import com.trackjourney.service.TrackingService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,7 +17,8 @@ data class TrackingBarState(
     val trackName: String = "",
     val pointCount: Int = 0,
     val distanceKm: Double = 0.0,
-    val currentSpeedKmh: Float = 0f
+    val currentSpeedKmh: Float = 0f,
+    val satelliteInfo: SatelliteInfo = SatelliteInfo()
 )
 
 @HiltViewModel
@@ -54,6 +56,13 @@ class TrackingStateViewModel @Inject constructor(
                         }
                     }
                 }
+            }
+        }
+
+        // Observe satellite info
+        viewModelScope.launch {
+            repository.satelliteInfo.collect { satInfo ->
+                _state.update { it.copy(satelliteInfo = satInfo) }
             }
         }
     }

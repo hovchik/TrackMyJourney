@@ -3,9 +3,7 @@ package com.trackjourney.ui.screens.map
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.trackjourney.data.bluetooth.WearableConnectionState
-import com.trackjourney.data.bluetooth.WearableDevice
-import com.trackjourney.data.bluetooth.WearableReading
+import com.trackjourney.data.location.SatelliteInfo
 import com.trackjourney.data.model.*
 import com.trackjourney.data.repository.TrackRepository
 import com.trackjourney.service.TrackingService
@@ -21,15 +19,14 @@ data class MapUiState(
     val trackPoints: List<TrackPoint> = emptyList(),
     val currentSpeed: Float = 0f,
     val currentActivity: ActivityType = ActivityType.UNKNOWN,
-    val wearableState: WearableConnectionState = WearableConnectionState.Disconnected,
-    val wearableReading: WearableReading? = null,
-    val discoveredDevices: List<WearableDevice> = emptyList(),
     val settings: TrackingSettings = TrackingSettings(),
     val pointCount: Int = 0,
     val distanceKm: Double = 0.0,
     val elapsedTime: String = "00:00",
     val currentLatitude: Double? = null,
-    val currentLongitude: Double? = null
+    val currentLongitude: Double? = null,
+    val satelliteInfo: SatelliteInfo = SatelliteInfo(),
+    val gpsAccuracy: Float? = null
 )
 
 @HiltViewModel
@@ -43,7 +40,7 @@ class MapViewModel @Inject constructor(
 
     init {
         observeActiveTrack()
-        observeWearable()
+        observeSatellites()
         observeSettings()
         fetchCurrentLocation()
     }
@@ -86,7 +83,8 @@ class MapViewModel @Inject constructor(
                                 pointCount = points.size,
                                 currentSpeed = lastPoint?.speedKmh ?: 0f,
                                 currentActivity = lastPoint?.activityType ?: ActivityType.UNKNOWN,
-                                distanceKm = (track.distanceMeters) / 1000.0
+                                distanceKm = (track.distanceMeters) / 1000.0,
+                                gpsAccuracy = lastPoint?.accuracy
                             )
                         }
                     }
@@ -95,15 +93,10 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    private fun observeWearable() {
+    private fun observeSatellites() {
         viewModelScope.launch {
-            repository.wearableConnectionState.collect { state ->
-                _uiState.update { it.copy(wearableState = state) }
-            }
-        }
-        viewModelScope.launch {
-            repository.wearableReading.collect { reading ->
-                _uiState.update { it.copy(wearableReading = reading) }
+            repository.satelliteInfo.collect { satInfo ->
+                _uiState.update { it.copy(satelliteInfo = satInfo) }
             }
         }
     }
@@ -128,7 +121,6 @@ class MapViewModel @Inject constructor(
 
     fun pauseTracking() {
         _uiState.update { it.copy(isPaused = true) }
-        // Send pause intent to service
         val intent = android.content.Intent(app, TrackingService::class.java).apply {
             action = TrackingService.ACTION_PAUSE
         }
@@ -141,30 +133,5 @@ class MapViewModel @Inject constructor(
             action = TrackingService.ACTION_RESUME
         }
         app.startService(intent)
-    }
-
-    // ─── WEARABLE ───────────────────────────────────────
-
-    fun scanForWearables() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(discoveredDevices = emptyList()) }
-            repository.scanForWearables().collect { device ->
-                _uiState.update { state ->
-                    val devices = state.discoveredDevices.toMutableList()
-                    if (devices.none { it.address == device.address }) {
-                        devices.add(device)
-                    }
-                    state.copy(discoveredDevices = devices)
-                }
-            }
-        }
-    }
-
-    fun connectWearable(device: WearableDevice) {
-        repository.connectWearable(device)
-    }
-
-    fun disconnectWearable() {
-        repository.disconnectWearable()
     }
 }

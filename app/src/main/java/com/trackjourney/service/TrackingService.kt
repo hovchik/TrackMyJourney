@@ -9,8 +9,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.trackjourney.R
-import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.SettingsDataStore
+import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
 import com.trackjourney.data.model.TrackingSettings
 import com.trackjourney.data.repository.TrackRepository
@@ -52,7 +52,7 @@ class TrackingService : Service() {
 
     @Inject lateinit var repository: TrackRepository
     @Inject lateinit var locationTracker: LocationTracker
-    @Inject lateinit var wearableManager: WearableManager
+    @Inject lateinit var satelliteTracker: GpsSatelliteTracker
     @Inject lateinit var settingsDataStore: SettingsDataStore
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -91,6 +91,9 @@ class TrackingService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
+        // Start satellite monitoring
+        satelliteTracker.startMonitoring()
+
         trackingJob = serviceScope.launch {
             try {
                 // Create new track session
@@ -115,13 +118,13 @@ class TrackingService : Service() {
     private suspend fun trackWithSettings(trackId: String, settings: TrackingSettings) {
         locationTracker.locationUpdates(settings).collect { location ->
             if (!isPaused) {
-                val wearableReading = wearableManager.latestReading.value
-                repository.addTrackPoint(trackId, location, wearableReading)
+                repository.addTrackPoint(trackId, location, null)
                 pointCount++
 
+                val satInfo = satelliteTracker.satelliteInfo.value
                 val speedKmh = LocationTracker.msToKmh(location.speed)
                 updateNotification(
-                    "📍 Recording | ${pointCount} points | ${String.format("%.1f", speedKmh)} km/h"
+                    "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}"
                 )
             }
         }
@@ -129,12 +132,12 @@ class TrackingService : Service() {
 
     private fun pauseTracking() {
         isPaused = true
-        updateNotification("⏸ Tracking paused")
+        updateNotification("Tracking paused")
     }
 
     private fun resumeTracking() {
         isPaused = false
-        updateNotification("📍 Tracking resumed")
+        updateNotification("Tracking resumed")
     }
 
     private fun stopTracking() {
@@ -147,6 +150,7 @@ class TrackingService : Service() {
             trackingJob = null
             currentTrackId = null
             locationTracker.stopTracking()
+            satelliteTracker.stopMonitoring()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -202,6 +206,7 @@ class TrackingService : Service() {
     override fun onDestroy() {
         serviceScope.cancel()
         locationTracker.stopTracking()
+        satelliteTracker.stopMonitoring()
         super.onDestroy()
     }
 }

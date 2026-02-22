@@ -31,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.ExportFormat
+import com.trackjourney.ui.components.LoadingIndicator
 import com.trackjourney.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -361,7 +362,7 @@ private fun WearableConnectionSection(viewModel: SettingsViewModel) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        LoadingIndicator(size = 20.dp, strokeWidth = 2.dp)
                         Spacer(modifier = Modifier.width(12.dp))
                         Text("Connecting...", fontSize = 14.sp)
                     }
@@ -396,8 +397,8 @@ private fun WearableConnectionSection(viewModel: SettingsViewModel) {
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             if (wearableState is WearableConnectionState.Scanning) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
+                                LoadingIndicator(
+                                    size = 16.dp,
                                     strokeWidth = 2.dp,
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )

@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.trackjourney.ui.components.LoadingIndicator
 import com.trackjourney.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -97,7 +98,7 @@ fun AnalysisScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Analyzing your tracks...", fontSize = 14.sp)
                     }

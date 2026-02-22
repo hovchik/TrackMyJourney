@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.trackjourney.ui.components.LoadingIndicator
 import com.trackjourney.ui.theme.*
 import java.util.*
 
@@ -66,7 +67,7 @@ fun DashboardScreen(
                     .padding(64.dp),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator()
+                LoadingIndicator()
             }
         } else {
             val stats = uiState.stats

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.ActivityType
 import com.trackjourney.ui.components.OsmMapView
 import com.trackjourney.ui.theme.*
@@ -76,16 +77,25 @@ fun MapScreen(
                 TrackingStatsBar(uiState)
             }
 
-            // GPS Satellite chip — top end, only visible during tracking
+            // Right side chips — GPS + Wearable, only visible during tracking
             if (uiState.isTracking) {
-                GpsSatelliteChip(
-                    totalVisible = uiState.satelliteInfo.totalVisible,
-                    usedInFix = uiState.satelliteInfo.usedInFix,
-                    accuracy = uiState.gpsAccuracy,
+                Column(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 60.dp, end = 16.dp)
-                )
+                        .padding(top = 60.dp, end = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    GpsSatelliteChip(
+                        totalVisible = uiState.satelliteInfo.totalVisible,
+                        usedInFix = uiState.satelliteInfo.usedInFix,
+                        accuracy = uiState.gpsAccuracy
+                    )
+                    WearableStatusChip(
+                        connectionState = uiState.wearableState,
+                        heartRate = uiState.wearableReading?.heartRate,
+                        batteryLevel = uiState.wearableReading?.batteryLevel
+                    )
+                }
             }
 
             // Activity badge at bottom center
@@ -238,14 +248,15 @@ private fun TrackingStatsBar(state: MapUiState) {
                     else -> Error
                 }
             )
-            state.gpsAccuracy?.let { acc ->
+            // Show heart rate in stats bar if wearable connected
+            state.wearableReading?.heartRate?.let { hr ->
                 StatItem(
-                    value = String.format("%.1f", acc),
-                    unit = "m",
-                    label = "Accuracy",
+                    value = hr.toString(),
+                    unit = "bpm",
+                    label = "Heart Rate",
                     valueColor = when {
-                        acc <= 5f -> PrimaryLight
-                        acc <= 15f -> Accent
+                        hr < 60 -> Accent
+                        hr <= 140 -> PrimaryLight
                         else -> Error
                     }
                 )
@@ -353,6 +364,59 @@ private fun GpsSatelliteChip(
                     append("$usedInFix/$totalVisible")
                     accuracy?.let { append(" | ${String.format("%.0f", it)}m") }
                 },
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+// --- WEARABLE STATUS CHIP ---
+
+@Composable
+private fun WearableStatusChip(
+    connectionState: WearableConnectionState,
+    heartRate: Int?,
+    batteryLevel: Int?,
+    modifier: Modifier = Modifier
+) {
+    val (chipColor, text, icon) = when (connectionState) {
+        is WearableConnectionState.Connected -> {
+            val displayText = buildString {
+                heartRate?.let { append("$it bpm") }
+                batteryLevel?.let {
+                    if (isNotEmpty()) append(" | ")
+                    append("$it%")
+                }
+                if (isEmpty()) append(connectionState.device.name)
+            }
+            Triple(PrimaryLight, displayText, Icons.Filled.Watch)
+        }
+        is WearableConnectionState.Connecting -> Triple(Accent, "Connecting...", Icons.Filled.Watch)
+        is WearableConnectionState.Scanning -> Triple(Accent, "Scanning...", Icons.Filled.BluetoothSearching)
+        is WearableConnectionState.Error -> return // Don't show chip on error
+        is WearableConnectionState.Disconnected -> return // Don't show chip when disconnected
+    }
+
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = chipColor.copy(alpha = 0.9f)),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                text = text,
                 color = Color.White,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium

@@ -9,6 +9,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.trackjourney.R
+import com.trackjourney.data.bluetooth.WearableConnectionState
+import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
@@ -54,9 +56,11 @@ class TrackingService : Service() {
     @Inject lateinit var locationTracker: LocationTracker
     @Inject lateinit var satelliteTracker: GpsSatelliteTracker
     @Inject lateinit var settingsDataStore: SettingsDataStore
+    @Inject lateinit var wearableManager: WearableManager
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var trackingJob: Job? = null
+    private var wearableScanJob: Job? = null
     private var currentTrackId: String? = null
     private var isPaused = false
     private var pointCount = 0
@@ -94,6 +98,9 @@ class TrackingService : Service() {
         // Start satellite monitoring
         satelliteTracker.startMonitoring()
 
+        // Auto-scan for Garmin/Samsung wearable if Bluetooth is available
+        startWearableScan()
+
         trackingJob = serviceScope.launch {
             try {
                 // Create new track session
@@ -115,12 +122,47 @@ class TrackingService : Service() {
         }
     }
 
+    private fun startWearableScan() {
+        if (!wearableManager.isBluetoothAvailable || !wearableManager.isBluetoothEnabled) {
+            Log.i(TAG, "Bluetooth not available/enabled — skipping wearable scan")
+            return
+        }
+
+        wearableScanJob = serviceScope.launch {
+            try {
+                Log.i(TAG, "Auto-scanning for wearable devices...")
+                wearableManager.scanForDevices()
+                    .take(1) // Connect to the first device found
+                    .collect { device ->
+                        Log.i(TAG, "Found wearable: ${device.name} (${device.type})")
+                        wearableManager.connectToDevice(device)
+                    }
+            } catch (e: CancellationException) {
+                // Normal cancellation
+            } catch (e: Exception) {
+                Log.w(TAG, "Wearable scan failed: ${e.message}")
+            }
+        }
+
+        // Cancel scan after timeout (15s) if no device found
+        serviceScope.launch {
+            delay(15_000L)
+            if (wearableScanJob?.isActive == true) {
+                wearableScanJob?.cancel()
+                Log.i(TAG, "Wearable scan timed out — no device found")
+            }
+        }
+    }
+
     private suspend fun trackWithSettings(trackId: String, settings: TrackingSettings) {
         var lastNotificationTime = 0L
 
         locationTracker.locationUpdates(settings).collect { location ->
             if (!isPaused) {
-                val point = repository.addTrackPoint(trackId, location, null)
+                // Get latest wearable reading if connected
+                val wearableReading = wearableManager.latestReading.value
+
+                val point = repository.addTrackPoint(trackId, location, wearableReading)
                 if (point != null) {
                     pointCount++
                 }
@@ -132,8 +174,9 @@ class TrackingService : Service() {
                     val satInfo = satelliteTracker.satelliteInfo.value
                     val speedKmh = LocationTracker.msToKmh(location.speed)
                     val accuracyStr = if (point?.isAccurate == false) " [!]" else ""
+                    val hrStr = wearableReading?.heartRate?.let { " | HR $it" } ?: ""
                     updateNotification(
-                        "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}$accuracyStr"
+                        "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}$hrStr$accuracyStr"
                     )
                 }
             }
@@ -158,9 +201,12 @@ class TrackingService : Service() {
             }
             trackingJob?.cancel()
             trackingJob = null
+            wearableScanJob?.cancel()
+            wearableScanJob = null
             currentTrackId = null
             locationTracker.stopTracking()
             satelliteTracker.stopMonitoring()
+            wearableManager.disconnect()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -217,6 +263,7 @@ class TrackingService : Service() {
         serviceScope.cancel()
         locationTracker.stopTracking()
         satelliteTracker.stopMonitoring()
+        wearableManager.disconnect()
         super.onDestroy()
     }
 }

@@ -3,11 +3,15 @@ package com.trackjourney.ui.screens.map
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.trackjourney.data.bluetooth.WearableConnectionState
+import com.trackjourney.data.bluetooth.WearableManager
+import com.trackjourney.data.bluetooth.WearableReading
 import com.trackjourney.data.location.SatelliteInfo
 import com.trackjourney.data.model.*
 import com.trackjourney.data.repository.TrackRepository
 import com.trackjourney.service.TrackingService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -26,17 +30,23 @@ data class MapUiState(
     val currentLatitude: Double? = null,
     val currentLongitude: Double? = null,
     val satelliteInfo: SatelliteInfo = SatelliteInfo(),
-    val gpsAccuracy: Float? = null
+    val gpsAccuracy: Float? = null,
+    val wearableState: WearableConnectionState = WearableConnectionState.Disconnected,
+    val wearableReading: WearableReading? = null
 )
 
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val app: Application,
-    private val repository: TrackRepository
+    private val repository: TrackRepository,
+    private val wearableManager: WearableManager
 ) : AndroidViewModel(app) {
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
+
+    private var wearableJob: Job? = null
+    private var wearableReadingJob: Job? = null
 
     init {
         observeActiveTrack()
@@ -56,17 +66,22 @@ class MapViewModel @Inject constructor(
                     )
                 }
 
-                // Only observe satellite info and location when actively tracking
+                // Only observe satellite info and wearable when actively tracking
                 if (isNowTracking && !wasTracking) {
                     observeSatellites()
+                    observeWearable()
                 }
 
-                // Clear satellite info when tracking stops
+                // Clear satellite/wearable info when tracking stops
                 if (!isNowTracking && wasTracking) {
+                    wearableJob?.cancel()
+                    wearableReadingJob?.cancel()
                     _uiState.update {
                         it.copy(
                             satelliteInfo = SatelliteInfo(),
-                            gpsAccuracy = null
+                            gpsAccuracy = null,
+                            wearableState = WearableConnectionState.Disconnected,
+                            wearableReading = null
                         )
                     }
                 }
@@ -95,6 +110,19 @@ class MapViewModel @Inject constructor(
         viewModelScope.launch {
             repository.satelliteInfo.collect { satInfo ->
                 _uiState.update { it.copy(satelliteInfo = satInfo) }
+            }
+        }
+    }
+
+    private fun observeWearable() {
+        wearableJob = viewModelScope.launch {
+            wearableManager.connectionState.collect { state ->
+                _uiState.update { it.copy(wearableState = state) }
+            }
+        }
+        wearableReadingJob = viewModelScope.launch {
+            wearableManager.latestReading.collect { reading ->
+                _uiState.update { it.copy(wearableReading = reading) }
             }
         }
     }

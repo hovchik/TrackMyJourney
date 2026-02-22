@@ -3,6 +3,7 @@ package com.trackjourney.di
 import android.content.Context
 import androidx.room.Room
 import com.trackjourney.data.ai.LocalAiEngine
+import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.*
 import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
@@ -46,6 +47,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideGpsSatelliteTracker(@ApplicationContext context: Context) = GpsSatelliteTracker(context)
+
+    @Provides
+    @Singleton
+    fun provideWearableManager(@ApplicationContext context: Context) = WearableManager(context)
 
     @Provides
     @Singleton

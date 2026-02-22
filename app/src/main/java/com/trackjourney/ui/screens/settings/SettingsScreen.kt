@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.ExportFormat
 import com.trackjourney.ui.theme.*
 
@@ -39,6 +40,8 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
     val satelliteInfo by viewModel.satelliteInfo.collectAsState()
+    val wearableState by viewModel.wearableState.collectAsState()
+    val wearableReading by viewModel.wearableReading.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -135,6 +138,103 @@ fun SettingsScreen(
                             } else {
                                 Text(
                                     "Start tracking to see GPS status",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── WEARABLE STATUS ──────────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Smartwatch",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val isConnected = wearableState is WearableConnectionState.Connected
+                        Surface(
+                            color = if (isConnected) PrimaryLight.copy(alpha = 0.15f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.Watch,
+                                    contentDescription = null,
+                                    tint = if (isConnected) PrimaryLight
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Garmin / Samsung Watch", fontWeight = FontWeight.SemiBold)
+                            when (val state = wearableState) {
+                                is WearableConnectionState.Connected -> {
+                                    Text(
+                                        "Connected: ${state.device.name}",
+                                        fontSize = 13.sp,
+                                        color = PrimaryLight
+                                    )
+                                    wearableReading?.let { reading ->
+                                        val details = buildString {
+                                            reading.heartRate?.let { append("HR: $it bpm") }
+                                            reading.batteryLevel?.let {
+                                                if (isNotEmpty()) append("  |  ")
+                                                append("Battery: $it%")
+                                            }
+                                            reading.cadence?.let {
+                                                if (isNotEmpty()) append("  |  ")
+                                                append("Cadence: $it")
+                                            }
+                                        }
+                                        if (details.isNotEmpty()) {
+                                            Text(
+                                                details,
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                                is WearableConnectionState.Scanning -> Text(
+                                    "Scanning for devices...",
+                                    fontSize = 13.sp,
+                                    color = Accent
+                                )
+                                is WearableConnectionState.Connecting -> Text(
+                                    "Connecting...",
+                                    fontSize = 13.sp,
+                                    color = Accent
+                                )
+                                is WearableConnectionState.Error -> Text(
+                                    state.message,
+                                    fontSize = 13.sp,
+                                    color = Error
+                                )
+                                is WearableConnectionState.Disconnected -> Text(
+                                    "Auto-connects when tracking starts",
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -372,6 +472,20 @@ private val requiredPermissions = buildList {
             "Notifications",
             Icons.Filled.Notifications,
             minSdk = Build.VERSION_CODES.TIRAMISU
+        ))
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        add(PermissionItem(
+            Manifest.permission.BLUETOOTH_SCAN,
+            "Bluetooth Scan",
+            Icons.Filled.BluetoothSearching,
+            minSdk = Build.VERSION_CODES.S
+        ))
+        add(PermissionItem(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            "Bluetooth Connect",
+            Icons.Filled.Bluetooth,
+            minSdk = Build.VERSION_CODES.S
         ))
     }
 }

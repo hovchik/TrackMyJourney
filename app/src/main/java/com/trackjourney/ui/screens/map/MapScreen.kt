@@ -4,7 +4,6 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -55,116 +54,120 @@ fun MapScreen(
         Manifest.permission.POST_NOTIFICATIONS
     )
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Map layer
-        OsmMapView(
-            modifier = Modifier.fillMaxSize(),
-            trackPoints = uiState.trackPoints,
-            centerOnUser = uiState.isTracking,
-            showActivityColors = true
-        )
-
-        // Top stats bar (shown during tracking)
-        AnimatedVisibility(
-            visible = uiState.isTracking,
-            modifier = Modifier.align(Alignment.TopCenter),
-            enter = slideInVertically() + fadeIn(),
-            exit = slideOutVertically() + fadeOut()
-        ) {
-            TrackingStatsBar(uiState)
-        }
-
-        // Wearable indicator
-        WearableStatusChip(
-            state = uiState.wearableState,
-            reading = uiState.wearableReading,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 100.dp, end = 16.dp)
-                .clickable { showWearableSheet = true }
-        )
-
-        // Bottom controls
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Activity badge
-            if (uiState.isTracking) {
-                ActivityBadge(
-                    activity = uiState.currentActivity,
-                    speed = uiState.currentSpeed
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-
-            // Control buttons
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (uiState.isTracking) {
-                    // Pause/Resume
-                    FloatingActionButton(
-                        onClick = {
-                            if (uiState.isPaused) viewModel.resumeTracking()
-                            else viewModel.pauseTracking()
-                        },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            if (uiState.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                            contentDescription = if (uiState.isPaused) "Resume" else "Pause"
-                        )
-                    }
-
-                    // Stop
-                    LargeFloatingActionButton(
-                        onClick = { viewModel.stopTracking() },
-                        containerColor = MaterialTheme.colorScheme.error
-                    ) {
-                        Icon(
-                            Icons.Filled.Stop,
-                            contentDescription = "Stop Tracking",
-                            modifier = Modifier.size(36.dp),
-                            tint = Color.White
-                        )
-                    }
-                } else {
-                    // Start
-                    LargeFloatingActionButton(
-                        onClick = { showTrackNameDialog = true },
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ) {
-                        Icon(
-                            Icons.Filled.PlayArrow,
-                            contentDescription = "Start Tracking",
-                            modifier = Modifier.size(36.dp),
-                            tint = Color.White
-                        )
-                    }
-                }
-
-                // Wearable button
-                FloatingActionButton(
-                    onClick = { showWearableSheet = true },
-                    containerColor = when (uiState.wearableState) {
-                        is WearableConnectionState.Connected -> PrimaryLight
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    },
-                    modifier = Modifier.size(48.dp)
-                ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Top app bar
+        TopAppBar(
+            title = { Text("Map", fontWeight = FontWeight.Bold) },
+            actions = {
+                // Wearable button in app bar
+                IconButton(onClick = { showWearableSheet = true }) {
                     Icon(
                         Icons.Filled.Watch,
                         contentDescription = "Wearable",
                         tint = when (uiState.wearableState) {
-                            is WearableConnectionState.Connected -> Color.White
+                            is WearableConnectionState.Connected -> PrimaryLight
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                         }
                     )
+                }
+            }
+        )
+
+        // Map area — takes remaining space
+        Box(modifier = Modifier.weight(1f)) {
+            // Map
+            OsmMapView(
+                modifier = Modifier.fillMaxSize(),
+                trackPoints = uiState.trackPoints,
+                currentLatitude = uiState.currentLatitude,
+                currentLongitude = uiState.currentLongitude,
+                centerOnUser = uiState.isTracking,
+                showActivityColors = true
+            )
+
+            // Top stats bar (shown during tracking)
+            AnimatedVisibility(
+                visible = uiState.isTracking,
+                modifier = Modifier.align(Alignment.TopCenter),
+                enter = slideInVertically() + fadeIn(),
+                exit = slideOutVertically() + fadeOut()
+            ) {
+                TrackingStatsBar(uiState)
+            }
+
+            // Wearable indicator
+            WearableStatusChip(
+                state = uiState.wearableState,
+                reading = uiState.wearableReading,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 60.dp, end = 16.dp)
+                    .clickable { showWearableSheet = true }
+            )
+
+            // Bottom controls
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Activity badge
+                if (uiState.isTracking) {
+                    ActivityBadge(
+                        activity = uiState.currentActivity,
+                        speed = uiState.currentSpeed
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                // Control buttons
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (uiState.isTracking) {
+                        // Pause/Resume
+                        FloatingActionButton(
+                            onClick = {
+                                if (uiState.isPaused) viewModel.resumeTracking()
+                                else viewModel.pauseTracking()
+                            },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                if (uiState.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                                contentDescription = if (uiState.isPaused) "Resume" else "Pause"
+                            )
+                        }
+
+                        // Stop
+                        LargeFloatingActionButton(
+                            onClick = { viewModel.stopTracking() },
+                            containerColor = MaterialTheme.colorScheme.error
+                        ) {
+                            Icon(
+                                Icons.Filled.Stop,
+                                contentDescription = "Stop Tracking",
+                                modifier = Modifier.size(36.dp),
+                                tint = Color.White
+                            )
+                        }
+                    } else {
+                        // Start
+                        LargeFloatingActionButton(
+                            onClick = { showTrackNameDialog = true },
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ) {
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = "Start Tracking",
+                                modifier = Modifier.size(36.dp),
+                                tint = Color.White
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -187,11 +190,9 @@ fun MapScreen(
             confirmButton = {
                 TextButton(onClick = {
                     permissionLauncher.launch(requiredPermissions)
-                    if (true) { // Simplified — in production check permissions
-                        viewModel.startTracking(trackName)
-                        showTrackNameDialog = false
-                        trackName = ""
-                    }
+                    viewModel.startTracking(trackName)
+                    showTrackNameDialog = false
+                    trackName = ""
                 }) {
                     Text("Start")
                 }
@@ -219,14 +220,14 @@ fun MapScreen(
     }
 }
 
-// ─── TRACKING STATS BAR ──────────────────────────────
+// --- TRACKING STATS BAR ---
 
 @Composable
 private fun TrackingStatsBar(state: MapUiState) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 48.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
         ),
@@ -313,7 +314,7 @@ private fun StatItem(
     }
 }
 
-// ─── ACTIVITY BADGE ──────────────────────────────────
+// --- ACTIVITY BADGE ---
 
 @Composable
 private fun ActivityBadge(activity: ActivityType, speed: Float) {
@@ -342,7 +343,7 @@ private fun ActivityBadge(activity: ActivityType, speed: Float) {
     }
 }
 
-// ─── WEARABLE STATUS CHIP ────────────────────────────
+// --- WEARABLE STATUS CHIP ---
 
 @Composable
 private fun WearableStatusChip(
@@ -377,7 +378,7 @@ private fun WearableStatusChip(
     }
 }
 
-// ─── WEARABLE BOTTOM SHEET ───────────────────────────
+// --- WEARABLE BOTTOM SHEET ---
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

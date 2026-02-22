@@ -316,6 +316,12 @@ class TrackRepository(
         }
     }
 
+    // ─── LOCATION ─────────────────────────────────────────
+
+    suspend fun getCurrentLocation(): android.location.Location? {
+        return locationTracker.getLastKnownLocation()
+    }
+
     // ─── WEARABLE DELEGATION ────────────────────────────
 
     val wearableConnectionState = wearableManager.connectionState

@@ -27,7 +27,9 @@ data class MapUiState(
     val settings: TrackingSettings = TrackingSettings(),
     val pointCount: Int = 0,
     val distanceKm: Double = 0.0,
-    val elapsedTime: String = "00:00"
+    val elapsedTime: String = "00:00",
+    val currentLatitude: Double? = null,
+    val currentLongitude: Double? = null
 )
 
 @HiltViewModel
@@ -43,6 +45,25 @@ class MapViewModel @Inject constructor(
         observeActiveTrack()
         observeWearable()
         observeSettings()
+        fetchCurrentLocation()
+    }
+
+    private fun fetchCurrentLocation() {
+        viewModelScope.launch {
+            try {
+                val location = repository.getCurrentLocation()
+                location?.let { loc ->
+                    _uiState.update {
+                        it.copy(
+                            currentLatitude = loc.latitude,
+                            currentLongitude = loc.longitude
+                        )
+                    }
+                }
+            } catch (_: Exception) {
+                // Location may not be available yet
+            }
+        }
     }
 
     private fun observeActiveTrack() {

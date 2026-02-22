@@ -18,11 +18,14 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import java.util.Locale
 
 @Composable
 fun OsmMapView(
     modifier: Modifier = Modifier,
     trackPoints: List<TrackPoint> = emptyList(),
+    currentLatitude: Double? = null,
+    currentLongitude: Double? = null,
     centerOnUser: Boolean = true,
     zoomLevel: Double = 16.0,
     showActivityColors: Boolean = true
@@ -44,6 +47,9 @@ fun OsmMapView(
         }
     }
 
+    // Track whether we've centered on initial position
+    var hasCenteredOnInitial by remember { mutableStateOf(false) }
+
     // Lifecycle management
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -60,16 +66,33 @@ fun OsmMapView(
         }
     }
 
+    // Center on current position when first available and no track points
+    LaunchedEffect(currentLatitude, currentLongitude) {
+        if (!hasCenteredOnInitial && currentLatitude != null && currentLongitude != null && trackPoints.isEmpty()) {
+            mapView.controller.animateTo(GeoPoint(currentLatitude, currentLongitude))
+            hasCenteredOnInitial = true
+
+            // Add current position marker
+            mapView.overlays.removeAll { it is Marker && (it as Marker).title == "You are here" }
+            val marker = Marker(mapView).apply {
+                position = GeoPoint(currentLatitude, currentLongitude)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                title = "You are here"
+                snippet = "Current position"
+            }
+            mapView.overlays.add(marker)
+            mapView.invalidate()
+        }
+    }
+
     // Update track overlay when points change
     LaunchedEffect(trackPoints) {
         mapView.overlays.clear()
 
         if (trackPoints.isNotEmpty()) {
             if (showActivityColors) {
-                // Draw colored segments by activity type
                 drawActivityColoredTrack(mapView, trackPoints)
             } else {
-                // Single-color track line
                 val polyline = Polyline().apply {
                     outlinePaint.apply {
                         color = Primary.toArgb()
@@ -100,7 +123,7 @@ fun OsmMapView(
                 position = GeoPoint(lastPoint.latitude, lastPoint.longitude)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                 title = "Current"
-                snippet = "${String.format("%.1f", lastPoint.speedKmh)} km/h"
+                snippet = "${String.format(Locale.US, "%.1f", lastPoint.speedKmh)} km/h"
             }
             mapView.overlays.add(endMarker)
 
@@ -108,6 +131,15 @@ fun OsmMapView(
             if (centerOnUser) {
                 mapView.controller.animateTo(GeoPoint(lastPoint.latitude, lastPoint.longitude))
             }
+        } else if (currentLatitude != null && currentLongitude != null) {
+            // No track points — show current position marker
+            val marker = Marker(mapView).apply {
+                position = GeoPoint(currentLatitude, currentLongitude)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                title = "You are here"
+                snippet = "Current position"
+            }
+            mapView.overlays.add(marker)
         }
 
         mapView.invalidate()

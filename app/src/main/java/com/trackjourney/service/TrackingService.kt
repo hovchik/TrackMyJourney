@@ -110,8 +110,11 @@ class TrackingService : Service() {
 
                 Log.i(TAG, "Tracking started: ${track.id}")
 
-                // Observe settings to react to interval changes
+                // Observe settings — collectLatest cancels the old
+                // trackWithSettings and restarts with new settings when
+                // interval/distance changes in the Settings screen
                 settingsDataStore.settings.collectLatest { settings ->
+                    Log.i(TAG, "Applying settings: interval=${settings.recordIntervalMs}ms, minDist=${settings.minDistanceMeters}m")
                     trackWithSettings(track.id, settings)
                 }
             } catch (e: CancellationException) {

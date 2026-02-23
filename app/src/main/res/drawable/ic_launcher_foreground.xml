@@ -5,112 +5,75 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- GPS crosshair outer ring -->
-    <path
-        android:pathData="M54,24 A30,30 0 1,1 53.99,24Z"
-        android:strokeWidth="2"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.25"
-        android:fillColor="#00000000" />
+    <!-- ══════════════════════════════════════════════════
+         Modern "Track My Journey" adaptive icon foreground
+         Safe zone: ~21 to ~87 (66x66 center area)
+         Design: Bold pin + flowing route + direction arrow
+         ══════════════════════════════════════════════════ -->
 
-    <!-- GPS crosshair inner ring -->
+    <!-- Subtle glow ring behind the pin for depth -->
     <path
-        android:pathData="M54,34 A20,20 0 1,1 53.99,34Z"
-        android:strokeWidth="1.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.35"
-        android:fillColor="#00000000" />
-
-    <!-- Crosshair vertical line top -->
-    <path
-        android:pathData="M54,18 L54,28"
-        android:strokeWidth="2.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.6"
-        android:strokeLineCap="round" />
-
-    <!-- Crosshair vertical line bottom -->
-    <path
-        android:pathData="M54,80 L54,90"
-        android:strokeWidth="2.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.6"
-        android:strokeLineCap="round" />
-
-    <!-- Crosshair horizontal line left -->
-    <path
-        android:pathData="M18,54 L28,54"
-        android:strokeWidth="2.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.6"
-        android:strokeLineCap="round" />
-
-    <!-- Crosshair horizontal line right -->
-    <path
-        android:pathData="M80,54 L90,54"
-        android:strokeWidth="2.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.6"
-        android:strokeLineCap="round" />
-
-    <!-- Satellite orbit arc 1 -->
-    <path
-        android:pathData="M36,30 Q54,20 72,30"
-        android:strokeWidth="1.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.4"
-        android:fillColor="#00000000"
-        android:strokeLineCap="round" />
-
-    <!-- Satellite orbit arc 2 -->
-    <path
-        android:pathData="M30,36 Q20,54 30,72"
-        android:strokeWidth="1.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeAlpha="0.4"
-        android:fillColor="#00000000"
-        android:strokeLineCap="round" />
-
-    <!-- Small satellite dot 1 -->
-    <path
-        android:pathData="M40,28 A2,2 0 1,1 40.01,28Z"
+        android:pathData="M54,44m-28,0a28,28 0 1,0 56,0a28,28 0 1,0 -56,0"
         android:fillColor="#FFFFFF"
-        android:fillAlpha="0.7" />
+        android:fillAlpha="0.07" />
 
-    <!-- Small satellite dot 2 -->
+    <!-- Journey route trail — flowing curve from bottom-left toward pin -->
     <path
-        android:pathData="M28,44 A2,2 0 1,1 28.01,44Z"
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.7" />
-
-    <!-- Small satellite dot 3 -->
-    <path
-        android:pathData="M68,28 A2,2 0 1,1 68.01,28Z"
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.7" />
-
-    <!-- Route path through center -->
-    <path
-        android:pathData="M38,70 C40,62 46,58 50,54 C54,50 48,44 52,38 C56,32 62,36 64,40 C66,44 60,48 64,54 C68,60 72,56 76,48"
+        android:pathData="M22,82 C28,74 34,68 40,63 C46,58 50,55 54,51"
         android:strokeWidth="3.5"
         android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.50"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:fillColor="#00000000" />
 
-    <!-- Start point circle -->
+    <!-- Route start dot (origin) -->
     <path
-        android:pathData="M38,70 A3.5,3.5 0 1,1 38.01,70Z"
+        android:pathData="M22,82 A4,4 0 1,1 22.01,82Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.55" />
+
+    <!-- Waypoint dot on the trail -->
+    <path
+        android:pathData="M38,65 A2.5,2.5 0 1,1 38.01,65Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.45" />
+
+    <!-- Journey continuation from pin toward top-right -->
+    <path
+        android:pathData="M62,28 C66,24 71,22 78,20"
+        android:strokeWidth="3.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.50"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Direction arrowhead at route end (movement indicator) -->
+    <path
+        android:pathData="M73,24 L78,20 L75,17"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.50"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- ── Main location pin (hero element) ── -->
+    <!-- Teardrop/pin shape: circle at top, point at bottom -->
+    <path
+        android:pathData="M54,60 C54,60 38,50 38,36 C38,27.2 45.2,20 54,20 C62.8,20 70,27.2 70,36 C70,50 54,60 54,60Z"
         android:fillColor="#FFFFFF" />
 
-    <!-- Location pin at end -->
+    <!-- Pin inner ring (precision/crosshair feel) -->
     <path
-        android:pathData="M76,48 C76,48 70,46 70,40 C70,36 72.5,33 76,33 C79.5,33 82,36 82,40 C82,46 76,48 76,48Z"
-        android:fillColor="#FFFFFF" />
+        android:pathData="M54,36m-8,0a8,8 0 1,0 16,0a8,8 0 1,0 -16,0"
+        android:strokeWidth="2.5"
+        android:strokeColor="#0F6B45"
+        android:fillColor="#00000000" />
 
-    <!-- Pin inner dot -->
+    <!-- Pin center dot -->
     <path
-        android:pathData="M76,39.5 A2.5,2.5 0 1,1 76.01,39.5Z"
-        android:fillColor="#1B6B4A" />
+        android:pathData="M54,36 A3.5,3.5 0 1,1 54.01,36Z"
+        android:fillColor="#0F6B45" />
 
 </vector>

@@ -265,9 +265,9 @@ data class TrackSessionExport(
     @SerializedName("avg_heart_rate") val avgHeartRate: Int?,
     @SerializedName("start_place_name") val startPlaceName: String?,
     @SerializedName("end_place_name") val endPlaceName: String?,
-    @SerializedName("calories_burned") val caloriesBurned: Double,
-    @SerializedName("battery_start") val batteryStart: Int?,
-    @SerializedName("battery_end") val batteryEnd: Int?
+    @SerializedName("calories_burned") val caloriesBurned: Double = 0.0,
+    @SerializedName("battery_start") val batteryStart: Int? = null,
+    @SerializedName("battery_end") val batteryEnd: Int? = null
 )
 
 data class TrackPointExport(

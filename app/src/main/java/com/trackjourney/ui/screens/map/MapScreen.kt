@@ -170,6 +170,36 @@ fun MapScreen(
             ActivityBadge(activity = uiState.currentActivity, speed = uiState.currentSpeed)
         }
 
+        // ── Back arrow (top start, saved track) ──────────────
+        AnimatedVisibility(
+            visible = uiState.isViewingSavedTrack && !uiState.isTracking,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 12.dp, top = 12.dp),
+            enter = slideInHorizontally { -it } + fadeIn(),
+            exit = slideOutHorizontally { -it } + fadeOut()
+        ) {
+            FilledIconButton(
+                onClick = {
+                    viewModel.clearSavedTrack()
+                    onBackFromTrack?.invoke()
+                },
+                modifier = Modifier.size(42.dp),
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = Color.White,
+                    contentColor = OverlayDark
+                )
+            ) {
+                Icon(
+                    Icons.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+
         // ── Speed legend (bottom start, saved track) ────────
         AnimatedVisibility(
             visible = uiState.isViewingSavedTrack,
@@ -247,29 +277,37 @@ fun MapScreen(
             }
         }
 
-        // ── Start FAB (bottom end, when idle) ───────────────
+        // ── Start FAB (bottom center, when idle) ──────────────
         AnimatedVisibility(
             visible = !uiState.isTracking && !uiState.isViewingSavedTrack,
             modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 24.dp),
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 28.dp),
             enter = scaleIn() + fadeIn(),
             exit = scaleOut() + fadeOut()
         ) {
-            LargeFloatingActionButton(
+            ExtendedFloatingActionButton(
                 onClick = { showTrackNameDialog = true },
                 containerColor = Primary,
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(28.dp),
                 elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 8.dp,
-                    pressedElevation = 12.dp
-                )
+                    defaultElevation = 10.dp,
+                    pressedElevation = 14.dp
+                ),
+                modifier = Modifier.height(56.dp)
             ) {
                 Icon(
                     Icons.Filled.PlayArrow,
-                    contentDescription = "Start Tracking",
-                    modifier = Modifier.size(32.dp),
+                    contentDescription = null,
+                    modifier = Modifier.size(26.dp),
                     tint = Color.White
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Start Journey",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }

@@ -941,7 +941,10 @@ class TrackRepository(
                         activityType = track.activityType.name,
                         avgHeartRate = track.avgHeartRate,
                         startPlaceName = track.startPlaceName,
-                        endPlaceName = track.endPlaceName
+                        endPlaceName = track.endPlaceName,
+                        caloriesBurned = track.caloriesBurned,
+                        batteryStart = track.batteryStart,
+                        batteryEnd = track.batteryEnd
                     ),
                     points = twp.points.map { pt ->
                         TrackPointExport(

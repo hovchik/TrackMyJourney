@@ -66,6 +66,10 @@ class MapViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
 
+    val allTracks: StateFlow<List<TrackSession>> = repository.getAllTracks()
+        .map { tracks -> tracks.filter { !it.isActive && it.endTime != null } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private var wearableJob: Job? = null
     private var wearableReadingJob: Job? = null
     private var savedTrackJob: Job? = null

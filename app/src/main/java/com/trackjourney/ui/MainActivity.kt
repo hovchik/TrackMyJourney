@@ -7,13 +7,18 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,6 +28,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.trackjourney.data.model.ActivityType
 import com.trackjourney.ui.navigation.Screen
 import com.trackjourney.ui.screens.analysis.AnalysisScreen
 import com.trackjourney.ui.screens.dashboard.DashboardScreen
@@ -157,53 +163,166 @@ private fun TrackingToggleBar(
     state: TrackingBarState,
     onToggle: (Boolean) -> Unit
 ) {
+    val (activityIcon, activityColor, activityLabel) = remember(state.activityType) {
+        when (state.activityType) {
+            ActivityType.WALKING    -> Triple(Icons.Filled.DirectionsWalk, Walking, "Walking")
+            ActivityType.RUNNING    -> Triple(Icons.Filled.DirectionsRun, Running, "Running")
+            ActivityType.CYCLING    -> Triple(Icons.Filled.DirectionsBike, Cycling, "Cycling")
+            ActivityType.DRIVING    -> Triple(Icons.Filled.DirectionsCar, Driving, "Driving")
+            ActivityType.FLYING     -> Triple(Icons.Filled.Flight, Flying, "Flying")
+            ActivityType.STATIONARY -> Triple(Icons.Filled.PauseCircle, Stationary, "Still")
+            ActivityType.UNKNOWN    -> Triple(Icons.Filled.MyLocation, Primary, "Detecting")
+        }
+    }
+
+    // Elapsed time
+    val elapsed = if (state.isTracking && state.startTime > 0) {
+        val diff = System.currentTimeMillis() - state.startTime
+        val mins = diff / 60_000
+        val hrs = mins / 60
+        if (hrs > 0) "${hrs}h ${mins % 60}m" else "${mins}m"
+    } else ""
+
     Surface(
         color = if (state.isTracking)
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+            activityColor.copy(alpha = 0.08f)
         else
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                if (state.isTracking) Icons.Filled.MyLocation else Icons.Filled.LocationOff,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = if (state.isTracking)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+            // Row 1: Status + Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (state.isTracking) {
+                    // Activity indicator dot
+                    Surface(
+                        shape = CircleShape,
+                        color = activityColor,
+                        modifier = Modifier.size(10.dp)
+                    ) {}
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        activityLabel,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = activityColor
+                    )
+                    if (state.trackName.isNotEmpty()) {
+                        Text(
+                            "  •  ${state.trackName}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                } else {
+                    Icon(
+                        Icons.Filled.LocationOff,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Location Tracking",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
-            Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.weight(1f))
 
-            Text(
-                if (state.isTracking)
-                    "${state.pointCount} pts  •  ${String.format(Locale.US, "%.2f", state.distanceKm)} km  •  ${String.format(Locale.US, "%.1f", state.currentSpeedKmh)} km/h  •  SAT ${state.satelliteInfo.usedInFix}/${state.satelliteInfo.totalVisible}"
-                else
-                    "Location Tracking",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (state.isTracking)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f)
-            )
-
-            Switch(
-                checked = state.isTracking,
-                onCheckedChange = onToggle,
-                modifier = Modifier.height(28.dp),
-                colors = SwitchDefaults.colors(
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary
+                Switch(
+                    checked = state.isTracking,
+                    onCheckedChange = onToggle,
+                    modifier = Modifier.height(28.dp),
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = activityColor,
+                        checkedThumbColor = Color.White
+                    )
                 )
-            )
+            }
+
+            // Row 2: Stats (only when tracking)
+            AnimatedVisibility(
+                visible = state.isTracking,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    TrackingStatChip(
+                        icon = Icons.Filled.Straighten,
+                        value = String.format(Locale.US, "%.2f", state.distanceKm),
+                        unit = "km",
+                        color = Primary
+                    )
+                    TrackingStatChip(
+                        icon = Icons.Filled.Speed,
+                        value = String.format(Locale.US, "%.1f", state.currentSpeedKmh),
+                        unit = "km/h",
+                        color = activityColor
+                    )
+                    TrackingStatChip(
+                        icon = Icons.Filled.GpsFixed,
+                        value = "${state.pointCount}",
+                        unit = "pts",
+                        color = Secondary
+                    )
+                    TrackingStatChip(
+                        icon = Icons.Filled.SatelliteAlt,
+                        value = "${state.satelliteInfo.usedInFix}/${state.satelliteInfo.totalVisible}",
+                        unit = "",
+                        color = when {
+                            state.satelliteInfo.usedInFix >= 8 -> PrimaryLight
+                            state.satelliteInfo.usedInFix >= 4 -> Accent
+                            else -> Error
+                        }
+                    )
+                    if (elapsed.isNotEmpty()) {
+                        TrackingStatChip(
+                            icon = Icons.Filled.Schedule,
+                            value = elapsed,
+                            unit = "",
+                            color = Accent
+                        )
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun TrackingStatChip(
+    icon: ImageVector,
+    value: String,
+    unit: String,
+    color: Color
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(13.dp),
+            tint = color
+        )
+        Text(
+            text = if (unit.isNotEmpty()) "$value $unit" else value,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = color
+        )
     }
 }

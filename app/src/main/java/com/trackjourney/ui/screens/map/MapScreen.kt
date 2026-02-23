@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,8 +31,11 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.ActivityType
+import com.trackjourney.data.model.TrackSession
 import com.trackjourney.ui.components.OsmMapView
 import com.trackjourney.ui.theme.*
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,8 +45,10 @@ fun MapScreen(
     onBackFromTrack: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val allTracks by viewModel.allTracks.collectAsState()
     var showTrackNameDialog by remember { mutableStateOf(false) }
     var trackName by remember { mutableStateOf("") }
+    var showTrackPicker by remember { mutableStateOf(false) }
 
     // Permission handling
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -87,6 +93,13 @@ fun MapScreen(
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
+            },
+            actions = {
+                if (!uiState.isTracking && !uiState.isViewingSavedTrack && allTracks.isNotEmpty()) {
+                    IconButton(onClick = { showTrackPicker = true }) {
+                        Icon(Icons.Filled.Route, contentDescription = "View Tracks")
+                    }
+                }
             }
         )
 
@@ -99,7 +112,9 @@ fun MapScreen(
                 currentLatitude = uiState.currentLatitude,
                 currentLongitude = uiState.currentLongitude,
                 centerOnUser = uiState.isTracking,
-                showActivityColors = true
+                showActivityColors = !uiState.isViewingSavedTrack,
+                showSpeedColors = uiState.isViewingSavedTrack,
+                showDirectionArrows = uiState.isViewingSavedTrack
             )
 
             // Top stats bar (shown during tracking)
@@ -141,6 +156,15 @@ fun MapScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp)
+                )
+            }
+
+            // Speed legend when viewing saved track
+            if (uiState.isViewingSavedTrack) {
+                SpeedLegend(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 12.dp, bottom = 16.dp)
                 )
             }
 
@@ -246,6 +270,18 @@ fun MapScreen(
                 viewModel.dismissCompletedTrack()
                 viewModel.loadSavedTrack(completed.trackId)
             }
+        )
+    }
+
+    // Track picker bottom sheet dialog
+    if (showTrackPicker) {
+        TrackPickerDialog(
+            tracks = allTracks,
+            onSelect = { track ->
+                showTrackPicker = false
+                viewModel.loadSavedTrack(track.id)
+            },
+            onDismiss = { showTrackPicker = false }
         )
     }
 }
@@ -369,6 +405,39 @@ private fun ActivityBadge(activity: ActivityType, speed: Float, modifier: Modifi
         ) {
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
             Text(label, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+        }
+    }
+}
+
+// --- SPEED LEGEND ---
+
+@Composable
+private fun SpeedLegend(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+        ),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text("Speed", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Surface(color = Color(0xFF4CAF50), shape = CircleShape, modifier = Modifier.size(8.dp)) {}
+                Text("Slow", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Surface(color = Color(0xFFFFC107), shape = CircleShape, modifier = Modifier.size(8.dp)) {}
+                Text("Medium", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Surface(color = Color(0xFFFF5722), shape = CircleShape, modifier = Modifier.size(8.dp)) {}
+                Text("Fast", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -921,4 +990,150 @@ private fun activityDisplayInfo(type: ActivityType): Triple<Color, String, Image
     ActivityType.FLYING     -> Triple(Flying, "Flying", Icons.Filled.Flight)
     ActivityType.STATIONARY -> Triple(Stationary, "Stationary", Icons.Filled.PauseCircle)
     ActivityType.UNKNOWN    -> Triple(Stationary, "Unknown", Icons.Filled.QuestionMark)
+}
+
+// --- TRACK PICKER DIALOG ---
+
+@Composable
+private fun TrackPickerDialog(
+    tracks: List<TrackSession>,
+    onSelect: (TrackSession) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy  HH:mm", Locale.getDefault()) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.65f)
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column {
+                // Header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Route,
+                        contentDescription = null,
+                        tint = Primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        "Select Track",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close")
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                // Track list
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(tracks.size) { index ->
+                        val track = tracks[index]
+                        val (accentColor, _, actIcon) = activityDisplayInfo(track.activityType)
+                        val distKm = track.distanceMeters / 1000.0
+                        val durationMs = (track.endTime ?: track.startTime) - track.startTime
+                        val durationMin = durationMs / 60_000
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(track) },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = accentColor.copy(alpha = 0.06f)
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Activity icon circle
+                                Surface(
+                                    shape = CircleShape,
+                                    color = accentColor.copy(alpha = 0.15f),
+                                    modifier = Modifier.size(42.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            actIcon,
+                                            contentDescription = null,
+                                            tint = accentColor,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                // Track info
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        track.name.ifEmpty { "Unnamed Track" },
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 15.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        dateFormatter.format(Date(track.startTime)),
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                // Stats
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        String.format(Locale.US, "%.2f km", distKm),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = accentColor
+                                    )
+                                    Text(
+                                        if (durationMin >= 60) "${durationMin / 60}h ${durationMin % 60}m"
+                                        else "${durationMin}m",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    Icons.Filled.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

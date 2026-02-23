@@ -32,7 +32,9 @@ fun OsmMapView(
     currentLongitude: Double? = null,
     centerOnUser: Boolean = true,
     zoomLevel: Double = 16.0,
-    showActivityColors: Boolean = true
+    showActivityColors: Boolean = true,
+    showSpeedColors: Boolean = false,
+    showDirectionArrows: Boolean = false
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -118,34 +120,39 @@ fun OsmMapView(
                 mapView.overlays.clear()
 
                 if (trackPoints.size >= 2) {
-                    if (showActivityColors) {
-                        drawActivityColoredTrack(mapView, trackPoints)
-                    } else {
-                        val borderLine = Polyline().apply {
-                            outlinePaint.apply {
-                                color = android.graphics.Color.argb(80, 0, 0, 0)
-                                strokeWidth = 16f
-                                style = Paint.Style.STROKE
-                                isAntiAlias = true
-                                strokeCap = Paint.Cap.ROUND
-                                strokeJoin = Paint.Join.ROUND
+                    when {
+                        showSpeedColors -> drawSpeedColoredTrack(mapView, trackPoints)
+                        showActivityColors -> drawActivityColoredTrack(mapView, trackPoints)
+                        else -> {
+                            val borderLine = Polyline().apply {
+                                outlinePaint.apply {
+                                    color = android.graphics.Color.argb(80, 0, 0, 0)
+                                    strokeWidth = 16f
+                                    style = Paint.Style.STROKE
+                                    isAntiAlias = true
+                                    strokeCap = Paint.Cap.ROUND
+                                    strokeJoin = Paint.Join.ROUND
+                                }
+                                setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
                             }
-                            setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
-                        }
-                        mapView.overlays.add(borderLine)
+                            mapView.overlays.add(borderLine)
 
-                        val polyline = Polyline().apply {
-                            outlinePaint.apply {
-                                color = Primary.toArgb()
-                                strokeWidth = 10f
-                                style = Paint.Style.STROKE
-                                isAntiAlias = true
-                                strokeCap = Paint.Cap.ROUND
-                                strokeJoin = Paint.Join.ROUND
+                            val polyline = Polyline().apply {
+                                outlinePaint.apply {
+                                    color = Primary.toArgb()
+                                    strokeWidth = 10f
+                                    style = Paint.Style.STROKE
+                                    isAntiAlias = true
+                                    strokeCap = Paint.Cap.ROUND
+                                    strokeJoin = Paint.Join.ROUND
+                                }
+                                setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
                             }
-                            setPoints(trackPoints.map { GeoPoint(it.latitude, it.longitude) })
+                            mapView.overlays.add(polyline)
                         }
-                        mapView.overlays.add(polyline)
+                    }
+                    if (showDirectionArrows) {
+                        addDirectionArrows(mapView, trackPoints)
                     }
                 }
 
@@ -330,4 +337,165 @@ private fun activityColor(activity: ActivityType): Color = when (activity) {
     ActivityType.FLYING     -> Flying
     ActivityType.STATIONARY -> Stationary
     ActivityType.UNKNOWN    -> Color(0xFF757575)
+}
+
+// ─── SPEED-COLORED TRACK ─────────────────────────────────
+
+private fun drawSpeedColoredTrack(mapView: MapView, points: List<TrackPoint>) {
+    if (points.size < 2) return
+
+    val maxSpeed = points.maxOf { it.speedKmh }.coerceAtLeast(1f)
+
+    // Border for the entire track
+    val allGeoPoints = points.map { GeoPoint(it.latitude, it.longitude) }
+    val borderLine = Polyline().apply {
+        outlinePaint.apply {
+            color = android.graphics.Color.argb(60, 0, 0, 0)
+            strokeWidth = 16f
+            style = Paint.Style.STROKE
+            isAntiAlias = true
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        setPoints(allGeoPoints)
+    }
+    mapView.overlays.add(borderLine)
+
+    // Draw each segment colored by speed
+    for (i in 0 until points.size - 1) {
+        val avgSpeed = (points[i].speedKmh + points[i + 1].speedKmh) / 2f
+        val ratio = (avgSpeed / maxSpeed).coerceIn(0f, 1f)
+        val segColor = speedToColor(ratio)
+
+        val segment = Polyline().apply {
+            outlinePaint.apply {
+                color = segColor
+                strokeWidth = 10f
+                style = Paint.Style.STROKE
+                isAntiAlias = true
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+            }
+            setPoints(listOf(
+                GeoPoint(points[i].latitude, points[i].longitude),
+                GeoPoint(points[i + 1].latitude, points[i + 1].longitude)
+            ))
+        }
+        mapView.overlays.add(segment)
+    }
+}
+
+private fun speedToColor(ratio: Float): Int {
+    val r: Int
+    val g: Int
+    val b: Int
+    when {
+        ratio < 0.25f -> { // Green (slow)
+            val t = ratio / 0.25f
+            r = (76 + t * (200 - 76)).toInt()
+            g = (175 + t * (230 - 175)).toInt()
+            b = (80 - t * 80).toInt()
+        }
+        ratio < 0.5f -> { // Yellow (moderate)
+            val t = (ratio - 0.25f) / 0.25f
+            r = (200 + t * 55).toInt()
+            g = (230 - t * 50).toInt()
+            b = 0
+        }
+        ratio < 0.75f -> { // Orange (fast)
+            val t = (ratio - 0.5f) / 0.25f
+            r = 255
+            g = (180 - t * 100).toInt()
+            b = 0
+        }
+        else -> { // Red (very fast)
+            val t = (ratio - 0.75f) / 0.25f
+            r = 255
+            g = (80 - t * 80).toInt()
+            b = (t * 30).toInt()
+        }
+    }
+    return android.graphics.Color.rgb(r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255))
+}
+
+// ─── DIRECTION ARROWS ────────────────────────────────────
+
+private fun addDirectionArrows(mapView: MapView, points: List<TrackPoint>) {
+    if (points.size < 3) return
+
+    // Place arrows at regular intervals (every ~12 points or at least 5 arrows)
+    val interval = (points.size / 8).coerceIn(5, 25)
+
+    for (i in interval until points.size step interval) {
+        val pt = points[i]
+        val prev = points[(i - 1).coerceAtLeast(0)]
+
+        val bearing = pt.bearing ?: calculateBearing(
+            prev.latitude, prev.longitude, pt.latitude, pt.longitude
+        ).toFloat()
+
+        if (bearing.isNaN() || bearing.isInfinite()) continue
+
+        val marker = Marker(mapView).apply {
+            position = GeoPoint(pt.latitude, pt.longitude)
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+            icon = createArrowMarker(mapView, bearing)
+            setInfoWindow(null) // No popup on tap
+        }
+        mapView.overlays.add(marker)
+    }
+}
+
+private fun createArrowMarker(
+    mapView: MapView,
+    bearing: Float
+): BitmapDrawable {
+    val density = mapView.context.resources.displayMetrics.density
+    val sizePx = (20 * density).toInt()
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val cx = sizePx / 2f
+    val cy = sizePx / 2f
+    val r = sizePx * 0.38f
+
+    // Rotate canvas by bearing (0 = north/up)
+    canvas.save()
+    canvas.rotate(bearing, cx, cy)
+
+    // Draw arrow pointing up (north)
+    val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+        setShadowLayer(2f * density, 0f, 1f * density, android.graphics.Color.argb(100, 0, 0, 0))
+    }
+
+    val path = android.graphics.Path().apply {
+        moveTo(cx, cy - r)             // top point
+        lineTo(cx - r * 0.55f, cy + r * 0.6f) // bottom left
+        lineTo(cx, cy + r * 0.2f)      // notch
+        lineTo(cx + r * 0.55f, cy + r * 0.6f) // bottom right
+        close()
+    }
+    canvas.drawPath(path, arrowPaint)
+
+    // Dark outline
+    val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(150, 30, 30, 30)
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f * density
+    }
+    canvas.drawPath(path, outlinePaint)
+
+    canvas.restore()
+    return BitmapDrawable(mapView.context.resources, bitmap)
+}
+
+private fun calculateBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val dLon = Math.toRadians(lon2 - lon1)
+    val lat1Rad = Math.toRadians(lat1)
+    val lat2Rad = Math.toRadians(lat2)
+    val y = kotlin.math.sin(dLon) * kotlin.math.cos(lat2Rad)
+    val x = kotlin.math.cos(lat1Rad) * kotlin.math.sin(lat2Rad) -
+            kotlin.math.sin(lat1Rad) * kotlin.math.cos(lat2Rad) * kotlin.math.cos(dLon)
+    return (Math.toDegrees(kotlin.math.atan2(y, x)) + 360) % 360
 }

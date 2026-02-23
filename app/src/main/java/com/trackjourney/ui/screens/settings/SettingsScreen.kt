@@ -40,6 +40,7 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
     val satelliteInfo by viewModel.satelliteInfo.collectAsState()
+    val motionState by viewModel.motionState.collectAsState()
     val wearableState by viewModel.wearableState.collectAsState()
     val wearableReading by viewModel.wearableReading.collectAsState()
 
@@ -138,6 +139,80 @@ fun SettingsScreen(
                             } else {
                                 Text(
                                     "Start tracking to see GPS status",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── MOTION SENSOR STATUS ──────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Motion Sensors",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        item {
+            val hasSensorData = motionState.accelerationMagnitude > 0f || motionState.rotationRate > 0f
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = if (hasSensorData) {
+                                if (motionState.isDeviceMoving) PrimaryLight.copy(alpha = 0.15f)
+                                else Secondary.copy(alpha = 0.15f)
+                            } else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    if (motionState.isDeviceMoving) Icons.Filled.DirectionsWalk else Icons.Filled.PauseCircle,
+                                    contentDescription = null,
+                                    tint = if (hasSensorData) {
+                                        if (motionState.isDeviceMoving) PrimaryLight else Secondary
+                                    } else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                if (hasSensorData) {
+                                    if (motionState.isDeviceMoving) "Device Moving" else "Device Stationary"
+                                } else "Sensors Inactive",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            if (hasSensorData) {
+                                Text(
+                                    "Accel: ${String.format(java.util.Locale.US, "%.2f", motionState.accelerationMagnitude)} m/s\u00B2  |  Gyro: ${String.format(java.util.Locale.US, "%.2f", motionState.rotationRate)} rad/s",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "Confidence: ${(motionState.motionConfidence * 100).toInt()}%${if (motionState.stepDetected) "  |  Steps detected" else ""}",
+                                    fontSize = 12.sp,
+                                    color = if (motionState.isDeviceMoving) PrimaryLight else Secondary
+                                )
+                            } else {
+                                Text(
+                                    "Start tracking to enable GPS drift filtering",
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

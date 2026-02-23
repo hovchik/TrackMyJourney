@@ -14,6 +14,7 @@ import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
+import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.model.TrackingSettings
 import com.trackjourney.data.repository.TrackRepository
 import com.trackjourney.ui.MainActivity
@@ -57,6 +58,7 @@ class TrackingService : Service() {
     @Inject lateinit var satelliteTracker: GpsSatelliteTracker
     @Inject lateinit var settingsDataStore: SettingsDataStore
     @Inject lateinit var wearableManager: WearableManager
+    @Inject lateinit var motionSensorManager: MotionSensorManager
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var trackingJob: Job? = null
@@ -97,6 +99,9 @@ class TrackingService : Service() {
 
         // Start satellite monitoring
         satelliteTracker.startMonitoring()
+
+        // Start physical motion sensor monitoring (accelerometer + gyroscope)
+        motionSensorManager.startMonitoring()
 
         // Auto-scan for Garmin/Samsung wearable if Bluetooth is available
         startWearableScan()
@@ -209,6 +214,7 @@ class TrackingService : Service() {
             currentTrackId = null
             locationTracker.stopTracking()
             satelliteTracker.stopMonitoring()
+            motionSensorManager.stopMonitoring()
             wearableManager.disconnect()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -266,6 +272,7 @@ class TrackingService : Service() {
         serviceScope.cancel()
         locationTracker.stopTracking()
         satelliteTracker.stopMonitoring()
+        motionSensorManager.stopMonitoring()
         wearableManager.disconnect()
         super.onDestroy()
     }

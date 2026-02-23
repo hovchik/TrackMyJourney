@@ -2,6 +2,7 @@ package com.trackjourney.data.ai
 
 import android.content.Context
 import android.util.Log
+import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -85,7 +86,46 @@ class LocalAiEngine(
     //  REAL-TIME ACTIVITY DETECTION (single point)
     // ═══════════════════════════════════════════════════════
 
-    fun detectActivity(speedKmh: Float, altitude: Double?, previousAltitude: Double?): ActivityType {
+    /**
+     * Real-time activity detection combining GPS speed with physical sensor data.
+     *
+     * When the accelerometer/gyroscope/step-detector indicate the device is stationary
+     * but GPS reports movement (GPS drift), the sensor data overrides and returns STATIONARY.
+     *
+     * @param motionState Optional physical sensor reading. Null means no sensor data available.
+     */
+    fun detectActivity(
+        speedKmh: Float,
+        altitude: Double?,
+        previousAltitude: Double?,
+        motionState: MotionSensorManager.MotionState? = null
+    ): ActivityType {
+        // ── Sensor-based GPS drift rejection ──
+        // If physical sensors say "not moving" with high confidence,
+        // override GPS speed which is likely drift
+        if (motionState != null && !motionState.isDeviceMoving && motionState.motionConfidence < 0.2f) {
+            // Sensors are very confident the device is stationary.
+            // GPS drift can report up to ~15 km/h phantom speed.
+            // Only trust GPS over sensors for high speeds (vehicle/flying)
+            // where the phone might not shake much (smooth ride).
+            if (speedKmh < CYCLE_MAX) {
+                Log.d(TAG, "Sensor override: GPS says ${speedKmh}km/h but sensors say stationary " +
+                        "(accel=${motionState.accelerationMagnitude}, gyro=${motionState.rotationRate}, " +
+                        "step=${motionState.stepDetected}, conf=${motionState.motionConfidence})")
+                return ActivityType.STATIONARY
+            }
+        }
+
+        // ── Sensor-assisted low-speed disambiguation ──
+        // GPS reports 1-7 km/h but could be drift or real walking.
+        // Use step detector as tie-breaker.
+        if (motionState != null && speedKmh in STATIONARY_MAX..WALK_MAX) {
+            if (!motionState.stepDetected && motionState.motionConfidence < 0.35f) {
+                // No steps detected and low sensor motion → likely GPS drift
+                return ActivityType.STATIONARY
+            }
+        }
+
         // Check for flying based on altitude rate of change
         if (altitude != null && previousAltitude != null) {
             val altitudeChange = abs(altitude - previousAltitude)

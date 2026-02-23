@@ -7,6 +7,7 @@ import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.*
 import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
+import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.repository.TrackRepository
 import dagger.Module
 import dagger.Provides
@@ -58,6 +59,10 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideMotionSensorManager(@ApplicationContext context: Context) = MotionSensorManager(context)
+
+    @Provides
+    @Singleton
     fun provideTrackRepository(
         @ApplicationContext context: Context,
         trackDao: TrackDao,
@@ -67,9 +72,11 @@ object AppModule {
         locationTracker: LocationTracker,
         aiEngine: LocalAiEngine,
         settingsDataStore: SettingsDataStore,
-        gpsSatelliteTracker: GpsSatelliteTracker
+        gpsSatelliteTracker: GpsSatelliteTracker,
+        motionSensorManager: MotionSensorManager
     ) = TrackRepository(
         context, trackDao, trackPointDao, healthDataDao,
-        aiAnalysisDao, locationTracker, aiEngine, settingsDataStore, gpsSatelliteTracker
+        aiAnalysisDao, locationTracker, aiEngine, settingsDataStore, gpsSatelliteTracker,
+        motionSensorManager
     )
 }

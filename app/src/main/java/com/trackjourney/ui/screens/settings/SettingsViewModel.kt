@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.bluetooth.WearableReading
+import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.location.SatelliteInfo
 import com.trackjourney.data.model.ExportFormat
 import com.trackjourney.data.model.TrackingSettings
@@ -31,6 +32,9 @@ class SettingsViewModel @Inject constructor(
 
     val wearableReading: StateFlow<WearableReading?> = wearableManager.latestReading
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val motionState: StateFlow<MotionSensorManager.MotionState> = repository.motionSensorManager.motionState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MotionSensorManager.MotionState())
 
     fun updateRecordInterval(intervalMs: Long) {
         viewModelScope.launch {

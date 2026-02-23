@@ -10,6 +10,7 @@ import com.trackjourney.data.ai.LocalAiEngine
 import com.trackjourney.data.local.*
 import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
+import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -28,7 +29,8 @@ class TrackRepository(
     private val locationTracker: LocationTracker,
     private val aiEngine: LocalAiEngine,
     private val settingsDataStore: SettingsDataStore,
-    private val gpsSatelliteTracker: GpsSatelliteTracker
+    private val gpsSatelliteTracker: GpsSatelliteTracker,
+    val motionSensorManager: MotionSensorManager
 ) {
     companion object {
         private const val TAG = "TrackRepository"
@@ -148,12 +150,21 @@ class TrackRepository(
             return null
         }
 
-        // AI-based real-time activity detection
+        // AI-based real-time activity detection using GPS + physical sensors
+        val motionState = motionSensorManager.motionState.value
         val activity = aiEngine.detectActivity(
             speedKmh = speedKmh,
             altitude = if (location.hasAltitude()) location.altitude else null,
-            previousAltitude = lastPoint?.altitude
+            previousAltitude = lastPoint?.altitude,
+            motionState = motionState
         )
+
+        // If sensors say stationary but GPS reports movement, clamp speed to 0
+        val effectiveSpeedKmh = if (activity == ActivityType.STATIONARY && speedKmh > 0.5f) {
+            Log.d(TAG, "GPS drift filtered: GPS=${speedKmh}km/h → 0 (sensors: moving=${motionState.isDeviceMoving}, conf=${motionState.motionConfidence})")
+            0f
+        } else speedKmh
+        val effectiveSpeedMs = if (activity == ActivityType.STATIONARY && speedKmh > 0.5f) 0f else location.speed
 
         // Resolve place name for the first point of a track
         val isFirstPoint = lastPoint == null
@@ -166,8 +177,8 @@ class TrackRepository(
             latitude = location.latitude,
             longitude = location.longitude,
             altitude = if (location.hasAltitude()) location.altitude else null,
-            speedMs = location.speed,
-            speedKmh = speedKmh,
+            speedMs = effectiveSpeedMs,
+            speedKmh = effectiveSpeedKmh,
             bearing = if (location.hasBearing()) location.bearing else null,
             accuracy = accuracyMeters,
             timestamp = System.currentTimeMillis(),

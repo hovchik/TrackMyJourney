@@ -3,7 +3,9 @@ package com.trackjourney.service
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -66,6 +68,7 @@ class TrackingService : Service() {
     private var currentTrackId: String? = null
     private var isPaused = false
     private var pointCount = 0
+    private var batteryAtStart: Int? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -112,6 +115,13 @@ class TrackingService : Service() {
                 val track = repository.startNewTrack(trackName)
                 currentTrackId = track.id
                 pointCount = 0
+
+                // Log battery level at start
+                batteryAtStart = getBatteryLevel()
+                batteryAtStart?.let { battery ->
+                    repository.updateTrackBatteryStart(track.id, battery)
+                    Log.i(TAG, "Battery at start: $battery%")
+                }
 
                 Log.i(TAG, "Tracking started: ${track.id}")
 
@@ -204,6 +214,12 @@ class TrackingService : Service() {
     private fun stopTracking() {
         serviceScope.launch {
             currentTrackId?.let { trackId ->
+                // Log battery level at end before ending track
+                val batteryAtEnd = getBatteryLevel()
+                batteryAtEnd?.let { battery ->
+                    repository.updateTrackBatteryEnd(trackId, battery)
+                    Log.i(TAG, "Battery at end: $battery% (started at ${batteryAtStart ?: "?"}%)")
+                }
                 repository.endTrack(trackId)
                 Log.i(TAG, "Track ended: $trackId | $pointCount points recorded")
             }
@@ -218,6 +234,18 @@ class TrackingService : Service() {
             wearableManager.disconnect()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
+        }
+    }
+
+    private fun getBatteryLevel(): Int? {
+        return try {
+            val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if (level >= 0 && scale > 0) (level * 100) / scale else null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read battery level: ${e.message}")
+            null
         }
     }
 

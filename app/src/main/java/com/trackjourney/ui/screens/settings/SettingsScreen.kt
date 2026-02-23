@@ -375,6 +375,102 @@ fun SettingsScreen(
             }
         }
 
+        // ── USER PROFILE ─────────────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "User Profile",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // User Name
+                    var nameText by remember(settings.userName) { mutableStateOf(settings.userName) }
+                    OutlinedTextField(
+                        value = nameText,
+                        onValueChange = {
+                            nameText = it
+                            viewModel.updateUserName(it)
+                        },
+                        label = { Text("Name") },
+                        leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Weight
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.MonitorWeight, contentDescription = null, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Weight", fontWeight = FontWeight.Medium)
+                            Text(
+                                "${settings.userWeightKg.toInt()} kg",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Slider(
+                        value = settings.userWeightKg,
+                        onValueChange = { viewModel.updateUserWeightKg(it) },
+                        valueRange = 30f..200f,
+                        steps = 169
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("30 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("200 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    // Height
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Height, contentDescription = null, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Height", fontWeight = FontWeight.Medium)
+                            Text(
+                                "${settings.userHeightCm.toInt()} cm",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Slider(
+                        value = settings.userHeightCm,
+                        onValueChange = { viewModel.updateUserHeightCm(it) },
+                        valueRange = 100f..220f,
+                        steps = 119
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("100 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("220 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
         // ── RECORDING SETTINGS ──────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))

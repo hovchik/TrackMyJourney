@@ -19,7 +19,7 @@ enum class StatsPeriod(val label: String) {
 }
 
 data class DashboardUiState(
-    val selectedPeriod: StatsPeriod = StatsPeriod.WEEK,
+    val selectedPeriod: StatsPeriod = StatsPeriod.DAY,
     val stats: PeriodStats = PeriodStats(),
     val isLoading: Boolean = true
 )
@@ -35,7 +35,7 @@ class DashboardViewModel @Inject constructor(
     private var observeJob: Job? = null
 
     init {
-        selectPeriod(StatsPeriod.WEEK)
+        selectPeriod(StatsPeriod.DAY)
     }
 
     fun selectPeriod(period: StatsPeriod) {

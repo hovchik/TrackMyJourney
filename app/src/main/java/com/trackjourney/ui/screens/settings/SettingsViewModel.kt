@@ -67,6 +67,24 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateUserName(name: String) {
+        viewModelScope.launch {
+            repository.updateSettings { updateUserName(name) }
+        }
+    }
+
+    fun updateUserWeightKg(weight: Float) {
+        viewModelScope.launch {
+            repository.updateSettings { updateUserWeightKg(weight) }
+        }
+    }
+
+    fun updateUserHeightCm(height: Float) {
+        viewModelScope.launch {
+            repository.updateSettings { updateUserHeightCm(height) }
+        }
+    }
+
     // ─── Full database export / import ──────────────────
 
     private val _exportedBackupFile = MutableStateFlow<java.io.File?>(null)

@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [TrackSession::class, TrackPoint::class, HealthData::class, AiAnalysis::class],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -110,6 +110,9 @@ interface TrackDao {
 
     @Query("SELECT SUM(COALESCE(end_time, start_time) - start_time) FROM tracks WHERE start_time >= :since AND end_time IS NOT NULL")
     suspend fun getTotalDurationSince(since: Long): Long?
+
+    @Query("SELECT SUM(calories_burned) FROM tracks WHERE start_time >= :since AND calories_burned > 0")
+    suspend fun getTotalCaloriesSince(since: Long): Double?
 }
 
 // ─────────────────────────────────────────────────────────

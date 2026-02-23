@@ -19,6 +19,9 @@ class SettingsDataStore(
         val AUTO_DETECT_ACTIVITY = booleanPreferencesKey("auto_detect_activity")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val EXPORT_FORMAT = stringPreferencesKey("export_format")
+        val USER_NAME = stringPreferencesKey("user_name")
+        val USER_WEIGHT_KG = floatPreferencesKey("user_weight_kg")
+        val USER_HEIGHT_CM = floatPreferencesKey("user_height_cm")
     }
 
     val settings: Flow<TrackingSettings> = context.dataStore.data.map { prefs ->
@@ -31,7 +34,10 @@ class SettingsDataStore(
                 ExportFormat.valueOf(prefs[EXPORT_FORMAT] ?: "JSON")
             } catch (e: Exception) {
                 ExportFormat.JSON
-            }
+            },
+            userName = prefs[USER_NAME] ?: "",
+            userWeightKg = prefs[USER_WEIGHT_KG] ?: 70f,
+            userHeightCm = prefs[USER_HEIGHT_CM] ?: 170f
         )
     }
 
@@ -55,6 +61,18 @@ class SettingsDataStore(
         context.dataStore.edit { it[EXPORT_FORMAT] = format.name }
     }
 
+    suspend fun updateUserName(name: String) {
+        context.dataStore.edit { it[USER_NAME] = name }
+    }
+
+    suspend fun updateUserWeightKg(weight: Float) {
+        context.dataStore.edit { it[USER_WEIGHT_KG] = weight }
+    }
+
+    suspend fun updateUserHeightCm(height: Float) {
+        context.dataStore.edit { it[USER_HEIGHT_CM] = height }
+    }
+
     suspend fun updateAll(settings: TrackingSettings) {
         context.dataStore.edit { prefs ->
             prefs[RECORD_INTERVAL_MS] = settings.recordIntervalMs
@@ -62,6 +80,9 @@ class SettingsDataStore(
             prefs[AUTO_DETECT_ACTIVITY] = settings.autoDetectActivity
             prefs[KEEP_SCREEN_ON] = settings.keepScreenOn
             prefs[EXPORT_FORMAT] = settings.exportFormat.name
+            prefs[USER_NAME] = settings.userName
+            prefs[USER_WEIGHT_KG] = settings.userWeightKg
+            prefs[USER_HEIGHT_CM] = settings.userHeightCm
         }
     }
 }

@@ -46,6 +46,15 @@ data class TrackSession(
     @ColumnInfo(name = "end_place_name")
     val endPlaceName: String? = null,
 
+    @ColumnInfo(name = "calories_burned")
+    val caloriesBurned: Double = 0.0,
+
+    @ColumnInfo(name = "battery_start")
+    val batteryStart: Int? = null,
+
+    @ColumnInfo(name = "battery_end")
+    val batteryEnd: Int? = null,
+
     @ColumnInfo(name = "is_active")
     val isActive: Boolean = true
 )
@@ -255,7 +264,10 @@ data class TrackSessionExport(
     @SerializedName("activity_type") val activityType: String,
     @SerializedName("avg_heart_rate") val avgHeartRate: Int?,
     @SerializedName("start_place_name") val startPlaceName: String?,
-    @SerializedName("end_place_name") val endPlaceName: String?
+    @SerializedName("end_place_name") val endPlaceName: String?,
+    @SerializedName("calories_burned") val caloriesBurned: Double,
+    @SerializedName("battery_start") val batteryStart: Int?,
+    @SerializedName("battery_end") val batteryEnd: Int?
 )
 
 data class TrackPointExport(
@@ -333,7 +345,10 @@ data class TrackingSettings(
     val minDistanceMeters: Float = 5f,            // minimum displacement
     val autoDetectActivity: Boolean = true,
     val keepScreenOn: Boolean = false,
-    val exportFormat: ExportFormat = ExportFormat.JSON
+    val exportFormat: ExportFormat = ExportFormat.JSON,
+    val userName: String = "",
+    val userWeightKg: Float = 70f,                // default 70 kg
+    val userHeightCm: Float = 170f                // default 170 cm
 )
 
 enum class ExportFormat { JSON, GPX, CSV }

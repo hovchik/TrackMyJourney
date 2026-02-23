@@ -99,7 +99,7 @@ fun DashboardScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Trips, Avg Speed, Max Speed
+            // Trips, Avg Speed, Max Speed, Calories
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -122,9 +122,9 @@ fun DashboardScreen(
                 )
                 SmallStatCard(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Filled.FlashOn,
-                    value = String.format(Locale.US, "%.1f", stats.maxSpeedKmh),
-                    label = "Max km/h",
+                    icon = Icons.Filled.LocalFireDepartment,
+                    value = formatCalories(stats.totalCalories),
+                    label = "Calories",
                     color = Running
                 )
             }
@@ -164,6 +164,11 @@ fun DashboardScreen(
                 icon = Icons.Filled.FlashOn,
                 label = "Top Speed",
                 value = String.format(Locale.US, "%.1f km/h", stats.maxSpeedKmh)
+            )
+            DetailRow(
+                icon = Icons.Filled.LocalFireDepartment,
+                label = "Calories Burned",
+                value = String.format(Locale.US, "%.0f kcal", stats.totalCalories)
             )
 
             if (stats.trackCount == 0) {
@@ -336,6 +341,12 @@ private fun formatDurationShort(ms: Long): String {
         mins > 0 -> "${mins}m"
         else -> "0m"
     }
+}
+
+private fun formatCalories(cal: Double): String = when {
+    cal < 1 -> "0"
+    cal < 1000 -> String.format(Locale.US, "%.0f", cal)
+    else -> String.format(Locale.US, "%.1fk", cal / 1000)
 }
 
 private fun formatDurationLong(ms: Long): String {

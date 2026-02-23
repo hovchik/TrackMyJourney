@@ -49,7 +49,10 @@ data class CompletedTrackInfo(
     val activityType: ActivityType,
     val startPlace: String?,
     val endPlace: String?,
-    val pointCount: Int
+    val pointCount: Int,
+    val caloriesBurned: Double = 0.0,
+    val batteryStart: Int? = null,
+    val batteryEnd: Int? = null
 )
 
 @HiltViewModel
@@ -167,7 +170,10 @@ class MapViewModel @Inject constructor(
                                     activityType = prevTrack.activityType,
                                     startPlace = prevTrack.startPlaceName,
                                     endPlace = prevTrack.endPlaceName,
-                                    pointCount = _uiState.value.pointCount
+                                    pointCount = _uiState.value.pointCount,
+                                    caloriesBurned = prevTrack.caloriesBurned,
+                                    batteryStart = prevTrack.batteryStart,
+                                    batteryEnd = prevTrack.batteryEnd
                                 )
                             )
                         }

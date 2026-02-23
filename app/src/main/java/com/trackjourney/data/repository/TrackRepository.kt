@@ -102,8 +102,40 @@ class TrackRepository(
             totalDistanceKm = (trackDao.getTotalDistanceSince(since) ?: 0.0) / 1000.0,
             totalDurationMs = trackDao.getTotalDurationSince(since) ?: 0L,
             averageSpeedKmh = trackDao.getAverageSpeedSince(since) ?: 0.0,
-            maxSpeedKmh = trackDao.getMaxSpeedSince(since) ?: 0.0
+            maxSpeedKmh = trackDao.getMaxSpeedSince(since) ?: 0.0,
+            totalCalories = trackDao.getTotalCaloriesSince(since) ?: 0.0
         )
+    }
+
+    /**
+     * Calculate calories burned using MET (Metabolic Equivalent of Task) values.
+     *
+     * Formula: Calories = MET * weightKg * durationHours
+     *
+     * MET values by activity (from Compendium of Physical Activities):
+     *   WALKING    = 3.5  (moderate pace ~5 km/h)
+     *   RUNNING    = 8.0  (jogging ~8-10 km/h)
+     *   CYCLING    = 6.0  (moderate cycling ~16-19 km/h)
+     *   DRIVING    = 1.3  (sitting in vehicle)
+     *   FLYING     = 1.0  (seated, minimal activity)
+     *   STATIONARY = 1.0  (resting / standing)
+     */
+    fun calculateCalories(
+        activityType: ActivityType,
+        durationMs: Long,
+        weightKg: Float
+    ): Double {
+        val met = when (activityType) {
+            ActivityType.WALKING    -> 3.5
+            ActivityType.RUNNING    -> 8.0
+            ActivityType.CYCLING    -> 6.0
+            ActivityType.DRIVING    -> 1.3
+            ActivityType.FLYING     -> 1.0
+            ActivityType.STATIONARY -> 1.0
+            ActivityType.UNKNOWN    -> 2.0
+        }
+        val durationHours = durationMs / 3_600_000.0
+        return met * weightKg * durationHours
     }
 
     // ─── TRACKING LIFECYCLE ─────────────────────────────
@@ -273,13 +305,29 @@ class TrackRepository(
             .maxByOrNull { it.value.size }
             ?.key ?: ActivityType.UNKNOWN
 
+        // Calculate calories based on activity, duration, and user weight
+        val durationMs = points.last().timestamp - points.first().timestamp
+        val currentSettings = settingsDataStore.settings.first()
+        val calories = calculateCalories(dominant, durationMs, currentSettings.userWeightKg)
+
         trackDao.update(track.copy(
             distanceMeters = totalDistance,
             avgSpeedKmh = avgSpeed.toDouble(),
             maxSpeedKmh = maxSpeed.toDouble(),
             activityType = dominant,
-            avgHeartRate = avgHr
+            avgHeartRate = avgHr,
+            caloriesBurned = calories
         ))
+    }
+
+    suspend fun updateTrackBatteryStart(trackId: String, batteryLevel: Int) {
+        val track = trackDao.getTrackById(trackId) ?: return
+        trackDao.update(track.copy(batteryStart = batteryLevel))
+    }
+
+    suspend fun updateTrackBatteryEnd(trackId: String, batteryLevel: Int) {
+        val track = trackDao.getTrackById(trackId) ?: return
+        trackDao.update(track.copy(batteryEnd = batteryLevel))
     }
 
     suspend fun endTrack(trackId: String): TrackSession? {
@@ -385,7 +433,10 @@ class TrackRepository(
                     activityType = track.activityType.name,
                     avgHeartRate = track.avgHeartRate,
                     startPlaceName = track.startPlaceName,
-                    endPlaceName = track.endPlaceName
+                    endPlaceName = track.endPlaceName,
+                    caloriesBurned = track.caloriesBurned,
+                    batteryStart = track.batteryStart,
+                    batteryEnd = track.batteryEnd
                 ),
                 points = points.map { pt ->
                     TrackPointExport(
@@ -976,6 +1027,9 @@ class TrackRepository(
                     avgHeartRate = session.avgHeartRate,
                     startPlaceName = session.startPlaceName,
                     endPlaceName = session.endPlaceName,
+                    caloriesBurned = session.caloriesBurned,
+                    batteryStart = session.batteryStart,
+                    batteryEnd = session.batteryEnd,
                     isActive = false
                 )
                 trackDao.insert(track)
@@ -1054,5 +1108,6 @@ data class PeriodStats(
     val totalDistanceKm: Double = 0.0,
     val totalDurationMs: Long = 0L,
     val averageSpeedKmh: Double = 0.0,
-    val maxSpeedKmh: Double = 0.0
+    val maxSpeedKmh: Double = 0.0,
+    val totalCalories: Double = 0.0
 )

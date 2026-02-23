@@ -627,6 +627,12 @@ private fun TrackCompletionDialog(
                             color = Accent
                         )
                         CompletionStat(
+                            value = String.format(Locale.US, "%.0f", info.caloriesBurned),
+                            unit = "kcal",
+                            label = "Calories",
+                            color = Running
+                        )
+                        CompletionStat(
                             value = info.pointCount.toString(),
                             unit = "pts",
                             label = "GPS Points",
@@ -635,6 +641,31 @@ private fun TrackCompletionDialog(
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
+
+                    // Battery usage
+                    if (info.batteryStart != null && info.batteryEnd != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Filled.BatteryStd,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Battery: ${info.batteryStart}% → ${info.batteryEnd}% (${info.batteryStart - info.batteryEnd}% used)",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // Action buttons
                     Row(

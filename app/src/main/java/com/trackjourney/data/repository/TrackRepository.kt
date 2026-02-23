@@ -130,9 +130,9 @@ class TrackRepository(
         healthReading: com.trackjourney.data.bluetooth.WearableReading? = null
     ): TrackPoint? {
         val lastPoint = trackPointDao.getLastPoint(trackId)
-        val speedKmh = LocationTracker.msToKmh(location.speed)
         val satInfo = gpsSatelliteTracker.satelliteInfo.value
         val accuracyMeters = if (location.hasAccuracy()) location.accuracy else null
+        val now = System.currentTimeMillis()
 
         // Determine accuracy based on satellites and GPS accuracy
         val isAccurate = satInfo.usedInFix >= MIN_SATELLITES_FOR_ACCURATE_FIX
@@ -150,21 +150,46 @@ class TrackRepository(
             return null
         }
 
-        // AI-based real-time activity detection using GPS + physical sensors
+        // ── PRECISION SPEED FILTERING ──
+        // Filter raw GPS speed by cross-validating against positional displacement,
+        // limiting acceleration, EMA smoothing, and accuracy weighting.
+        // Runs BEFORE activity detection so the classifier sees realistic speeds
+        // instead of GPS Doppler spikes.
+        val filteredSpeedMs = LocationTracker.filterSpeed(
+            gpsSpeedMs = location.speed,
+            latitude = location.latitude,
+            longitude = location.longitude,
+            timestamp = now,
+            accuracyMeters = accuracyMeters,
+            prevLat = lastPoint?.latitude,
+            prevLon = lastPoint?.longitude,
+            prevTimestamp = lastPoint?.timestamp,
+            prevSpeedMs = lastPoint?.speedMs
+        )
+        val filteredSpeedKmh = LocationTracker.msToKmh(filteredSpeedMs)
+
+        val rawSpeedKmh = location.speed * 3.6f
+        if (rawSpeedKmh - filteredSpeedKmh > 2f) {
+            Log.d(TAG, "Speed filtered: raw=${String.format("%.1f", rawSpeedKmh)}km/h → " +
+                    "${String.format("%.1f", filteredSpeedKmh)}km/h")
+        }
+
+        // AI-based real-time activity detection using filtered speed + physical sensors
         val motionState = motionSensorManager.motionState.value
         val activity = aiEngine.detectActivity(
-            speedKmh = speedKmh,
+            speedKmh = filteredSpeedKmh,
             altitude = if (location.hasAltitude()) location.altitude else null,
             previousAltitude = lastPoint?.altitude,
             motionState = motionState
         )
 
         // If sensors say stationary but GPS reports movement, clamp speed to 0
-        val effectiveSpeedKmh = if (activity == ActivityType.STATIONARY && speedKmh > 0.5f) {
-            Log.d(TAG, "GPS drift filtered: GPS=${speedKmh}km/h → 0 (sensors: moving=${motionState.isDeviceMoving}, conf=${motionState.motionConfidence})")
+        val effectiveSpeedKmh = if (activity == ActivityType.STATIONARY && filteredSpeedKmh > 0.5f) {
+            Log.d(TAG, "GPS drift filtered: filtered=${String.format("%.1f", filteredSpeedKmh)}km/h → 0 " +
+                    "(sensors: moving=${motionState.isDeviceMoving}, conf=${motionState.motionConfidence})")
             0f
-        } else speedKmh
-        val effectiveSpeedMs = if (activity == ActivityType.STATIONARY && speedKmh > 0.5f) 0f else location.speed
+        } else filteredSpeedKmh
+        val effectiveSpeedMs = if (activity == ActivityType.STATIONARY && filteredSpeedKmh > 0.5f) 0f else filteredSpeedMs
 
         // Resolve place name for the first point of a track
         val isFirstPoint = lastPoint == null
@@ -181,7 +206,7 @@ class TrackRepository(
             speedKmh = effectiveSpeedKmh,
             bearing = if (location.hasBearing()) location.bearing else null,
             accuracy = accuracyMeters,
-            timestamp = System.currentTimeMillis(),
+            timestamp = now,
             heartRate = healthReading?.heartRate,
             cadence = healthReading?.cadence,
             activityType = activity,
@@ -234,7 +259,11 @@ class TrackRepository(
         }
 
         val avgSpeed = trackPointDao.getAverageSpeed(trackId) ?: 0f
-        val maxSpeed = trackPointDao.getMaxSpeed(trackId) ?: 0f
+
+        // Use 95th percentile for max speed to reject residual GPS outliers
+        val movingSpeeds = points.map { it.speedKmh }.filter { it > 0f }
+        val maxSpeed = LocationTracker.percentileSpeed(movingSpeeds)
+
         val avgHr = healthDataDao.getAverageHeartRate(trackId)
 
         // Determine dominant activity from latest points
@@ -700,7 +729,9 @@ class TrackRepository(
         val avgSpeed = enrichedPoints.filter { it.speedKmh > 0 }.map { it.speedKmh }.average().let {
             if (it.isNaN()) 0.0 else it
         }
-        val maxSpeed = enrichedPoints.maxOf { it.speedKmh }.toDouble()
+        val maxSpeed = LocationTracker.percentileSpeed(
+            enrichedPoints.map { it.speedKmh }.filter { it > 0f }
+        ).toDouble()
 
         val track = TrackSession(
             id = trackId,
@@ -793,7 +824,9 @@ class TrackRepository(
         val avgSpeed = points.filter { it.speedKmh > 0 }.map { it.speedKmh }.average().let {
             if (it.isNaN()) 0.0 else it
         }
-        val maxSpeed = points.maxOf { it.speedKmh }.toDouble()
+        val maxSpeed = LocationTracker.percentileSpeed(
+            points.map { it.speedKmh }.filter { it > 0f }
+        ).toDouble()
         val dominant = points.map { it.activityType }
             .groupBy { it }
             .maxByOrNull { it.value.size }

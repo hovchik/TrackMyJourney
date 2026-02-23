@@ -2,6 +2,7 @@ package com.trackjourney.data.ai
 
 import android.content.Context
 import android.util.Log
+import com.trackjourney.data.location.LocationTracker
 import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.Dispatchers
@@ -421,7 +422,7 @@ class LocalAiEngine(
             totalDistanceKm = totalDistance / 1000.0,
             durationMinutes = durationMin,
             avgSpeedKmh = avgSpeed,
-            maxSpeedKmh = points.maxOf { it.speedKmh }.toDouble(),
+            maxSpeedKmh = LocationTracker.percentileSpeed(points.map { it.speedKmh }).toDouble(),
             totalElevationGain = elevGain,
             totalElevationLoss = elevLoss,
             averageAccuracy = points.mapNotNull { it.accuracy }.average().toFloat()

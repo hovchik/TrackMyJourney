@@ -56,11 +56,27 @@ class MapViewModel @Inject constructor(
     init {
         observeActiveTrack()
         observeSettings()
+        fetchInitialLocation()
 
         // Check if navigated with a trackId to view a saved track
         val trackId = savedStateHandle.get<String>("trackId")
         if (trackId != null) {
             loadSavedTrack(trackId)
+        }
+    }
+
+    private fun fetchInitialLocation() {
+        viewModelScope.launch {
+            // Use cached last known location (no GPS activation)
+            val location = repository.getCurrentLocation()
+            if (location != null) {
+                _uiState.update {
+                    it.copy(
+                        currentLatitude = location.latitude,
+                        currentLongitude = location.longitude
+                    )
+                }
+            }
         }
     }
 

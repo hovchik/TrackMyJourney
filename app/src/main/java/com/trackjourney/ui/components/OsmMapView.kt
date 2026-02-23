@@ -117,11 +117,6 @@ fun OsmMapView(
                 // Full redraw — new track or first load
                 mapView.overlays.clear()
 
-                // Zoom in if we were at world view
-                if (mapView.zoomLevelDouble < 10.0) {
-                    mapView.controller.setZoom(zoomLevel)
-                }
-
                 if (trackPoints.size >= 2) {
                     if (showActivityColors) {
                         drawActivityColoredTrack(mapView, trackPoints)
@@ -196,8 +191,22 @@ fun OsmMapView(
 
             lastDrawnPointCount = pointCount
 
-            // Center map on latest point
-            if (centerOnUser) {
+            if (needsFullRedraw) {
+                // On full redraw (new track or saved track load), zoom to fit the entire track
+                if (trackPoints.size >= 2) {
+                    val boundingBox = org.osmdroid.util.BoundingBox.fromGeoPoints(
+                        trackPoints.map { GeoPoint(it.latitude, it.longitude) }
+                    )
+                    mapView.post {
+                        mapView.zoomToBoundingBox(boundingBox, true, 80)
+                    }
+                } else {
+                    val point = trackPoints.first()
+                    mapView.controller.setZoom(zoomLevel)
+                    mapView.controller.animateTo(GeoPoint(point.latitude, point.longitude))
+                }
+            } else if (centerOnUser) {
+                // During live tracking, follow the latest point
                 val lastPoint = trackPoints.last()
                 mapView.controller.animateTo(GeoPoint(lastPoint.latitude, lastPoint.longitude))
             }

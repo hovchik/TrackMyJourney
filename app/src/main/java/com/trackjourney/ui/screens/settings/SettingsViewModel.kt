@@ -138,6 +138,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun clearExportedBackupFile() { _exportedBackupFile.value = null }
+    fun setExportError(message: String) { _exportError.value = message }
     fun clearExportError() { _exportError.value = null }
     fun clearImportResult() { _importResult.value = null }
     fun clearImportError() { _importError.value = null }

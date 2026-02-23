@@ -62,18 +62,23 @@ fun SettingsScreen(
     // Share exported backup file
     LaunchedEffect(exportedBackupFile) {
         exportedBackupFile?.let { file ->
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/json"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            try {
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    file
+                )
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(shareIntent, "Share backup"))
+            } catch (e: Exception) {
+                viewModel.setExportError("Failed to share backup: ${e.message}")
+            } finally {
+                viewModel.clearExportedBackupFile()
             }
-            context.startActivity(Intent.createChooser(shareIntent, "Share backup"))
-            viewModel.clearExportedBackupFile()
         }
     }
 

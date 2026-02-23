@@ -33,6 +33,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.model.*
 import com.trackjourney.data.repository.TrackRepository
+import com.trackjourney.ui.components.ActivityTimelineGraph
 import com.trackjourney.ui.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -47,6 +48,9 @@ class TracksViewModel @Inject constructor(
 ) : ViewModel() {
 
     val tracks: StateFlow<List<TrackSession>> = repository.getAllTracks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val tracksWithPoints: StateFlow<List<TrackWithPoints>> = repository.getAllTracksWithPoints()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _exportedFile = MutableStateFlow<java.io.File?>(null)
@@ -127,6 +131,7 @@ fun TracksScreen(
 ) {
     val context = LocalContext.current
     val tracks by viewModel.tracks.collectAsState()
+    val tracksWithPoints by viewModel.tracksWithPoints.collectAsState()
     val exportedFile by viewModel.exportedFile.collectAsState()
     val exportError by viewModel.exportError.collectAsState()
     val importResult by viewModel.importResult.collectAsState()
@@ -337,8 +342,12 @@ fun TracksScreen(
                 }
 
                 items(filteredTracks, key = { it.id }) { track ->
+                    val trackPoints = remember(tracksWithPoints, track.id) {
+                        tracksWithPoints.find { it.track.id == track.id }?.points ?: emptyList()
+                    }
                     TrackCard(
                         track = track,
+                        points = trackPoints,
                         onClick = { onTrackClick(track.id) },
                         onExport = { exportTrackId = track.id },
                         onDelete = { viewModel.deleteTrack(track.id) },
@@ -500,6 +509,7 @@ private fun EmptyTracksState(hasFilter: Boolean, filterName: String?) {
 @Composable
 private fun TrackCard(
     track: TrackSession,
+    points: List<TrackPoint>,
     onClick: () -> Unit,
     onExport: () -> Unit,
     onDelete: () -> Unit,
@@ -679,6 +689,17 @@ private fun TrackCard(
                     @Suppress("DEPRECATION")
                     Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Spacer(modifier = Modifier.height(14.dp))
+
+                    // Activity timeline graph
+                    if (points.size >= 2) {
+                        ActivityTimelineGraph(
+                            points = points,
+                            modifier = Modifier.padding(bottom = 14.dp)
+                        )
+                        @Suppress("DEPRECATION")
+                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Spacer(modifier = Modifier.height(14.dp))
+                    }
 
                     // Extra stats
                     Row(

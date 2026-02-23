@@ -831,6 +831,178 @@ class TrackRepository(
         .replace("&quot;", "\"")
         .replace("&apos;", "'")
 
+    // ─── FULL DATABASE EXPORT / IMPORT ─────────────────────
+
+    data class FullImportResult(
+        val tracksImported: Int,
+        val totalPoints: Int
+    )
+
+    suspend fun exportAllData(): File? = withContext(Dispatchers.IO) {
+        try {
+            val allTracksWithPoints = trackDao.getAllTracksWithPoints().first()
+
+            val trackExports = allTracksWithPoints.map { twp ->
+                val analysis = aiAnalysisDao.getLatestAnalysis(twp.track.id)
+                val track = twp.track
+                TrackExport(
+                    session = TrackSessionExport(
+                        id = track.id,
+                        name = track.name,
+                        startTime = track.startTime,
+                        endTime = track.endTime,
+                        distanceMeters = track.distanceMeters,
+                        avgSpeedKmh = track.avgSpeedKmh,
+                        maxSpeedKmh = track.maxSpeedKmh,
+                        activityType = track.activityType.name,
+                        avgHeartRate = track.avgHeartRate,
+                        startPlaceName = track.startPlaceName,
+                        endPlaceName = track.endPlaceName
+                    ),
+                    points = twp.points.map { pt ->
+                        TrackPointExport(
+                            latitude = pt.latitude,
+                            longitude = pt.longitude,
+                            altitude = pt.altitude,
+                            speedKmh = pt.speedKmh,
+                            bearing = pt.bearing,
+                            accuracy = pt.accuracy,
+                            timestamp = pt.timestamp,
+                            heartRate = pt.heartRate,
+                            cadence = pt.cadence,
+                            activityType = pt.activityType.name,
+                            placeName = pt.placeName,
+                            satellitesUsed = pt.satellitesUsed,
+                            isAccurate = pt.isAccurate
+                        )
+                    },
+                    healthData = twp.healthData.map { hd ->
+                        HealthDataExport(
+                            timestamp = hd.timestamp,
+                            heartRate = hd.heartRate,
+                            batteryLevel = hd.batteryLevel,
+                            cadence = hd.cadence,
+                            deviceName = hd.deviceName,
+                            deviceType = hd.deviceType.name
+                        )
+                    },
+                    aiAnalysis = analysis?.let { a ->
+                        AiAnalysisExport(
+                            detectedActivity = a.detectedActivity.name,
+                            confidence = a.confidence,
+                            summary = a.summary,
+                            suggestions = a.suggestions.split("|").filter { it.isNotBlank() },
+                            healthInsights = a.healthInsights,
+                            segmentActivities = null
+                        )
+                    }
+                )
+            }
+
+            val fullExport = FullDatabaseExport(
+                tracks = trackExports
+            )
+
+            val sdf = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.getDefault())
+            val fileName = "trackmyjourney_backup_${sdf.format(Date())}.json"
+            val dir = File(context.getExternalFilesDir(null), "backups")
+            dir.mkdirs()
+            val file = File(dir, fileName)
+            file.writeText(gson.toJson(fullExport))
+
+            Log.i(TAG, "Full database exported: ${trackExports.size} tracks, file=${file.absolutePath}")
+            file
+        } catch (e: Exception) {
+            Log.e(TAG, "Full database export failed: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun importAllData(uri: Uri): FullImportResult = withContext(Dispatchers.IO) {
+        val content = readUri(uri)
+        val fullExport = gson.fromJson(content, FullDatabaseExport::class.java)
+            ?: throw IllegalArgumentException("Invalid backup file")
+
+        var tracksImported = 0
+        var totalPoints = 0
+
+        for (trackExport in fullExport.tracks) {
+            try {
+                val session = trackExport.session
+                val trackId = UUID.randomUUID().toString()
+
+                val track = TrackSession(
+                    id = trackId,
+                    name = session.name.ifEmpty { "Imported Track" },
+                    startTime = session.startTime,
+                    endTime = session.endTime,
+                    distanceMeters = session.distanceMeters,
+                    avgSpeedKmh = session.avgSpeedKmh,
+                    maxSpeedKmh = session.maxSpeedKmh,
+                    activityType = parseActivityType(session.activityType),
+                    avgHeartRate = session.avgHeartRate,
+                    startPlaceName = session.startPlaceName,
+                    endPlaceName = session.endPlaceName,
+                    isActive = false
+                )
+                trackDao.insert(track)
+
+                val points = trackExport.points.map { pt ->
+                    TrackPoint(
+                        trackId = trackId,
+                        latitude = pt.latitude,
+                        longitude = pt.longitude,
+                        altitude = pt.altitude,
+                        speedKmh = pt.speedKmh,
+                        speedMs = pt.speedKmh / 3.6f,
+                        bearing = pt.bearing,
+                        accuracy = pt.accuracy,
+                        timestamp = pt.timestamp,
+                        heartRate = pt.heartRate,
+                        cadence = pt.cadence,
+                        activityType = parseActivityType(pt.activityType),
+                        placeName = pt.placeName,
+                        satellitesUsed = pt.satellitesUsed,
+                        isAccurate = pt.isAccurate
+                    )
+                }
+                trackPointDao.insertAll(points)
+
+                trackExport.healthData.forEach { hd ->
+                    healthDataDao.insert(HealthData(
+                        trackId = trackId,
+                        timestamp = hd.timestamp,
+                        heartRate = hd.heartRate,
+                        batteryLevel = hd.batteryLevel,
+                        cadence = hd.cadence,
+                        deviceName = hd.deviceName,
+                        deviceType = parseWearableType(hd.deviceType)
+                    ))
+                }
+
+                trackExport.aiAnalysis?.let { ai ->
+                    aiAnalysisDao.insert(AiAnalysis(
+                        trackId = trackId,
+                        detectedActivity = parseActivityType(ai.detectedActivity),
+                        confidence = ai.confidence,
+                        summary = ai.summary,
+                        suggestions = ai.suggestions.joinToString("|"),
+                        healthInsights = ai.healthInsights
+                    ))
+                    trackDao.update(track.copy(aiSummary = ai.summary))
+                }
+
+                tracksImported++
+                totalPoints += points.size
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to import track '${trackExport.session.name}': ${e.message}")
+            }
+        }
+
+        Log.i(TAG, "Full database import: $tracksImported tracks, $totalPoints points")
+        FullImportResult(tracksImported, totalPoints)
+    }
+
     // ─── LOCATION ─────────────────────────────────────────
 
     suspend fun getCurrentLocation(): android.location.Location? {

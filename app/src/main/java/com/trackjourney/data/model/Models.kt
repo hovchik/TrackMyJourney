@@ -300,6 +300,19 @@ data class ActivitySegment(
 )
 
 // ─────────────────────────────────────────────────────────
+//  FULL DATABASE EXPORT MODEL
+// ─────────────────────────────────────────────────────────
+
+data class FullDatabaseExport(
+    @SerializedName("export_version") val exportVersion: Int = 1,
+    @SerializedName("export_timestamp") val exportTimestamp: Long = System.currentTimeMillis(),
+    @SerializedName("app_version") val appVersion: String = "1.0.0",
+    @SerializedName("tracks") val tracks: List<TrackExport>,
+    @SerializedName("track_count") val trackCount: Int = tracks.size,
+    @SerializedName("total_points") val totalPoints: Int = tracks.sumOf { it.points.size }
+)
+
+// ─────────────────────────────────────────────────────────
 //  RELATION HELPERS
 // ─────────────────────────────────────────────────────────
 

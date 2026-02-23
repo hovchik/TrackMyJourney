@@ -1,5 +1,6 @@
 package com.trackjourney.ui.screens.settings
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.bluetooth.WearableConnectionState
@@ -65,4 +66,61 @@ class SettingsViewModel @Inject constructor(
             repository.updateSettings { updateExportFormat(format) }
         }
     }
+
+    // ─── Full database export / import ──────────────────
+
+    private val _exportedBackupFile = MutableStateFlow<java.io.File?>(null)
+    val exportedBackupFile: StateFlow<java.io.File?> = _exportedBackupFile.asStateFlow()
+
+    private val _exportError = MutableStateFlow<String?>(null)
+    val exportError: StateFlow<String?> = _exportError.asStateFlow()
+
+    private val _importResult = MutableStateFlow<TrackRepository.FullImportResult?>(null)
+    val importResult: StateFlow<TrackRepository.FullImportResult?> = _importResult.asStateFlow()
+
+    private val _importError = MutableStateFlow<String?>(null)
+    val importError: StateFlow<String?> = _importError.asStateFlow()
+
+    private val _isExporting = MutableStateFlow(false)
+    val isExporting: StateFlow<Boolean> = _isExporting.asStateFlow()
+
+    private val _isImporting = MutableStateFlow(false)
+    val isImporting: StateFlow<Boolean> = _isImporting.asStateFlow()
+
+    fun exportAllData() {
+        viewModelScope.launch {
+            _isExporting.value = true
+            try {
+                val file = repository.exportAllData()
+                if (file != null) {
+                    _exportedBackupFile.value = file
+                } else {
+                    _exportError.value = "Export failed"
+                }
+            } catch (e: Exception) {
+                _exportError.value = e.message ?: "Export failed"
+            } finally {
+                _isExporting.value = false
+            }
+        }
+    }
+
+    fun importAllData(uri: Uri) {
+        viewModelScope.launch {
+            _isImporting.value = true
+            try {
+                val result = repository.importAllData(uri)
+                _importResult.value = result
+            } catch (e: Exception) {
+                _importError.value = e.message ?: "Import failed"
+            } finally {
+                _isImporting.value = false
+            }
+        }
+    }
+
+    fun clearExportedBackupFile() { _exportedBackupFile.value = null }
+    fun clearExportError() { _exportError.value = null }
+    fun clearImportResult() { _importResult.value = null }
+    fun clearImportError() { _importError.value = null }
 }

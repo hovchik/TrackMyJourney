@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -38,12 +39,66 @@ import com.trackjourney.ui.theme.*
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
     val satelliteInfo by viewModel.satelliteInfo.collectAsState()
     val motionState by viewModel.motionState.collectAsState()
     val wearableState by viewModel.wearableState.collectAsState()
     val wearableReading by viewModel.wearableReading.collectAsState()
+    val exportedBackupFile by viewModel.exportedBackupFile.collectAsState()
+    val exportError by viewModel.exportError.collectAsState()
+    val importResult by viewModel.importResult.collectAsState()
+    val importError by viewModel.importError.collectAsState()
+    val isExporting by viewModel.isExporting.collectAsState()
+    val isImporting by viewModel.isImporting.collectAsState()
 
+    // File picker for importing backup
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.importAllData(it) }
+    }
+
+    // Share exported backup file
+    LaunchedEffect(exportedBackupFile) {
+        exportedBackupFile?.let { file ->
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Share backup"))
+            viewModel.clearExportedBackupFile()
+        }
+    }
+
+    // Snackbar for status messages
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(exportError) {
+        exportError?.let {
+            snackbarHostState.showSnackbar("Export failed: $it")
+            viewModel.clearExportError()
+        }
+    }
+    LaunchedEffect(importError) {
+        importError?.let {
+            snackbarHostState.showSnackbar("Import failed: $it")
+            viewModel.clearImportError()
+        }
+    }
+    LaunchedEffect(importResult) {
+        importResult?.let {
+            snackbarHostState.showSnackbar("Imported ${it.tracksImported} tracks (${it.totalPoints} points)")
+            viewModel.clearImportResult()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -484,6 +539,99 @@ fun SettingsScreen(
             }
         }
 
+        // ── DATA MANAGEMENT ─────────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Data Management",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Backup & Restore",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Export or import all tracks, GPS points, health data, and AI analyses as a single backup file.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Export button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Button(
+                            onClick = { viewModel.exportAllData() },
+                            enabled = !isExporting && !isImporting,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                        ) {
+                            if (isExporting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Filled.FileDownload,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (isExporting) "Exporting..." else "Export All")
+                        }
+
+                        // Import button
+                        OutlinedButton(
+                            onClick = {
+                                importLauncher.launch(arrayOf(
+                                    "application/json",
+                                    "*/*"
+                                ))
+                            },
+                            enabled = !isExporting && !isImporting,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            if (isImporting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Filled.FileUpload,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (isImporting) "Importing..." else "Import All")
+                        }
+                    }
+                }
+            }
+        }
+
         // ── ABOUT ───────────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(16.dp))
@@ -512,6 +660,13 @@ fun SettingsScreen(
 
         item { Spacer(modifier = Modifier.height(80.dp)) }
     }
+
+    // Snackbar
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter)
+    )
+    } // end Box
 }
 
 private data class PermissionItem(

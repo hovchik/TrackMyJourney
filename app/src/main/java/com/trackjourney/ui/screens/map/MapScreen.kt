@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +15,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -37,6 +42,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private val OverlayDark = Color(0xFF1A1A2E)
+private val OverlayCard = Color(0xFF1E1E30)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
@@ -50,7 +58,6 @@ fun MapScreen(
     var trackDropdownExpanded by remember { mutableStateOf(false) }
     val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy  HH:mm", Locale.getDefault()) }
 
-    // Permission handling
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -67,261 +74,253 @@ fun MapScreen(
         Manifest.permission.POST_NOTIFICATIONS
     )
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Top app bar
-        TopAppBar(
-            title = { Text("Map", fontWeight = FontWeight.Bold) },
-            navigationIcon = {
-                if (uiState.isViewingSavedTrack) {
-                    IconButton(onClick = {
-                        viewModel.clearSavedTrack()
-                        onBackFromTrack?.invoke()
-                    }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            }
+    // Full-screen map with floating overlays
+    Box(modifier = Modifier.fillMaxSize()) {
+
+        // ── Map (fills entire screen) ───────────────────────
+        OsmMapView(
+            modifier = Modifier.fillMaxSize(),
+            trackPoints = uiState.trackPoints,
+            currentLatitude = uiState.currentLatitude,
+            currentLongitude = uiState.currentLongitude,
+            centerOnUser = uiState.isTracking,
+            showActivityColors = !uiState.isViewingSavedTrack,
+            showSpeedColors = uiState.isViewingSavedTrack,
+            showDirectionArrows = uiState.isViewingSavedTrack
         )
 
-        // Track selector dropdown (visible when not tracking and tracks exist)
-        if (!uiState.isTracking && allTracks.isNotEmpty()) {
-            ExposedDropdownMenuBox(
-                expanded = trackDropdownExpanded,
-                onExpandedChange = { trackDropdownExpanded = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                OutlinedTextField(
-                    value = if (uiState.isViewingSavedTrack)
-                        uiState.viewedTrackName
-                    else
-                        "",
-                    onValueChange = {},
-                    readOnly = true,
-                    placeholder = { Text("Select a track") },
-                    label = { Text("Track") },
-                    leadingIcon = { Icon(Icons.Filled.Route, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trackDropdownExpanded) },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
-                )
-                ExposedDropdownMenu(
-                    expanded = trackDropdownExpanded,
-                    onDismissRequest = { trackDropdownExpanded = false }
+        // ── Top overlay: track selector OR tracking info ────
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(top = 8.dp)
+        ) {
+            if (uiState.isTracking) {
+                // Live tracking stats panel
+                AnimatedVisibility(
+                    visible = true,
+                    enter = slideInVertically() + fadeIn(),
+                    exit = slideOutVertically() + fadeOut()
                 ) {
-                    allTracks.forEach { track ->
-                        val (accentColor, _, actIcon) = activityDisplayInfo(track.activityType)
-                        val distKm = track.distanceMeters / 1000.0
-                        val durationMs = (track.endTime ?: track.startTime) - track.startTime
-                        val durationMin = durationMs / 60_000
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        actIcon,
-                                        contentDescription = null,
-                                        tint = accentColor,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            track.name.ifEmpty { "Unnamed Track" },
-                                            fontWeight = FontWeight.Medium,
-                                            fontSize = 14.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            dateFormatter.format(Date(track.startTime)),
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        String.format(Locale.US, "%.1f km", distKm),
-                                        fontSize = 12.sp,
-                                        color = accentColor,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        if (durationMin >= 60) "${durationMin / 60}h ${durationMin % 60}m"
-                                        else "${durationMin}m",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            },
-                            onClick = {
-                                trackDropdownExpanded = false
-                                viewModel.loadSavedTrack(track.id)
-                            }
-                        )
-                    }
+                    TrackingStatsBar(uiState)
                 }
-            }
-
-            // Show track stats when viewing a saved track
-            if (uiState.isViewingSavedTrack) {
-                Text(
-                    "${uiState.pointCount} points | ${String.format("%.2f", uiState.distanceKm)} km",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+            } else if (allTracks.isNotEmpty()) {
+                // Floating track selector
+                FloatingTrackSelector(
+                    tracks = allTracks,
+                    isViewingSavedTrack = uiState.isViewingSavedTrack,
+                    viewedTrackName = uiState.viewedTrackName,
+                    expanded = trackDropdownExpanded,
+                    onExpandedChange = { trackDropdownExpanded = it },
+                    dateFormatter = dateFormatter,
+                    onSelect = { track ->
+                        trackDropdownExpanded = false
+                        viewModel.loadSavedTrack(track.id)
+                    },
+                    onClear = {
+                        viewModel.clearSavedTrack()
+                        onBackFromTrack?.invoke()
+                    }
                 )
             }
         }
 
-        // Map area — takes remaining space
-        Box(modifier = Modifier.weight(1f)) {
-            // Map
-            OsmMapView(
-                modifier = Modifier.fillMaxSize(),
-                trackPoints = uiState.trackPoints,
-                currentLatitude = uiState.currentLatitude,
-                currentLongitude = uiState.currentLongitude,
-                centerOnUser = uiState.isTracking,
-                showActivityColors = !uiState.isViewingSavedTrack,
-                showSpeedColors = uiState.isViewingSavedTrack,
-                showDirectionArrows = uiState.isViewingSavedTrack
-            )
-
-            // Top stats bar (shown during tracking)
-            androidx.compose.animation.AnimatedVisibility(
-                visible = uiState.isTracking,
-                modifier = Modifier.align(Alignment.TopCenter),
-                enter = slideInVertically() + fadeIn(),
-                exit = slideOutVertically() + fadeOut()
-            ) {
-                TrackingStatsBar(uiState)
+        // ── Right-side chips (GPS + Wearable) ───────────────
+        AnimatedVisibility(
+            visible = uiState.isTracking,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 80.dp, end = 12.dp),
+            enter = slideInHorizontally { it } + fadeIn(),
+            exit = slideOutHorizontally { it } + fadeOut()
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                GpsSatelliteChip(
+                    totalVisible = uiState.satelliteInfo.totalVisible,
+                    usedInFix = uiState.satelliteInfo.usedInFix,
+                    accuracy = uiState.gpsAccuracy
+                )
+                WearableStatusChip(
+                    connectionState = uiState.wearableState,
+                    heartRate = uiState.wearableReading?.heartRate,
+                    batteryLevel = uiState.wearableReading?.batteryLevel
+                )
             }
+        }
 
-            // Right side chips — GPS + Wearable, only visible during tracking
-            if (uiState.isTracking) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 60.dp, end = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+        // ── Track info pill (when viewing saved track) ──────
+        AnimatedVisibility(
+            visible = uiState.isViewingSavedTrack,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 72.dp),
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            val (accentColor, actLabel, actIcon) = activityDisplayInfo(uiState.currentActivity)
+            Surface(
+                color = OverlayDark.copy(alpha = 0.85f),
+                shape = RoundedCornerShape(20.dp),
+                shadowElevation = 6.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    GpsSatelliteChip(
-                        totalVisible = uiState.satelliteInfo.totalVisible,
-                        usedInFix = uiState.satelliteInfo.usedInFix,
-                        accuracy = uiState.gpsAccuracy
+                    Icon(actIcon, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                    Text(
+                        "${uiState.pointCount} pts",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 12.sp
                     )
-                    WearableStatusChip(
-                        connectionState = uiState.wearableState,
-                        heartRate = uiState.wearableReading?.heartRate,
-                        batteryLevel = uiState.wearableReading?.batteryLevel
+                    Text("\u2022", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp)
+                    Text(
+                        String.format("%.2f km", uiState.distanceKm),
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
+        }
 
-            // Activity badge at bottom center
+        // ── Activity badge (bottom center, during tracking) ─
+        AnimatedVisibility(
+            visible = uiState.isTracking,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 24.dp),
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut()
+        ) {
+            ActivityBadge(activity = uiState.currentActivity, speed = uiState.currentSpeed)
+        }
+
+        // ── Speed legend (bottom start, saved track) ────────
+        AnimatedVisibility(
+            visible = uiState.isViewingSavedTrack,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 12.dp, bottom = 24.dp),
+            enter = slideInHorizontally { -it } + fadeIn(),
+            exit = slideOutHorizontally { -it } + fadeOut()
+        ) {
+            SpeedLegend()
+        }
+
+        // ── Control buttons (bottom end) ────────────────────
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             if (uiState.isTracking) {
-                ActivityBadge(
-                    activity = uiState.currentActivity,
-                    speed = uiState.currentSpeed,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp)
-                )
-            }
-
-            // Speed legend when viewing saved track
-            if (uiState.isViewingSavedTrack) {
-                SpeedLegend(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 12.dp, bottom = 16.dp)
-                )
-            }
-
-            // Control buttons — bottom end
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                if (uiState.isTracking) {
-                    // Pause/Resume
-                    SmallFloatingActionButton(
-                        onClick = {
-                            if (uiState.isPaused) viewModel.resumeTracking()
-                            else viewModel.pauseTracking()
-                        },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                // Pause / Resume pill
+                Surface(
+                    onClick = {
+                        if (uiState.isPaused) viewModel.resumeTracking()
+                        else viewModel.pauseTracking()
+                    },
+                    color = Color.White,
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(
                             if (uiState.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                            contentDescription = if (uiState.isPaused) "Resume" else "Pause",
+                            contentDescription = null,
+                            tint = OverlayDark,
                             modifier = Modifier.size(18.dp)
                         )
+                        Text(
+                            if (uiState.isPaused) "Resume" else "Pause",
+                            color = OverlayDark,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
+                }
 
-                    // Stop
-                    FloatingActionButton(
-                        onClick = { viewModel.stopTracking() },
-                        containerColor = MaterialTheme.colorScheme.error,
-                        shape = CircleShape,
-                        modifier = Modifier.size(52.dp)
-                    ) {
-                        Icon(
-                            Icons.Filled.Stop,
-                            contentDescription = "Stop",
-                            modifier = Modifier.size(22.dp),
-                            tint = Color.White
-                        )
-                    }
-                } else {
-                    // Start
-                    FloatingActionButton(
-                        onClick = { showTrackNameDialog = true },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        shape = CircleShape,
-                        modifier = Modifier.size(52.dp)
-                    ) {
-                        Icon(
-                            Icons.Filled.PlayArrow,
-                            contentDescription = "Start",
-                            modifier = Modifier.size(24.dp),
-                            tint = Color.White
-                        )
-                    }
+                // Stop button
+                FloatingActionButton(
+                    onClick = { viewModel.stopTracking() },
+                    containerColor = Error,
+                    shape = CircleShape,
+                    modifier = Modifier.size(60.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 8.dp,
+                        pressedElevation = 12.dp
+                    )
+                ) {
+                    Icon(
+                        Icons.Filled.Stop,
+                        contentDescription = "Stop",
+                        modifier = Modifier.size(28.dp),
+                        tint = Color.White
+                    )
+                }
+            } else if (!uiState.isViewingSavedTrack) {
+                // Start tracking FAB
+                LargeFloatingActionButton(
+                    onClick = { showTrackNameDialog = true },
+                    containerColor = Primary,
+                    shape = RoundedCornerShape(20.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 8.dp,
+                        pressedElevation = 12.dp
+                    )
+                ) {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = "Start Tracking",
+                        modifier = Modifier.size(32.dp),
+                        tint = Color.White
+                    )
                 }
             }
         }
     }
 
-    // Track name dialog
+    // ── Track name dialog ───────────────────────────────────
     if (showTrackNameDialog) {
         AlertDialog(
             onDismissRequest = { showTrackNameDialog = false },
-            title = { Text("Start New Track") },
+            title = { Text("Start New Track", fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
                     value = trackName,
                     onValueChange = { trackName = it },
                     label = { Text("Track name (optional)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    permissionLauncher.launch(requiredPermissions)
-                    viewModel.startTracking(trackName)
-                    showTrackNameDialog = false
-                    trackName = ""
-                }) {
+                Button(
+                    onClick = {
+                        permissionLauncher.launch(requiredPermissions)
+                        viewModel.startTracking(trackName)
+                        showTrackNameDialog = false
+                        trackName = ""
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text("Start")
                 }
             },
@@ -332,11 +331,12 @@ fun MapScreen(
                 }) {
                     Text("Cancel")
                 }
-            }
+            },
+            shape = RoundedCornerShape(20.dp)
         )
     }
 
-    // Track completion illustration
+    // ── Track completion dialog ─────────────────────────────
     uiState.completedTrack?.let { completed ->
         TrackCompletionDialog(
             info = completed,
@@ -347,61 +347,222 @@ fun MapScreen(
             }
         )
     }
-
 }
 
-// --- TRACKING STATS BAR ---
+// ═══════════════════════════════════════════════════════════
+//  FLOATING TRACK SELECTOR
+// ═══════════════════════════════════════════════════════════
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FloatingTrackSelector(
+    tracks: List<TrackSession>,
+    isViewingSavedTrack: Boolean,
+    viewedTrackName: String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    dateFormatter: SimpleDateFormat,
+    onSelect: (TrackSession) -> Unit,
+    onClear: () -> Unit
+) {
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = onExpandedChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        // Search-bar-style selector
+        Surface(
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth()
+                .shadow(8.dp, RoundedCornerShape(16.dp)),
+            color = Color.White,
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isViewingSavedTrack) {
+                    val track = tracks.find { it.name == viewedTrackName || (it.name.isEmpty() && viewedTrackName == "Unnamed Track") }
+                    val (accentColor, _, actIcon) = activityDisplayInfo(track?.activityType ?: ActivityType.UNKNOWN)
+                    Surface(
+                        color = accentColor.copy(alpha = 0.12f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(actIcon, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        viewedTrackName,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                        color = OverlayDark
+                    )
+                    IconButton(
+                        onClick = onClear,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Clear",
+                            tint = Color.Gray,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                } else {
+                    Icon(
+                        Icons.Filled.Search,
+                        contentDescription = null,
+                        tint = Color.Gray,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        "Select a track to view",
+                        color = Color.Gray,
+                        fontSize = 15.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        Icons.Filled.UnfoldMore,
+                        contentDescription = null,
+                        tint = Color.Gray,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        // Dropdown menu
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { onExpandedChange(false) }
+        ) {
+            tracks.forEach { track ->
+                val (accentColor, _, actIcon) = activityDisplayInfo(track.activityType)
+                val distKm = track.distanceMeters / 1000.0
+                val durationMs = (track.endTime ?: track.startTime) - track.startTime
+                val durationMin = durationMs / 60_000
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = accentColor.copy(alpha = 0.12f),
+                                shape = CircleShape,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(actIcon, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    track.name.ifEmpty { "Unnamed Track" },
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    dateFormatter.format(Date(track.startTime)),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    String.format(Locale.US, "%.1f km", distKm),
+                                    fontSize = 12.sp,
+                                    color = accentColor,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    if (durationMin >= 60) "${durationMin / 60}h ${durationMin % 60}m"
+                                    else "${durationMin}m",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    onClick = { onSelect(track) },
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TRACKING STATS BAR
+// ═══════════════════════════════════════════════════════════
 
 @Composable
 private fun TrackingStatsBar(state: MapUiState) {
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-        ),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            .padding(horizontal = 16.dp),
+        color = OverlayDark.copy(alpha = 0.88f),
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 10.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 12.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             StatItem(
                 value = String.format("%.2f", state.distanceKm),
                 unit = "km",
-                label = "Distance"
+                label = "Distance",
+                accentColor = PrimaryLight
             )
+            StatDivider()
             StatItem(
                 value = String.format("%.1f", state.currentSpeed),
                 unit = "km/h",
-                label = "Speed"
+                label = "Speed",
+                accentColor = Accent
             )
+            StatDivider()
             StatItem(
                 value = state.pointCount.toString(),
                 unit = "pts",
-                label = "Points"
+                label = "Points",
+                accentColor = Secondary
             )
+            StatDivider()
             StatItem(
                 value = "${state.satelliteInfo.usedInFix}/${state.satelliteInfo.totalVisible}",
                 unit = "",
-                label = "Satellites",
-                valueColor = when {
+                label = "Sats",
+                accentColor = when {
                     state.satelliteInfo.usedInFix >= 8 -> PrimaryLight
                     state.satelliteInfo.usedInFix >= 4 -> Accent
                     else -> Error
                 }
             )
-            // Show heart rate in stats bar if wearable connected
             state.wearableReading?.heartRate?.let { hr ->
+                StatDivider()
                 StatItem(
                     value = hr.toString(),
                     unit = "bpm",
-                    label = "Heart Rate",
-                    valueColor = when {
+                    label = "Heart",
+                    accentColor = when {
                         hr < 60 -> Accent
                         hr <= 140 -> PrimaryLight
                         else -> Error
@@ -417,33 +578,47 @@ private fun StatItem(
     value: String,
     unit: String,
     label: String,
-    valueColor: Color = MaterialTheme.colorScheme.onSurface
+    accentColor: Color
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 text = value,
-                fontSize = 20.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = valueColor
+                color = Color.White
             )
             if (unit.isNotEmpty()) {
                 Text(
                     text = " $unit",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.5f)
                 )
             }
         }
+        Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = label,
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            color = accentColor.copy(alpha = 0.8f)
         )
     }
 }
 
-// --- ACTIVITY BADGE ---
+@Composable
+private fun StatDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(28.dp)
+            .background(Color.White.copy(alpha = 0.12f))
+    )
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ACTIVITY BADGE
+// ═══════════════════════════════════════════════════════════
 
 @Composable
 private fun ActivityBadge(activity: ActivityType, speed: Float, modifier: Modifier = Modifier) {
@@ -457,56 +632,87 @@ private fun ActivityBadge(activity: ActivityType, speed: Float, modifier: Modifi
         ActivityType.UNKNOWN    -> Triple(Icons.Filled.QuestionMark, Stationary, "Detecting...")
     }
 
-    Card(
+    Surface(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.9f)),
-        shape = RoundedCornerShape(24.dp)
+        color = color,
+        shape = RoundedCornerShape(24.dp),
+        shadowElevation = 8.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-            Text(label, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            Text(label, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            if (speed > 0.5f) {
+                Text(
+                    "\u2022",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 14.sp
+                )
+                Text(
+                    String.format("%.1f km/h", speed),
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 }
 
-// --- SPEED LEGEND ---
+// ═══════════════════════════════════════════════════════════
+//  SPEED LEGEND (gradient bar)
+// ═══════════════════════════════════════════════════════════
 
 @Composable
 private fun SpeedLegend(modifier: Modifier = Modifier) {
-    Card(
+    Surface(
         modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-        ),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        color = OverlayDark.copy(alpha = 0.85f),
+        shape = RoundedCornerShape(14.dp),
+        shadowElevation = 4.dp
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Speed", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Surface(color = Color(0xFF4CAF50), shape = CircleShape, modifier = Modifier.size(8.dp)) {}
-                Text("Slow", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Speed",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White.copy(alpha = 0.7f),
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            // Gradient bar
+            Canvas(
+                modifier = Modifier
+                    .width(14.dp)
+                    .height(80.dp)
+                    .clip(RoundedCornerShape(7.dp))
+            ) {
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFFFF5722),  // Fast — red-orange
+                            Color(0xFFFFC107),  // Medium — amber
+                            Color(0xFF4CAF50)   // Slow — green
+                        )
+                    ),
+                    cornerRadius = CornerRadius(7.dp.toPx())
+                )
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Surface(color = Color(0xFFFFC107), shape = CircleShape, modifier = Modifier.size(8.dp)) {}
-                Text("Medium", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Surface(color = Color(0xFFFF5722), shape = CircleShape, modifier = Modifier.size(8.dp)) {}
-                Text("Fast", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Slow", fontSize = 9.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Medium)
         }
     }
 }
 
-// --- GPS SATELLITE CHIP ---
+// ═══════════════════════════════════════════════════════════
+//  GPS SATELLITE CHIP
+// ═══════════════════════════════════════════════════════════
 
 @Composable
 private fun GpsSatelliteChip(
@@ -523,26 +729,32 @@ private fun GpsSatelliteChip(
         else -> Error
     }
 
-    Card(
+    Surface(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = signalColor.copy(alpha = 0.9f)),
-        shape = RoundedCornerShape(20.dp)
+        color = OverlayDark.copy(alpha = 0.82f),
+        shape = RoundedCornerShape(14.dp),
+        shadowElevation = 4.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(signalColor, CircleShape)
+            )
             Icon(
                 Icons.Filled.SatelliteAlt,
                 contentDescription = null,
-                tint = Color.White,
+                tint = Color.White.copy(alpha = 0.8f),
                 modifier = Modifier.size(14.dp)
             )
             Text(
                 text = buildString {
                     append("$usedInFix/$totalVisible")
-                    accuracy?.let { append(" | ${String.format("%.0f", it)}m") }
+                    accuracy?.let { append("  ${String.format("%.0f", it)}m") }
                 },
                 color = Color.White,
                 fontSize = 11.sp,
@@ -552,7 +764,9 @@ private fun GpsSatelliteChip(
     }
 }
 
-// --- WEARABLE STATUS CHIP ---
+// ═══════════════════════════════════════════════════════════
+//  WEARABLE STATUS CHIP
+// ═══════════════════════════════════════════════════════════
 
 @Composable
 private fun WearableStatusChip(
@@ -561,13 +775,13 @@ private fun WearableStatusChip(
     batteryLevel: Int?,
     modifier: Modifier = Modifier
 ) {
-    val (chipColor, text, icon) = when (connectionState) {
+    val (indicatorColor, text, icon) = when (connectionState) {
         is WearableConnectionState.Connected -> {
             val displayText = buildString {
                 heartRate?.let { append("$it bpm") }
                 batteryLevel?.let {
-                    if (isNotEmpty()) append(" | ")
-                    append("$it%")
+                    if (isNotEmpty()) append("  $it%")
+                    else append("$it%")
                 }
                 if (isEmpty()) append(connectionState.device.name)
             }
@@ -575,24 +789,30 @@ private fun WearableStatusChip(
         }
         is WearableConnectionState.Connecting -> Triple(Accent, "Connecting...", Icons.Filled.Watch)
         is WearableConnectionState.Scanning -> Triple(Accent, "Scanning...", Icons.Filled.BluetoothSearching)
-        is WearableConnectionState.Error -> return // Don't show chip on error
-        is WearableConnectionState.Disconnected -> return // Don't show chip when disconnected
+        is WearableConnectionState.Error -> return
+        is WearableConnectionState.Disconnected -> return
     }
 
-    Card(
+    Surface(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = chipColor.copy(alpha = 0.9f)),
-        shape = RoundedCornerShape(20.dp)
+        color = OverlayDark.copy(alpha = 0.82f),
+        shape = RoundedCornerShape(14.dp),
+        shadowElevation = 4.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(indicatorColor, CircleShape)
+            )
             Icon(
                 icon,
                 contentDescription = null,
-                tint = Color.White,
+                tint = Color.White.copy(alpha = 0.8f),
                 modifier = Modifier.size(14.dp)
             )
             Text(
@@ -605,7 +825,9 @@ private fun WearableStatusChip(
     }
 }
 
-// --- TRACK COMPLETION DIALOG (Horizon Landscape Card) ---
+// ═══════════════════════════════════════════════════════════
+//  TRACK COMPLETION DIALOG
+// ═══════════════════════════════════════════════════════════
 
 @Composable
 private fun TrackCompletionDialog(
@@ -628,8 +850,8 @@ private fun TrackCompletionDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(24.dp),
-            shape = RoundedCornerShape(24.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            shape = RoundedCornerShape(28.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
         ) {
             Column {
                 // Landscape illustration
@@ -652,43 +874,32 @@ private fun TrackCompletionDialog(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Surface(
-                            color = Color.White.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(16.dp)
+                            color = Color.White.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(20.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(
-                                    activityIcon,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    activityLabel,
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Icon(activityIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Text(activityLabel, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "Journey Complete",
                             color = Color.White,
-                            fontSize = 22.sp,
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
-                // Track name
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                        .padding(horizontal = 20.dp, vertical = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -699,7 +910,6 @@ private fun TrackCompletionDialog(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    // Place names
                     if (info.startPlace != null || info.endPlace != null) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
@@ -720,85 +930,57 @@ private fun TrackCompletionDialog(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Stats row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        CompletionStat(
-                            value = String.format(Locale.US, "%.2f", info.distanceKm),
-                            unit = "km",
-                            label = "Distance",
-                            color = accentColor
-                        )
-                        CompletionStat(
-                            value = durationText,
-                            unit = "",
-                            label = "Duration",
-                            color = Secondary
-                        )
-                        CompletionStat(
-                            value = String.format(Locale.US, "%.1f", info.avgSpeedKmh),
-                            unit = "km/h",
-                            label = "Avg Speed",
-                            color = Walking
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        CompletionStat(
-                            value = String.format(Locale.US, "%.1f", info.maxSpeedKmh),
-                            unit = "km/h",
-                            label = "Max Speed",
-                            color = Accent
-                        )
-                        CompletionStat(
-                            value = String.format(Locale.US, "%.0f", info.caloriesBurned),
-                            unit = "kcal",
-                            label = "Calories",
-                            color = Running
-                        )
-                        CompletionStat(
-                            value = info.pointCount.toString(),
-                            unit = "pts",
-                            label = "GPS Points",
-                            color = Primary
-                        )
-                    }
-
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Battery usage
-                    if (info.batteryStart != null && info.batteryEnd != null) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Filled.BatteryStd,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                "Battery: ${info.batteryStart}% → ${info.batteryEnd}% (${info.batteryStart - info.batteryEnd}% used)",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    // Stats grid
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        CompletionStat(String.format(Locale.US, "%.2f", info.distanceKm), "km", "Distance", accentColor)
+                        CompletionStat(durationText, "", "Duration", Secondary)
+                        CompletionStat(String.format(Locale.US, "%.1f", info.avgSpeedKmh), "km/h", "Avg Speed", Walking)
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        CompletionStat(String.format(Locale.US, "%.1f", info.maxSpeedKmh), "km/h", "Max Speed", Accent)
+                        CompletionStat(String.format(Locale.US, "%.0f", info.caloriesBurned), "kcal", "Calories", Running)
+                        CompletionStat(info.pointCount.toString(), "pts", "GPS Points", Primary)
+                    }
+
+                    // Battery
+                    if (info.batteryStart != null && info.batteryEnd != null) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.BatteryStd,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "${info.batteryStart}% \u2192 ${info.batteryEnd}%  (${info.batteryStart - info.batteryEnd}% used)",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     // Action buttons
                     Row(
@@ -818,11 +1000,7 @@ private fun TrackCompletionDialog(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = accentColor)
                         ) {
-                            Icon(
-                                Icons.Filled.Map,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("View on Map")
                         }
@@ -842,29 +1020,18 @@ private fun CompletionStat(
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                value,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = color
-            )
+            Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
             if (unit.isNotEmpty()) {
-                Text(
-                    " $unit",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(" $unit", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Text(
-            label,
-            fontSize = 10.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-// --- HORIZON LANDSCAPE ILLUSTRATION ---
+// ═══════════════════════════════════════════════════════════
+//  HORIZON LANDSCAPE ILLUSTRATION
+// ═══════════════════════════════════════════════════════════
 
 @Composable
 private fun HorizonLandscape(
@@ -873,21 +1040,21 @@ private fun HorizonLandscape(
     modifier: Modifier = Modifier
 ) {
     val skyTop = when (activityType) {
-        ActivityType.WALKING    -> Color(0xFF1A237E) // deep indigo
-        ActivityType.RUNNING    -> Color(0xFFE65100) // deep orange
-        ActivityType.CYCLING    -> Color(0xFF0D47A1) // deep blue
-        ActivityType.DRIVING    -> Color(0xFF4A148C) // deep purple
-        ActivityType.FLYING     -> Color(0xFF880E4F) // deep pink
-        ActivityType.STATIONARY -> Color(0xFF37474F) // blue-grey
+        ActivityType.WALKING    -> Color(0xFF1A237E)
+        ActivityType.RUNNING    -> Color(0xFFE65100)
+        ActivityType.CYCLING    -> Color(0xFF0D47A1)
+        ActivityType.DRIVING    -> Color(0xFF4A148C)
+        ActivityType.FLYING     -> Color(0xFF880E4F)
+        ActivityType.STATIONARY -> Color(0xFF37474F)
         ActivityType.UNKNOWN    -> Color(0xFF37474F)
     }
     val skyBottom = when (activityType) {
-        ActivityType.WALKING    -> Color(0xFF66BB6A) // green horizon
-        ActivityType.RUNNING    -> Color(0xFFFFCC80) // warm horizon
-        ActivityType.CYCLING    -> Color(0xFF42A5F5) // blue horizon
-        ActivityType.DRIVING    -> Color(0xFFCE93D8) // purple horizon
-        ActivityType.FLYING     -> Color(0xFFF48FB1) // pink horizon
-        ActivityType.STATIONARY -> Color(0xFF78909C) // grey horizon
+        ActivityType.WALKING    -> Color(0xFF66BB6A)
+        ActivityType.RUNNING    -> Color(0xFFFFCC80)
+        ActivityType.CYCLING    -> Color(0xFF42A5F5)
+        ActivityType.DRIVING    -> Color(0xFFCE93D8)
+        ActivityType.FLYING     -> Color(0xFFF48FB1)
+        ActivityType.STATIONARY -> Color(0xFF78909C)
         ActivityType.UNKNOWN    -> Color(0xFF78909C)
     }
     val silhouetteColor = accentColor.copy(alpha = 0.35f)
@@ -897,7 +1064,6 @@ private fun HorizonLandscape(
         val w = size.width
         val h = size.height
 
-        // Sky gradient
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(skyTop, skyBottom),
@@ -906,24 +1072,20 @@ private fun HorizonLandscape(
             )
         )
 
-        // Ground strip
         drawRect(
             color = silhouetteDark,
             topLeft = Offset(0f, h * 0.78f),
-            size = androidx.compose.ui.geometry.Size(w, h * 0.22f)
+            size = Size(w, h * 0.22f)
         )
 
-        // Draw silhouette based on activity type
         when (activityType) {
             ActivityType.WALKING, ActivityType.RUNNING -> {
-                // Mountain silhouette
                 val mountainPath = Path().apply {
                     moveTo(0f, h * 0.78f)
-                    // Mountain range
                     lineTo(w * 0.08f, h * 0.55f)
                     lineTo(w * 0.15f, h * 0.42f)
                     lineTo(w * 0.22f, h * 0.52f)
-                    lineTo(w * 0.30f, h * 0.28f) // tallest peak
+                    lineTo(w * 0.30f, h * 0.28f)
                     lineTo(w * 0.38f, h * 0.48f)
                     lineTo(w * 0.45f, h * 0.38f)
                     lineTo(w * 0.52f, h * 0.55f)
@@ -941,10 +1103,8 @@ private fun HorizonLandscape(
                 drawPath(mountainPath, color = silhouetteDark.copy(alpha = 0.5f), style = Fill)
             }
             ActivityType.DRIVING, ActivityType.CYCLING -> {
-                // City skyline silhouette
                 val cityPath = Path().apply {
                     moveTo(0f, h * 0.78f)
-                    // Buildings of various heights
                     lineTo(0f, h * 0.55f)
                     lineTo(w * 0.04f, h * 0.55f)
                     lineTo(w * 0.04f, h * 0.68f)
@@ -955,7 +1115,7 @@ private fun HorizonLandscape(
                     lineTo(w * 0.18f, h * 0.62f)
                     lineTo(w * 0.18f, h * 0.48f)
                     lineTo(w * 0.22f, h * 0.48f)
-                    lineTo(w * 0.22f, h * 0.32f) // tall tower
+                    lineTo(w * 0.22f, h * 0.32f)
                     lineTo(w * 0.26f, h * 0.32f)
                     lineTo(w * 0.26f, h * 0.55f)
                     lineTo(w * 0.30f, h * 0.55f)
@@ -969,7 +1129,7 @@ private fun HorizonLandscape(
                     lineTo(w * 0.50f, h * 0.58f)
                     lineTo(w * 0.50f, h * 0.42f)
                     lineTo(w * 0.56f, h * 0.42f)
-                    lineTo(w * 0.56f, h * 0.28f) // tallest building
+                    lineTo(w * 0.56f, h * 0.28f)
                     lineTo(w * 0.62f, h * 0.28f)
                     lineTo(w * 0.62f, h * 0.50f)
                     lineTo(w * 0.66f, h * 0.50f)
@@ -994,11 +1154,9 @@ private fun HorizonLandscape(
                 drawPath(cityPath, color = silhouetteDark.copy(alpha = 0.6f), style = Fill)
             }
             ActivityType.FLYING -> {
-                // Cloud layers silhouette
                 val cloudPath = Path().apply {
                     moveTo(0f, h * 0.78f)
                     lineTo(0f, h * 0.65f)
-                    // Wavy cloud layers
                     cubicTo(w * 0.1f, h * 0.55f, w * 0.2f, h * 0.65f, w * 0.3f, h * 0.58f)
                     cubicTo(w * 0.4f, h * 0.50f, w * 0.5f, h * 0.62f, w * 0.6f, h * 0.52f)
                     cubicTo(w * 0.7f, h * 0.45f, w * 0.8f, h * 0.58f, w * 0.9f, h * 0.50f)
@@ -1010,7 +1168,6 @@ private fun HorizonLandscape(
                 drawPath(cloudPath, color = Color.White.copy(alpha = 0.1f), style = Fill)
             }
             else -> {
-                // Gentle rolling hills
                 val hillPath = Path().apply {
                     moveTo(0f, h * 0.78f)
                     cubicTo(w * 0.15f, h * 0.55f, w * 0.35f, h * 0.65f, w * 0.5f, h * 0.58f)
@@ -1023,28 +1180,24 @@ private fun HorizonLandscape(
             }
         }
 
-        // Sun/moon circle near horizon
         val sunCenter = Offset(w * 0.75f, h * 0.50f)
         val sunRadius = w * 0.06f
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = 0.9f),
-                    skyBottom.copy(alpha = 0.3f)
-                ),
+                colors = listOf(Color.White.copy(alpha = 0.9f), skyBottom.copy(alpha = 0.3f)),
                 center = sunCenter,
                 radius = sunRadius * 2.5f
             ),
             center = sunCenter,
             radius = sunRadius * 2.5f
         )
-        drawCircle(
-            color = Color.White.copy(alpha = 0.85f),
-            center = sunCenter,
-            radius = sunRadius
-        )
+        drawCircle(color = Color.White.copy(alpha = 0.85f), center = sunCenter, radius = sunRadius)
     }
 }
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
 
 private fun activityDisplayInfo(type: ActivityType): Triple<Color, String, ImageVector> = when (type) {
     ActivityType.WALKING    -> Triple(Walking, "Walking", Icons.Filled.DirectionsWalk)
@@ -1055,4 +1208,3 @@ private fun activityDisplayInfo(type: ActivityType): Triple<Color, String, Image
     ActivityType.STATIONARY -> Triple(Stationary, "Stationary", Icons.Filled.PauseCircle)
     ActivityType.UNKNOWN    -> Triple(Stationary, "Unknown", Icons.Filled.QuestionMark)
 }
-

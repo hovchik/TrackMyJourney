@@ -1040,7 +1040,7 @@ private fun TrackPickerDialog(
                     }
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Divider(modifier = Modifier.padding(horizontal = 16.dp))
 
                 // Track list
                 androidx.compose.foundation.lazy.LazyColumn(

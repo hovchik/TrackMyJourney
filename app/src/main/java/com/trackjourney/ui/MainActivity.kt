@@ -20,7 +20,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.*
+import androidx.navigation.navArgument
 import com.trackjourney.ui.navigation.Screen
 import com.trackjourney.ui.screens.analysis.AnalysisScreen
 import com.trackjourney.ui.screens.dashboard.DashboardScreen
@@ -127,8 +129,16 @@ fun TrackMyJourneyApp() {
                 composable(Screen.Tracks.route) {
                     TracksScreen(
                         onTrackClick = { trackId ->
-                            // Navigate to track detail if desired
+                            navController.navigate("map/$trackId")
                         }
+                    )
+                }
+                composable(
+                    route = "map/{trackId}",
+                    arguments = listOf(navArgument("trackId") { type = NavType.StringType })
+                ) {
+                    MapScreen(
+                        onBackFromTrack = { navController.popBackStack() }
                     )
                 }
                 composable(Screen.Analysis.route) {

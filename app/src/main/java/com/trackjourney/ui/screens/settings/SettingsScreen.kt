@@ -519,9 +519,21 @@ private fun PermissionsSection() {
         }
     }
 
+    // Track last permission requested so we can open settings if denied
+    var lastRequestedPermission by remember { mutableStateOf<String?>(null) }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { refreshKey++ }
+    ) { granted ->
+        if (!granted && lastRequestedPermission != null) {
+            // Permission was denied — open app settings so user can grant it manually
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", context.packageName, null)
+            }
+            context.startActivity(intent)
+        }
+        refreshKey++
+    }
 
     val grantedColor = Color(0xFF2E7D32)
     val deniedColor = Color(0xFFC62828)
@@ -537,12 +549,14 @@ private fun PermissionsSection() {
                         .fillMaxWidth()
                         .clickable {
                             if (!granted) {
+                                // Background location always needs app settings
                                 if (item.permission == Manifest.permission.ACCESS_BACKGROUND_LOCATION) {
                                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                         data = Uri.fromParts("package", context.packageName, null)
                                     }
                                     context.startActivity(intent)
                                 } else {
+                                    lastRequestedPermission = item.permission
                                     permissionLauncher.launch(item.permission)
                                 }
                             }

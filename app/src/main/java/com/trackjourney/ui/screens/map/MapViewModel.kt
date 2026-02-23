@@ -2,6 +2,7 @@ package com.trackjourney.ui.screens.map
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.bluetooth.WearableManager
@@ -32,14 +33,17 @@ data class MapUiState(
     val satelliteInfo: SatelliteInfo = SatelliteInfo(),
     val gpsAccuracy: Float? = null,
     val wearableState: WearableConnectionState = WearableConnectionState.Disconnected,
-    val wearableReading: WearableReading? = null
+    val wearableReading: WearableReading? = null,
+    val isViewingSavedTrack: Boolean = false,
+    val viewedTrackName: String = ""
 )
 
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val app: Application,
     private val repository: TrackRepository,
-    private val wearableManager: WearableManager
+    private val wearableManager: WearableManager,
+    private val savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(app) {
 
     private val _uiState = MutableStateFlow(MapUiState())
@@ -47,10 +51,49 @@ class MapViewModel @Inject constructor(
 
     private var wearableJob: Job? = null
     private var wearableReadingJob: Job? = null
+    private var savedTrackJob: Job? = null
 
     init {
         observeActiveTrack()
         observeSettings()
+
+        // Check if navigated with a trackId to view a saved track
+        val trackId = savedStateHandle.get<String>("trackId")
+        if (trackId != null) {
+            loadSavedTrack(trackId)
+        }
+    }
+
+    fun loadSavedTrack(trackId: String) {
+        savedTrackJob?.cancel()
+        savedTrackJob = viewModelScope.launch {
+            val track = repository.getTrackById(trackId) ?: return@launch
+            repository.getPointsForTrack(trackId).collect { points ->
+                _uiState.update {
+                    it.copy(
+                        trackPoints = points,
+                        pointCount = points.size,
+                        distanceKm = track.distanceMeters / 1000.0,
+                        isViewingSavedTrack = true,
+                        viewedTrackName = track.name.ifEmpty { "Unnamed Track" },
+                        currentActivity = track.activityType
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearSavedTrack() {
+        savedTrackJob?.cancel()
+        _uiState.update {
+            it.copy(
+                trackPoints = emptyList(),
+                pointCount = 0,
+                distanceKm = 0.0,
+                isViewingSavedTrack = false,
+                viewedTrackName = ""
+            )
+        }
     }
 
     private fun observeActiveTrack() {
@@ -58,6 +101,11 @@ class MapViewModel @Inject constructor(
             repository.observeActiveTrack().collect { track ->
                 val wasTracking = _uiState.value.isTracking
                 val isNowTracking = track?.isActive == true
+
+                // If live tracking starts, clear any saved track view
+                if (isNowTracking && _uiState.value.isViewingSavedTrack) {
+                    clearSavedTrack()
+                }
 
                 _uiState.update {
                     it.copy(
@@ -86,19 +134,21 @@ class MapViewModel @Inject constructor(
                     }
                 }
 
-                // Observe points only for active track
-                track?.id?.let { trackId ->
-                    repository.getPointsForTrack(trackId).collect { points ->
-                        val lastPoint = points.lastOrNull()
-                        _uiState.update {
-                            it.copy(
-                                trackPoints = points,
-                                pointCount = points.size,
-                                currentSpeed = lastPoint?.speedKmh ?: 0f,
-                                currentActivity = lastPoint?.activityType ?: ActivityType.UNKNOWN,
-                                distanceKm = (track.distanceMeters) / 1000.0,
-                                gpsAccuracy = lastPoint?.accuracy
-                            )
+                // Observe points only for active track (don't override saved track view)
+                if (isNowTracking) {
+                    track?.id?.let { trackId ->
+                        repository.getPointsForTrack(trackId).collect { points ->
+                            val lastPoint = points.lastOrNull()
+                            _uiState.update {
+                                it.copy(
+                                    trackPoints = points,
+                                    pointCount = points.size,
+                                    currentSpeed = lastPoint?.speedKmh ?: 0f,
+                                    currentActivity = lastPoint?.activityType ?: ActivityType.UNKNOWN,
+                                    distanceKm = (track.distanceMeters) / 1000.0,
+                                    gpsAccuracy = lastPoint?.accuracy
+                                )
+                            }
                         }
                     }
                 }

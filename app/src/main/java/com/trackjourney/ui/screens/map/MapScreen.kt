@@ -26,7 +26,8 @@ import com.trackjourney.ui.theme.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
-    viewModel: MapViewModel = hiltViewModel()
+    viewModel: MapViewModel = hiltViewModel(),
+    onBackFromTrack: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showTrackNameDialog by remember { mutableStateOf(false) }
@@ -52,7 +53,30 @@ fun MapScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Top app bar
         TopAppBar(
-            title = { Text("Map", fontWeight = FontWeight.Bold) }
+            title = {
+                if (uiState.isViewingSavedTrack) {
+                    Column {
+                        Text(uiState.viewedTrackName, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(
+                            "${uiState.pointCount} points | ${String.format("%.2f", uiState.distanceKm)} km",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    Text("Map", fontWeight = FontWeight.Bold)
+                }
+            },
+            navigationIcon = {
+                if (uiState.isViewingSavedTrack) {
+                    IconButton(onClick = {
+                        viewModel.clearSavedTrack()
+                        onBackFromTrack?.invoke()
+                    }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            }
         )
 
         // Map area — takes remaining space

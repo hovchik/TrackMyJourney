@@ -16,6 +16,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.trackjourney.data.model.ActivityType
 import com.trackjourney.data.model.TrackPoint
 import com.trackjourney.ui.theme.*
+import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -36,11 +37,16 @@ fun OsmMapView(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    // Ensure osmdroid config is loaded before creating map
+    LaunchedEffect(Unit) {
+        val prefs = context.getSharedPreferences("osmdroid", android.content.Context.MODE_PRIVATE)
+        Configuration.getInstance().load(context, prefs)
+    }
+
     val mapView = remember {
         MapView(context).apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
-            controller.setZoom(zoomLevel)
             minZoomLevel = 3.0
             maxZoomLevel = 20.0
 
@@ -49,9 +55,13 @@ fun OsmMapView(
                 org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER
             )
 
-            // Performance
+            // Use software rendering — hardware acceleration can cause blue screen on some devices
             isTilesScaledToDpi = true
-            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+            setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+
+            // Set a default world view so user doesn't see blue ocean at (0,0)
+            controller.setZoom(4.0)
+            controller.setCenter(GeoPoint(48.0, 10.0)) // Default to Europe
         }
     }
 
@@ -79,6 +89,7 @@ fun OsmMapView(
     // Center on current position when first available and no track points
     LaunchedEffect(currentLatitude, currentLongitude) {
         if (!hasCenteredOnInitial && currentLatitude != null && currentLongitude != null && trackPoints.isEmpty()) {
+            mapView.controller.setZoom(zoomLevel)
             mapView.controller.animateTo(GeoPoint(currentLatitude, currentLongitude))
             hasCenteredOnInitial = true
 
@@ -105,6 +116,11 @@ fun OsmMapView(
             if (needsFullRedraw) {
                 // Full redraw — new track or first load
                 mapView.overlays.clear()
+
+                // Zoom in if we were at world view
+                if (mapView.zoomLevelDouble < 10.0) {
+                    mapView.controller.setZoom(zoomLevel)
+                }
 
                 if (trackPoints.size >= 2) {
                     if (showActivityColors) {

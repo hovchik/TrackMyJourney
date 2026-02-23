@@ -5,7 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,7 +47,8 @@ fun MapScreen(
     val allTracks by viewModel.allTracks.collectAsState()
     var showTrackNameDialog by remember { mutableStateOf(false) }
     var trackName by remember { mutableStateOf("") }
-    var showTrackPicker by remember { mutableStateOf(false) }
+    var trackDropdownExpanded by remember { mutableStateOf(false) }
+    val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy  HH:mm", Locale.getDefault()) }
 
     // Permission handling
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -70,20 +70,7 @@ fun MapScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Top app bar
         TopAppBar(
-            title = {
-                if (uiState.isViewingSavedTrack) {
-                    Column {
-                        Text(uiState.viewedTrackName, fontWeight = FontWeight.Bold, maxLines = 1)
-                        Text(
-                            "${uiState.pointCount} points | ${String.format("%.2f", uiState.distanceKm)} km",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    Text("Map", fontWeight = FontWeight.Bold)
-                }
-            },
+            title = { Text("Map", fontWeight = FontWeight.Bold) },
             navigationIcon = {
                 if (uiState.isViewingSavedTrack) {
                     IconButton(onClick = {
@@ -93,15 +80,103 @@ fun MapScreen(
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
-            },
-            actions = {
-                if (!uiState.isTracking && !uiState.isViewingSavedTrack && allTracks.isNotEmpty()) {
-                    IconButton(onClick = { showTrackPicker = true }) {
-                        Icon(Icons.Filled.Route, contentDescription = "View Tracks")
+            }
+        )
+
+        // Track selector dropdown (visible when not tracking and tracks exist)
+        if (!uiState.isTracking && allTracks.isNotEmpty()) {
+            ExposedDropdownMenuBox(
+                expanded = trackDropdownExpanded,
+                onExpandedChange = { trackDropdownExpanded = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                OutlinedTextField(
+                    value = if (uiState.isViewingSavedTrack)
+                        uiState.viewedTrackName
+                    else
+                        "",
+                    onValueChange = {},
+                    readOnly = true,
+                    placeholder = { Text("Select a track") },
+                    label = { Text("Track") },
+                    leadingIcon = { Icon(Icons.Filled.Route, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = trackDropdownExpanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                ExposedDropdownMenu(
+                    expanded = trackDropdownExpanded,
+                    onDismissRequest = { trackDropdownExpanded = false }
+                ) {
+                    allTracks.forEach { track ->
+                        val (accentColor, _, actIcon) = activityDisplayInfo(track.activityType)
+                        val distKm = track.distanceMeters / 1000.0
+                        val durationMs = (track.endTime ?: track.startTime) - track.startTime
+                        val durationMin = durationMs / 60_000
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        actIcon,
+                                        contentDescription = null,
+                                        tint = accentColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            track.name.ifEmpty { "Unnamed Track" },
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            dateFormatter.format(Date(track.startTime)),
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        String.format(Locale.US, "%.1f km", distKm),
+                                        fontSize = 12.sp,
+                                        color = accentColor,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        if (durationMin >= 60) "${durationMin / 60}h ${durationMin % 60}m"
+                                        else "${durationMin}m",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                trackDropdownExpanded = false
+                                viewModel.loadSavedTrack(track.id)
+                            }
+                        )
                     }
                 }
             }
-        )
+
+            // Show track stats when viewing a saved track
+            if (uiState.isViewingSavedTrack) {
+                Text(
+                    "${uiState.pointCount} points | ${String.format("%.2f", uiState.distanceKm)} km",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+                )
+            }
+        }
 
         // Map area — takes remaining space
         Box(modifier = Modifier.weight(1f)) {
@@ -273,17 +348,6 @@ fun MapScreen(
         )
     }
 
-    // Track picker bottom sheet dialog
-    if (showTrackPicker) {
-        TrackPickerDialog(
-            tracks = allTracks,
-            onSelect = { track ->
-                showTrackPicker = false
-                viewModel.loadSavedTrack(track.id)
-            },
-            onDismiss = { showTrackPicker = false }
-        )
-    }
 }
 
 // --- TRACKING STATS BAR ---
@@ -992,148 +1056,3 @@ private fun activityDisplayInfo(type: ActivityType): Triple<Color, String, Image
     ActivityType.UNKNOWN    -> Triple(Stationary, "Unknown", Icons.Filled.QuestionMark)
 }
 
-// --- TRACK PICKER DIALOG ---
-
-@Composable
-private fun TrackPickerDialog(
-    tracks: List<TrackSession>,
-    onSelect: (TrackSession) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy  HH:mm", Locale.getDefault()) }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.65f)
-                .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Column {
-                // Header
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Filled.Route,
-                        contentDescription = null,
-                        tint = Primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        "Select Track",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Filled.Close, contentDescription = "Close")
-                    }
-                }
-
-                Divider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                // Track list
-                androidx.compose.foundation.lazy.LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(tracks.size) { index ->
-                        val track = tracks[index]
-                        val (accentColor, _, actIcon) = activityDisplayInfo(track.activityType)
-                        val distKm = track.distanceMeters / 1000.0
-                        val durationMs = (track.endTime ?: track.startTime) - track.startTime
-                        val durationMin = durationMs / 60_000
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(track) },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = accentColor.copy(alpha = 0.06f)
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Activity icon circle
-                                Surface(
-                                    shape = CircleShape,
-                                    color = accentColor.copy(alpha = 0.15f),
-                                    modifier = Modifier.size(42.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            actIcon,
-                                            contentDescription = null,
-                                            tint = accentColor,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                // Track info
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        track.name.ifEmpty { "Unnamed Track" },
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 15.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        dateFormatter.format(Date(track.startTime)),
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                // Stats
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        String.format(Locale.US, "%.2f km", distKm),
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = accentColor
-                                    )
-                                    Text(
-                                        if (durationMin >= 60) "${durationMin / 60}h ${durationMin % 60}m"
-                                        else "${durationMin}m",
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    Icons.Filled.ChevronRight,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}

@@ -1,5 +1,6 @@
 package com.trackjourney.ui.screens.tracks
 
+import android.content.Intent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,11 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -43,12 +46,33 @@ class TracksViewModel @Inject constructor(
     val tracks: StateFlow<List<TrackSession>> = repository.getAllTracks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _exportedFile = MutableStateFlow<java.io.File?>(null)
+    val exportedFile: StateFlow<java.io.File?> = _exportedFile.asStateFlow()
+
+    private val _exportError = MutableStateFlow<String?>(null)
+    val exportError: StateFlow<String?> = _exportError.asStateFlow()
+
     fun deleteTrack(trackId: String) {
         viewModelScope.launch { repository.deleteTrack(trackId) }
     }
 
-    fun exportTrack(trackId: String) {
-        viewModelScope.launch { repository.exportTrackToJson(trackId) }
+    fun exportTrack(trackId: String, format: ExportFormat) {
+        viewModelScope.launch {
+            val file = repository.exportTrack(trackId, format)
+            if (file != null) {
+                _exportedFile.value = file
+            } else {
+                _exportError.value = "Export failed"
+            }
+        }
+    }
+
+    fun clearExportedFile() {
+        _exportedFile.value = null
+    }
+
+    fun clearExportError() {
+        _exportError.value = null
     }
 
     fun reanalyzeTrack(trackId: String) {
@@ -73,10 +97,46 @@ fun TracksScreen(
     viewModel: TracksViewModel = hiltViewModel(),
     onTrackClick: (String) -> Unit = {}
 ) {
+    val context = LocalContext.current
     val tracks by viewModel.tracks.collectAsState()
+    val exportedFile by viewModel.exportedFile.collectAsState()
+    val exportError by viewModel.exportError.collectAsState()
     var selectedFilter by remember { mutableStateOf<ActivityType?>(null) }
     var sortOption by remember { mutableStateOf(TrackSortOption.DATE_DESC) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var exportTrackId by remember { mutableStateOf<String?>(null) }
+
+    // Share the exported file when ready
+    LaunchedEffect(exportedFile) {
+        exportedFile?.let { file ->
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+            val mimeType = when {
+                file.name.endsWith(".gpx") -> "application/gpx+xml"
+                file.name.endsWith(".csv") -> "text/csv"
+                else -> "application/json"
+            }
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Share track"))
+            viewModel.clearExportedFile()
+        }
+    }
+
+    // Show error snackbar
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(exportError) {
+        exportError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearExportError()
+        }
+    }
 
     val filteredTracks = remember(tracks, selectedFilter, sortOption) {
         val filtered = if (selectedFilter != null) {
@@ -218,13 +278,29 @@ fun TracksScreen(
                     TrackCard(
                         track = track,
                         onClick = { onTrackClick(track.id) },
-                        onExport = { viewModel.exportTrack(track.id) },
+                        onExport = { exportTrackId = track.id },
                         onDelete = { viewModel.deleteTrack(track.id) },
                         onReanalyze = { viewModel.reanalyzeTrack(track.id) }
                     )
                 }
             }
         }
+    }
+
+    // Export format picker dialog
+    if (exportTrackId != null) {
+        ExportFormatDialog(
+            onFormatSelected = { format ->
+                viewModel.exportTrack(exportTrackId!!, format)
+                exportTrackId = null
+            },
+            onDismiss = { exportTrackId = null }
+        )
+    }
+
+    // Snackbar host for error messages
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        SnackbarHost(hostState = snackbarHostState)
     }
 }
 
@@ -737,6 +813,107 @@ private fun DetailItem(
                 label,
                 fontSize = 10.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+// ─── EXPORT FORMAT DIALOG ────────────────────────────
+
+@Composable
+private fun ExportFormatDialog(
+    onFormatSelected: (ExportFormat) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Filled.FileDownload,
+                contentDescription = null,
+                tint = Primary,
+                modifier = Modifier.size(28.dp)
+            )
+        },
+        title = { Text("Export Format") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExportFormatOption(
+                    icon = Icons.Filled.DataObject,
+                    label = "JSON",
+                    description = "Full data with AI analysis",
+                    color = Secondary,
+                    onClick = { onFormatSelected(ExportFormat.JSON) }
+                )
+                ExportFormatOption(
+                    icon = Icons.Filled.Map,
+                    label = "GPX",
+                    description = "GPS track for mapping apps",
+                    color = PrimaryLight,
+                    onClick = { onFormatSelected(ExportFormat.GPX) }
+                )
+                ExportFormatOption(
+                    icon = Icons.Filled.TableChart,
+                    label = "CSV",
+                    description = "Spreadsheet-friendly format",
+                    color = Accent,
+                    onClick = { onFormatSelected(ExportFormat.CSV) }
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ExportFormatOption(
+    icon: ImageVector,
+    label: String,
+    description: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = color.copy(alpha = 0.08f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = color.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text(
+                    description,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

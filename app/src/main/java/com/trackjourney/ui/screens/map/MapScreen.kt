@@ -4,6 +4,7 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,15 +14,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.ActivityType
 import com.trackjourney.ui.components.OsmMapView
 import com.trackjourney.ui.theme.*
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -222,6 +233,18 @@ fun MapScreen(
                 }) {
                     Text("Cancel")
                 }
+            }
+        )
+    }
+
+    // Track completion illustration
+    uiState.completedTrack?.let { completed ->
+        TrackCompletionDialog(
+            info = completed,
+            onDismiss = { viewModel.dismissCompletedTrack() },
+            onViewOnMap = {
+                viewModel.dismissCompletedTrack()
+                viewModel.loadSavedTrack(completed.trackId)
             }
         )
     }
@@ -447,4 +470,424 @@ private fun WearableStatusChip(
             )
         }
     }
+}
+
+// --- TRACK COMPLETION DIALOG (Horizon Landscape Card) ---
+
+@Composable
+private fun TrackCompletionDialog(
+    info: CompletedTrackInfo,
+    onDismiss: () -> Unit,
+    onViewOnMap: () -> Unit
+) {
+    val durationMin = info.durationMs / 60_000
+    val hours = durationMin / 60
+    val mins = durationMin % 60
+    val durationText = if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+
+    val (accentColor, activityLabel, activityIcon) = activityDisplayInfo(info.activityType)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            shape = RoundedCornerShape(24.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column {
+                // Landscape illustration
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                ) {
+                    HorizonLandscape(
+                        activityType = info.activityType,
+                        accentColor = accentColor,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // "Journey Complete" overlay
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            color = Color.White.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    activityIcon,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    activityLabel,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Journey Complete",
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Track name
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        info.name.ifEmpty { "Unnamed Track" },
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    // Place names
+                    if (info.startPlace != null || info.endPlace != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            buildString {
+                                info.startPlace?.let { append(it) }
+                                if (info.startPlace != null && info.endPlace != null
+                                    && info.startPlace != info.endPlace
+                                ) {
+                                    append("  \u2192  ")
+                                    append(info.endPlace)
+                                }
+                            },
+                            fontSize = 13.sp,
+                            color = accentColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Stats row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        CompletionStat(
+                            value = String.format(Locale.US, "%.2f", info.distanceKm),
+                            unit = "km",
+                            label = "Distance",
+                            color = accentColor
+                        )
+                        CompletionStat(
+                            value = durationText,
+                            unit = "",
+                            label = "Duration",
+                            color = Secondary
+                        )
+                        CompletionStat(
+                            value = String.format(Locale.US, "%.1f", info.avgSpeedKmh),
+                            unit = "km/h",
+                            label = "Avg Speed",
+                            color = Walking
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        CompletionStat(
+                            value = String.format(Locale.US, "%.1f", info.maxSpeedKmh),
+                            unit = "km/h",
+                            label = "Max Speed",
+                            color = Accent
+                        )
+                        CompletionStat(
+                            value = info.pointCount.toString(),
+                            unit = "pts",
+                            label = "GPS Points",
+                            color = Primary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Action buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text("Close")
+                        }
+                        Button(
+                            onClick = onViewOnMap,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                        ) {
+                            Icon(
+                                Icons.Filled.Map,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("View on Map")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompletionStat(
+    value: String,
+    unit: String,
+    label: String,
+    color: Color
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                value,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
+            if (unit.isNotEmpty()) {
+                Text(
+                    " $unit",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Text(
+            label,
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+// --- HORIZON LANDSCAPE ILLUSTRATION ---
+
+@Composable
+private fun HorizonLandscape(
+    activityType: ActivityType,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val skyTop = when (activityType) {
+        ActivityType.WALKING    -> Color(0xFF1A237E) // deep indigo
+        ActivityType.RUNNING    -> Color(0xFFE65100) // deep orange
+        ActivityType.CYCLING    -> Color(0xFF0D47A1) // deep blue
+        ActivityType.DRIVING    -> Color(0xFF4A148C) // deep purple
+        ActivityType.FLYING     -> Color(0xFF880E4F) // deep pink
+        ActivityType.STATIONARY -> Color(0xFF37474F) // blue-grey
+        ActivityType.UNKNOWN    -> Color(0xFF37474F)
+    }
+    val skyBottom = when (activityType) {
+        ActivityType.WALKING    -> Color(0xFF66BB6A) // green horizon
+        ActivityType.RUNNING    -> Color(0xFFFFCC80) // warm horizon
+        ActivityType.CYCLING    -> Color(0xFF42A5F5) // blue horizon
+        ActivityType.DRIVING    -> Color(0xFFCE93D8) // purple horizon
+        ActivityType.FLYING     -> Color(0xFFF48FB1) // pink horizon
+        ActivityType.STATIONARY -> Color(0xFF78909C) // grey horizon
+        ActivityType.UNKNOWN    -> Color(0xFF78909C)
+    }
+    val silhouetteColor = accentColor.copy(alpha = 0.35f)
+    val silhouetteDark = Color(0xFF1A1A2E)
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        // Sky gradient
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(skyTop, skyBottom),
+                startY = 0f,
+                endY = h * 0.85f
+            )
+        )
+
+        // Ground strip
+        drawRect(
+            color = silhouetteDark,
+            topLeft = Offset(0f, h * 0.78f),
+            size = androidx.compose.ui.geometry.Size(w, h * 0.22f)
+        )
+
+        // Draw silhouette based on activity type
+        when (activityType) {
+            ActivityType.WALKING, ActivityType.RUNNING -> {
+                // Mountain silhouette
+                val mountainPath = Path().apply {
+                    moveTo(0f, h * 0.78f)
+                    // Mountain range
+                    lineTo(w * 0.08f, h * 0.55f)
+                    lineTo(w * 0.15f, h * 0.42f)
+                    lineTo(w * 0.22f, h * 0.52f)
+                    lineTo(w * 0.30f, h * 0.28f) // tallest peak
+                    lineTo(w * 0.38f, h * 0.48f)
+                    lineTo(w * 0.45f, h * 0.38f)
+                    lineTo(w * 0.52f, h * 0.55f)
+                    lineTo(w * 0.58f, h * 0.45f)
+                    lineTo(w * 0.65f, h * 0.35f)
+                    lineTo(w * 0.72f, h * 0.50f)
+                    lineTo(w * 0.80f, h * 0.40f)
+                    lineTo(w * 0.88f, h * 0.58f)
+                    lineTo(w * 0.95f, h * 0.50f)
+                    lineTo(w, h * 0.60f)
+                    lineTo(w, h * 0.78f)
+                    close()
+                }
+                drawPath(mountainPath, color = silhouetteColor, style = Fill)
+                drawPath(mountainPath, color = silhouetteDark.copy(alpha = 0.5f), style = Fill)
+            }
+            ActivityType.DRIVING, ActivityType.CYCLING -> {
+                // City skyline silhouette
+                val cityPath = Path().apply {
+                    moveTo(0f, h * 0.78f)
+                    // Buildings of various heights
+                    lineTo(0f, h * 0.55f)
+                    lineTo(w * 0.04f, h * 0.55f)
+                    lineTo(w * 0.04f, h * 0.68f)
+                    lineTo(w * 0.08f, h * 0.68f)
+                    lineTo(w * 0.08f, h * 0.40f)
+                    lineTo(w * 0.14f, h * 0.40f)
+                    lineTo(w * 0.14f, h * 0.62f)
+                    lineTo(w * 0.18f, h * 0.62f)
+                    lineTo(w * 0.18f, h * 0.48f)
+                    lineTo(w * 0.22f, h * 0.48f)
+                    lineTo(w * 0.22f, h * 0.32f) // tall tower
+                    lineTo(w * 0.26f, h * 0.32f)
+                    lineTo(w * 0.26f, h * 0.55f)
+                    lineTo(w * 0.30f, h * 0.55f)
+                    lineTo(w * 0.30f, h * 0.45f)
+                    lineTo(w * 0.36f, h * 0.45f)
+                    lineTo(w * 0.36f, h * 0.65f)
+                    lineTo(w * 0.40f, h * 0.65f)
+                    lineTo(w * 0.40f, h * 0.38f)
+                    lineTo(w * 0.46f, h * 0.38f)
+                    lineTo(w * 0.46f, h * 0.58f)
+                    lineTo(w * 0.50f, h * 0.58f)
+                    lineTo(w * 0.50f, h * 0.42f)
+                    lineTo(w * 0.56f, h * 0.42f)
+                    lineTo(w * 0.56f, h * 0.28f) // tallest building
+                    lineTo(w * 0.62f, h * 0.28f)
+                    lineTo(w * 0.62f, h * 0.50f)
+                    lineTo(w * 0.66f, h * 0.50f)
+                    lineTo(w * 0.66f, h * 0.60f)
+                    lineTo(w * 0.70f, h * 0.60f)
+                    lineTo(w * 0.70f, h * 0.44f)
+                    lineTo(w * 0.76f, h * 0.44f)
+                    lineTo(w * 0.76f, h * 0.55f)
+                    lineTo(w * 0.80f, h * 0.55f)
+                    lineTo(w * 0.80f, h * 0.35f)
+                    lineTo(w * 0.86f, h * 0.35f)
+                    lineTo(w * 0.86f, h * 0.62f)
+                    lineTo(w * 0.90f, h * 0.62f)
+                    lineTo(w * 0.90f, h * 0.50f)
+                    lineTo(w * 0.95f, h * 0.50f)
+                    lineTo(w * 0.95f, h * 0.68f)
+                    lineTo(w, h * 0.68f)
+                    lineTo(w, h * 0.78f)
+                    close()
+                }
+                drawPath(cityPath, color = silhouetteColor, style = Fill)
+                drawPath(cityPath, color = silhouetteDark.copy(alpha = 0.6f), style = Fill)
+            }
+            ActivityType.FLYING -> {
+                // Cloud layers silhouette
+                val cloudPath = Path().apply {
+                    moveTo(0f, h * 0.78f)
+                    lineTo(0f, h * 0.65f)
+                    // Wavy cloud layers
+                    cubicTo(w * 0.1f, h * 0.55f, w * 0.2f, h * 0.65f, w * 0.3f, h * 0.58f)
+                    cubicTo(w * 0.4f, h * 0.50f, w * 0.5f, h * 0.62f, w * 0.6f, h * 0.52f)
+                    cubicTo(w * 0.7f, h * 0.45f, w * 0.8f, h * 0.58f, w * 0.9f, h * 0.50f)
+                    cubicTo(w * 0.95f, h * 0.46f, w, h * 0.55f, w, h * 0.60f)
+                    lineTo(w, h * 0.78f)
+                    close()
+                }
+                drawPath(cloudPath, color = silhouetteColor, style = Fill)
+                drawPath(cloudPath, color = Color.White.copy(alpha = 0.1f), style = Fill)
+            }
+            else -> {
+                // Gentle rolling hills
+                val hillPath = Path().apply {
+                    moveTo(0f, h * 0.78f)
+                    cubicTo(w * 0.15f, h * 0.55f, w * 0.35f, h * 0.65f, w * 0.5f, h * 0.58f)
+                    cubicTo(w * 0.65f, h * 0.50f, w * 0.85f, h * 0.62f, w, h * 0.55f)
+                    lineTo(w, h * 0.78f)
+                    close()
+                }
+                drawPath(hillPath, color = silhouetteColor, style = Fill)
+                drawPath(hillPath, color = silhouetteDark.copy(alpha = 0.4f), style = Fill)
+            }
+        }
+
+        // Sun/moon circle near horizon
+        val sunCenter = Offset(w * 0.75f, h * 0.50f)
+        val sunRadius = w * 0.06f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.9f),
+                    skyBottom.copy(alpha = 0.3f)
+                ),
+                center = sunCenter,
+                radius = sunRadius * 2.5f
+            ),
+            center = sunCenter,
+            radius = sunRadius * 2.5f
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.85f),
+            center = sunCenter,
+            radius = sunRadius
+        )
+    }
+}
+
+private fun activityDisplayInfo(type: ActivityType): Triple<Color, String, ImageVector> = when (type) {
+    ActivityType.WALKING    -> Triple(Walking, "Walking", Icons.Filled.DirectionsWalk)
+    ActivityType.RUNNING    -> Triple(Running, "Running", Icons.Filled.DirectionsRun)
+    ActivityType.CYCLING    -> Triple(Cycling, "Cycling", Icons.Filled.DirectionsBike)
+    ActivityType.DRIVING    -> Triple(Driving, "Driving", Icons.Filled.DirectionsCar)
+    ActivityType.FLYING     -> Triple(Flying, "Flying", Icons.Filled.Flight)
+    ActivityType.STATIONARY -> Triple(Stationary, "Stationary", Icons.Filled.PauseCircle)
+    ActivityType.UNKNOWN    -> Triple(Stationary, "Unknown", Icons.Filled.QuestionMark)
 }

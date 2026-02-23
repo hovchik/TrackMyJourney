@@ -312,9 +312,17 @@ class TrackRepository(
         return aiEngine.suggestBestTrips(tracks)
     }
 
-    // ─── JSON EXPORT ────────────────────────────────────
+    // ─── EXPORT ───────────────────────────────────────────
 
-    suspend fun exportTrackToJson(trackId: String): File? = withContext(Dispatchers.IO) {
+    suspend fun exportTrack(trackId: String, format: ExportFormat): File? {
+        return when (format) {
+            ExportFormat.JSON -> exportTrackToJson(trackId)
+            ExportFormat.GPX  -> exportTrackToGpx(trackId)
+            ExportFormat.CSV  -> exportTrackToCsv(trackId)
+        }
+    }
+
+    private suspend fun exportTrackToJson(trackId: String): File? = withContext(Dispatchers.IO) {
         try {
             val trackWithPoints = trackDao.getTrackWithPoints(trackId) ?: return@withContext null
             val analysis = aiAnalysisDao.getLatestAnalysis(trackId)
@@ -385,10 +393,111 @@ class TrackRepository(
             Log.i(TAG, "Track exported to: ${file.absolutePath}")
             file
         } catch (e: Exception) {
-            Log.e(TAG, "Export failed: ${e.message}")
+            Log.e(TAG, "JSON export failed: ${e.message}")
             null
         }
     }
+
+    private suspend fun exportTrackToGpx(trackId: String): File? = withContext(Dispatchers.IO) {
+        try {
+            val trackWithPoints = trackDao.getTrackWithPoints(trackId) ?: return@withContext null
+            val track = trackWithPoints.track
+            val points = trackWithPoints.points
+            val isoFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+
+            val gpx = buildString {
+                appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
+                appendLine("""<gpx version="1.1" creator="TrackMyJourney"
+  xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">""")
+                appendLine("  <metadata>")
+                appendLine("    <name>${escapeXml(track.name)}</name>")
+                appendLine("    <time>${isoFmt.format(Date(track.startTime))}</time>")
+                appendLine("  </metadata>")
+                appendLine("  <trk>")
+                appendLine("    <name>${escapeXml(track.name)}</name>")
+                appendLine("    <type>${track.activityType.name}</type>")
+                appendLine("    <trkseg>")
+                for (pt in points) {
+                    append("      <trkpt lat=\"${pt.latitude}\" lon=\"${pt.longitude}\">")
+                    pt.altitude?.let { append("<ele>$it</ele>") }
+                    append("<time>${isoFmt.format(Date(pt.timestamp))}</time>")
+                    pt.heartRate?.let { append("<extensions><hr>$it</hr></extensions>") }
+                    appendLine("</trkpt>")
+                }
+                appendLine("    </trkseg>")
+                appendLine("  </trk>")
+                appendLine("</gpx>")
+            }
+
+            val sdf = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.getDefault())
+            val fileName = "track_${sdf.format(Date(track.startTime))}.gpx"
+            val dir = File(context.getExternalFilesDir(null), "tracks")
+            dir.mkdirs()
+            val file = File(dir, fileName)
+            file.writeText(gpx)
+
+            Log.i(TAG, "GPX exported to: ${file.absolutePath}")
+            file
+        } catch (e: Exception) {
+            Log.e(TAG, "GPX export failed: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun exportTrackToCsv(trackId: String): File? = withContext(Dispatchers.IO) {
+        try {
+            val trackWithPoints = trackDao.getTrackWithPoints(trackId) ?: return@withContext null
+            val track = trackWithPoints.track
+            val points = trackWithPoints.points
+            val isoFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+
+            val csv = buildString {
+                appendLine("timestamp,latitude,longitude,altitude,speed_kmh,bearing,accuracy,heart_rate,cadence,activity,satellites,accurate")
+                for (pt in points) {
+                    appendLine(buildString {
+                        append(isoFmt.format(Date(pt.timestamp))).append(',')
+                        append(pt.latitude).append(',')
+                        append(pt.longitude).append(',')
+                        append(pt.altitude ?: "").append(',')
+                        append(pt.speedKmh).append(',')
+                        append(pt.bearing ?: "").append(',')
+                        append(pt.accuracy ?: "").append(',')
+                        append(pt.heartRate ?: "").append(',')
+                        append(pt.cadence ?: "").append(',')
+                        append(pt.activityType.name).append(',')
+                        append(pt.satellitesUsed ?: "").append(',')
+                        append(pt.isAccurate)
+                    })
+                }
+            }
+
+            val sdf = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.getDefault())
+            val fileName = "track_${sdf.format(Date(track.startTime))}.csv"
+            val dir = File(context.getExternalFilesDir(null), "tracks")
+            dir.mkdirs()
+            val file = File(dir, fileName)
+            file.writeText(csv)
+
+            Log.i(TAG, "CSV exported to: ${file.absolutePath}")
+            file
+        } catch (e: Exception) {
+            Log.e(TAG, "CSV export failed: ${e.message}")
+            null
+        }
+    }
+
+    private fun escapeXml(text: String): String = text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&apos;")
 
     // ─── LOCATION ─────────────────────────────────────────
 

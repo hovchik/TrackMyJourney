@@ -35,7 +35,21 @@ data class MapUiState(
     val wearableState: WearableConnectionState = WearableConnectionState.Disconnected,
     val wearableReading: WearableReading? = null,
     val isViewingSavedTrack: Boolean = false,
-    val viewedTrackName: String = ""
+    val viewedTrackName: String = "",
+    val completedTrack: CompletedTrackInfo? = null
+)
+
+data class CompletedTrackInfo(
+    val trackId: String,
+    val name: String,
+    val distanceKm: Double,
+    val durationMs: Long,
+    val avgSpeedKmh: Double,
+    val maxSpeedKmh: Double,
+    val activityType: ActivityType,
+    val startPlace: String?,
+    val endPlace: String?,
+    val pointCount: Int
 )
 
 @HiltViewModel
@@ -136,8 +150,28 @@ class MapViewModel @Inject constructor(
                     observeWearable()
                 }
 
-                // Clear satellite/wearable info when tracking stops
+                // Capture completed track info and clear satellite/wearable when tracking stops
                 if (!isNowTracking && wasTracking) {
+                    val prevTrack = _uiState.value.currentTrack
+                    if (prevTrack != null) {
+                        val endTime = prevTrack.endTime ?: System.currentTimeMillis()
+                        _uiState.update {
+                            it.copy(
+                                completedTrack = CompletedTrackInfo(
+                                    trackId = prevTrack.id,
+                                    name = prevTrack.name,
+                                    distanceKm = prevTrack.distanceMeters / 1000.0,
+                                    durationMs = endTime - prevTrack.startTime,
+                                    avgSpeedKmh = prevTrack.avgSpeedKmh,
+                                    maxSpeedKmh = prevTrack.maxSpeedKmh,
+                                    activityType = prevTrack.activityType,
+                                    startPlace = prevTrack.startPlaceName,
+                                    endPlace = prevTrack.endPlaceName,
+                                    pointCount = _uiState.value.pointCount
+                                )
+                            )
+                        }
+                    }
                     wearableJob?.cancel()
                     wearableReadingJob?.cancel()
                     _uiState.update {
@@ -225,5 +259,9 @@ class MapViewModel @Inject constructor(
             action = TrackingService.ACTION_RESUME
         }
         app.startService(intent)
+    }
+
+    fun dismissCompletedTrack() {
+        _uiState.update { it.copy(completedTrack = null) }
     }
 }

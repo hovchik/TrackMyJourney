@@ -323,4 +323,4 @@ data class TrackingSettings(
     val exportFormat: ExportFormat = ExportFormat.JSON
 )
 
-enum class ExportFormat { JSON, GPX }
+enum class ExportFormat { JSON, GPX, CSV }

@@ -43,7 +43,6 @@ import java.util.Date
 import java.util.Locale
 
 private val OverlayDark = Color(0xFF1A1A2E)
-private val OverlayCard = Color(0xFF1E1E30)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,7 +88,7 @@ fun MapScreen(
             showDirectionArrows = uiState.isViewingSavedTrack
         )
 
-        // ── Top overlay: track selector OR tracking info ────
+        // ── Top overlay container (single statusBarsPadding) ─
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -97,21 +96,29 @@ fun MapScreen(
                 .statusBarsPadding()
                 .padding(top = 8.dp)
         ) {
-            if (uiState.isTracking) {
-                // Live tracking stats panel
-                AnimatedVisibility(
-                    visible = true,
-                    enter = slideInVertically() + fadeIn(),
-                    exit = slideOutVertically() + fadeOut()
-                ) {
-                    TrackingStatsBar(uiState)
-                }
-            } else if (allTracks.isNotEmpty()) {
-                // Floating track selector
+            // Stats bar during tracking
+            AnimatedVisibility(
+                visible = uiState.isTracking,
+                enter = slideInVertically { -it } + fadeIn(),
+                exit = slideOutVertically { -it } + fadeOut()
+            ) {
+                TrackingStatsBar(uiState)
+            }
+
+            // Track selector when idle with tracks
+            AnimatedVisibility(
+                visible = !uiState.isTracking && allTracks.isNotEmpty(),
+                enter = slideInVertically { -it } + fadeIn(),
+                exit = slideOutVertically { -it } + fadeOut()
+            ) {
                 FloatingTrackSelector(
                     tracks = allTracks,
                     isViewingSavedTrack = uiState.isViewingSavedTrack,
                     viewedTrackName = uiState.viewedTrackName,
+                    viewedActivity = uiState.currentActivity,
+                    trackStats = if (uiState.isViewingSavedTrack)
+                        "${uiState.pointCount} pts \u2022 ${String.format("%.2f km", uiState.distanceKm)}"
+                    else null,
                     expanded = trackDropdownExpanded,
                     onExpandedChange = { trackDropdownExpanded = it },
                     dateFormatter = dateFormatter,
@@ -151,44 +158,6 @@ fun MapScreen(
             }
         }
 
-        // ── Track info pill (when viewing saved track) ──────
-        AnimatedVisibility(
-            visible = uiState.isViewingSavedTrack,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 72.dp),
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            val (accentColor, actLabel, actIcon) = activityDisplayInfo(uiState.currentActivity)
-            Surface(
-                color = OverlayDark.copy(alpha = 0.85f),
-                shape = RoundedCornerShape(20.dp),
-                shadowElevation = 6.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(actIcon, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
-                    Text(
-                        "${uiState.pointCount} pts",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 12.sp
-                    )
-                    Text("\u2022", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp)
-                    Text(
-                        String.format("%.2f km", uiState.distanceKm),
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
-
         // ── Activity badge (bottom center, during tracking) ─
         AnimatedVisibility(
             visible = uiState.isTracking,
@@ -213,15 +182,19 @@ fun MapScreen(
             SpeedLegend()
         }
 
-        // ── Control buttons (bottom end) ────────────────────
-        Column(
+        // ── Tracking controls (bottom end) ──────────────────
+        AnimatedVisibility(
+            visible = uiState.isTracking,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            enter = slideInVertically { it / 2 } + fadeIn(),
+            exit = slideOutVertically { it / 2 } + fadeOut()
         ) {
-            if (uiState.isTracking) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 // Pause / Resume pill
                 Surface(
                     onClick = {
@@ -271,24 +244,33 @@ fun MapScreen(
                         tint = Color.White
                     )
                 }
-            } else if (!uiState.isViewingSavedTrack) {
-                // Start tracking FAB
-                LargeFloatingActionButton(
-                    onClick = { showTrackNameDialog = true },
-                    containerColor = Primary,
-                    shape = RoundedCornerShape(20.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 8.dp,
-                        pressedElevation = 12.dp
-                    )
-                ) {
-                    Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = "Start Tracking",
-                        modifier = Modifier.size(32.dp),
-                        tint = Color.White
-                    )
-                }
+            }
+        }
+
+        // ── Start FAB (bottom end, when idle) ───────────────
+        AnimatedVisibility(
+            visible = !uiState.isTracking && !uiState.isViewingSavedTrack,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 24.dp),
+            enter = scaleIn() + fadeIn(),
+            exit = scaleOut() + fadeOut()
+        ) {
+            LargeFloatingActionButton(
+                onClick = { showTrackNameDialog = true },
+                containerColor = Primary,
+                shape = RoundedCornerShape(20.dp),
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 8.dp,
+                    pressedElevation = 12.dp
+                )
+            ) {
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    contentDescription = "Start Tracking",
+                    modifier = Modifier.size(32.dp),
+                    tint = Color.White
+                )
             }
         }
     }
@@ -359,6 +341,8 @@ private fun FloatingTrackSelector(
     tracks: List<TrackSession>,
     isViewingSavedTrack: Boolean,
     viewedTrackName: String,
+    viewedActivity: ActivityType,
+    trackStats: String?,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     dateFormatter: SimpleDateFormat,
@@ -388,8 +372,7 @@ private fun FloatingTrackSelector(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (isViewingSavedTrack) {
-                    val track = tracks.find { it.name == viewedTrackName || (it.name.isEmpty() && viewedTrackName == "Unnamed Track") }
-                    val (accentColor, _, actIcon) = activityDisplayInfo(track?.activityType ?: ActivityType.UNKNOWN)
+                    val (accentColor, _, actIcon) = activityDisplayInfo(viewedActivity)
                     Surface(
                         color = accentColor.copy(alpha = 0.12f),
                         shape = CircleShape,
@@ -400,15 +383,23 @@ private fun FloatingTrackSelector(
                         }
                     }
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        viewedTrackName,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                        color = OverlayDark
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            viewedTrackName,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = OverlayDark
+                        )
+                        trackStats?.let {
+                            Text(
+                                it,
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = onClear,
                         modifier = Modifier.size(28.dp)

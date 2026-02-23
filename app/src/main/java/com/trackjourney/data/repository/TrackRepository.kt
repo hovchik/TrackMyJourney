@@ -3,6 +3,7 @@ package com.trackjourney.data.repository
 import android.content.Context
 import android.location.Geocoder
 import android.location.Location
+import android.net.Uri
 import android.util.Log
 import com.google.gson.GsonBuilder
 import com.trackjourney.data.ai.LocalAiEngine
@@ -13,7 +14,9 @@ import com.trackjourney.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
+import java.io.BufferedReader
 import java.io.File
+import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
 class TrackRepository(
@@ -498,6 +501,324 @@ class TrackRepository(
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
         .replace("'", "&apos;")
+
+    // ─── IMPORT ───────────────────────────────────────────
+
+    data class ImportResult(
+        val trackId: String,
+        val trackName: String,
+        val pointCount: Int
+    )
+
+    suspend fun importTrack(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
+        val fileName = getFileName(uri)
+        val content = readUri(uri)
+
+        when {
+            fileName.endsWith(".json", ignoreCase = true) -> importFromJson(content)
+            fileName.endsWith(".gpx", ignoreCase = true)  -> importFromGpx(content)
+            fileName.endsWith(".csv", ignoreCase = true)   -> importFromCsv(content)
+            else -> {
+                // Try to detect format from content
+                val trimmed = content.trimStart()
+                when {
+                    trimmed.startsWith("{") -> importFromJson(content)
+                    trimmed.startsWith("<?xml") || trimmed.startsWith("<gpx") -> importFromGpx(content)
+                    trimmed.contains(",latitude,") || trimmed.contains(",longitude,") -> importFromCsv(content)
+                    else -> throw IllegalArgumentException("Unsupported file format")
+                }
+            }
+        }
+    }
+
+    private fun readUri(uri: Uri): String {
+        return context.contentResolver.openInputStream(uri)?.use { stream ->
+            BufferedReader(InputStreamReader(stream)).readText()
+        } ?: throw IllegalArgumentException("Could not read file")
+    }
+
+    private fun getFileName(uri: Uri): String {
+        // Try to get the display name from content resolver
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (nameIndex >= 0 && cursor.moveToFirst()) {
+                return cursor.getString(nameIndex)
+            }
+        }
+        return uri.lastPathSegment ?: "unknown"
+    }
+
+    private suspend fun importFromJson(content: String): ImportResult {
+        val export = gson.fromJson(content, TrackExport::class.java)
+            ?: throw IllegalArgumentException("Invalid JSON track data")
+
+        val session = export.session
+        val trackId = UUID.randomUUID().toString()
+
+        val track = TrackSession(
+            id = trackId,
+            name = session.name.ifEmpty { "Imported Track" },
+            startTime = session.startTime,
+            endTime = session.endTime,
+            distanceMeters = session.distanceMeters,
+            avgSpeedKmh = session.avgSpeedKmh,
+            maxSpeedKmh = session.maxSpeedKmh,
+            activityType = parseActivityType(session.activityType),
+            avgHeartRate = session.avgHeartRate,
+            startPlaceName = session.startPlaceName,
+            endPlaceName = session.endPlaceName,
+            isActive = false
+        )
+        trackDao.insert(track)
+
+        val points = export.points.map { pt ->
+            TrackPoint(
+                trackId = trackId,
+                latitude = pt.latitude,
+                longitude = pt.longitude,
+                altitude = pt.altitude,
+                speedKmh = pt.speedKmh,
+                speedMs = pt.speedKmh / 3.6f,
+                bearing = pt.bearing,
+                accuracy = pt.accuracy,
+                timestamp = pt.timestamp,
+                heartRate = pt.heartRate,
+                cadence = pt.cadence,
+                activityType = parseActivityType(pt.activityType),
+                placeName = pt.placeName,
+                satellitesUsed = pt.satellitesUsed,
+                isAccurate = pt.isAccurate
+            )
+        }
+        trackPointDao.insertAll(points)
+
+        // Import health data
+        export.healthData.forEach { hd ->
+            healthDataDao.insert(HealthData(
+                trackId = trackId,
+                timestamp = hd.timestamp,
+                heartRate = hd.heartRate,
+                batteryLevel = hd.batteryLevel,
+                cadence = hd.cadence,
+                deviceName = hd.deviceName,
+                deviceType = parseWearableType(hd.deviceType)
+            ))
+        }
+
+        // Import AI analysis
+        export.aiAnalysis?.let { ai ->
+            aiAnalysisDao.insert(AiAnalysis(
+                trackId = trackId,
+                detectedActivity = parseActivityType(ai.detectedActivity),
+                confidence = ai.confidence,
+                summary = ai.summary,
+                suggestions = ai.suggestions.joinToString("|"),
+                healthInsights = ai.healthInsights
+            ))
+            // Set AI summary on track
+            trackDao.update(track.copy(aiSummary = ai.summary))
+        }
+
+        Log.i(TAG, "JSON import: ${points.size} points for track '${track.name}'")
+        return ImportResult(trackId, track.name, points.size)
+    }
+
+    private suspend fun importFromGpx(content: String): ImportResult {
+        val trackId = UUID.randomUUID().toString()
+        val isoFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+
+        // Simple XML parsing — extract track name, type, and trackpoints
+        val nameMatch = Regex("<trk>.*?<name>(.*?)</name>", RegexOption.DOT_MATCHES_ALL).find(content)
+        val trackName = nameMatch?.groupValues?.get(1)?.let { unescapeXml(it) } ?: "Imported GPX"
+
+        val typeMatch = Regex("<type>(.*?)</type>").find(content)
+        val activityType = typeMatch?.groupValues?.get(1)?.let { parseActivityType(it) } ?: ActivityType.UNKNOWN
+
+        // Parse trackpoints
+        val trkptRegex = Regex("""<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)">(.*?)</trkpt>""", RegexOption.DOT_MATCHES_ALL)
+        val eleRegex = Regex("<ele>(.*?)</ele>")
+        val timeRegex = Regex("<time>(.*?)</time>")
+        val hrRegex = Regex("<hr>(.*?)</hr>")
+
+        val points = mutableListOf<TrackPoint>()
+        for (match in trkptRegex.findAll(content)) {
+            val lat = match.groupValues[1].toDoubleOrNull() ?: continue
+            val lon = match.groupValues[2].toDoubleOrNull() ?: continue
+            val inner = match.groupValues[3]
+
+            val altitude = eleRegex.find(inner)?.groupValues?.get(1)?.toDoubleOrNull()
+            val timestamp = timeRegex.find(inner)?.groupValues?.get(1)?.let {
+                try { isoFmt.parse(it)?.time } catch (e: Exception) { null }
+            } ?: System.currentTimeMillis()
+            val heartRate = hrRegex.find(inner)?.groupValues?.get(1)?.toIntOrNull()
+
+            points.add(TrackPoint(
+                trackId = trackId,
+                latitude = lat,
+                longitude = lon,
+                altitude = altitude,
+                timestamp = timestamp,
+                heartRate = heartRate,
+                activityType = activityType,
+                isAccurate = true
+            ))
+        }
+
+        if (points.isEmpty()) throw IllegalArgumentException("No trackpoints found in GPX file")
+
+        // Calculate speed between consecutive points
+        val enrichedPoints = points.mapIndexed { i, pt ->
+            if (i == 0) return@mapIndexed pt
+            val prev = points[i - 1]
+            val distM = LocationTracker.distanceBetween(prev.latitude, prev.longitude, pt.latitude, pt.longitude)
+            val timeDiffS = (pt.timestamp - prev.timestamp) / 1000.0
+            val speedMs = if (timeDiffS > 0) (distM / timeDiffS).toFloat() else 0f
+            pt.copy(speedMs = speedMs, speedKmh = speedMs * 3.6f)
+        }
+
+        // Calculate track stats
+        var totalDistance = 0.0
+        for (i in 1 until enrichedPoints.size) {
+            totalDistance += LocationTracker.distanceBetween(
+                enrichedPoints[i - 1].latitude, enrichedPoints[i - 1].longitude,
+                enrichedPoints[i].latitude, enrichedPoints[i].longitude
+            )
+        }
+        val avgSpeed = enrichedPoints.filter { it.speedKmh > 0 }.map { it.speedKmh }.average().let {
+            if (it.isNaN()) 0.0 else it
+        }
+        val maxSpeed = enrichedPoints.maxOf { it.speedKmh }.toDouble()
+
+        val track = TrackSession(
+            id = trackId,
+            name = trackName,
+            startTime = enrichedPoints.first().timestamp,
+            endTime = enrichedPoints.last().timestamp,
+            distanceMeters = totalDistance,
+            avgSpeedKmh = avgSpeed,
+            maxSpeedKmh = maxSpeed,
+            activityType = activityType,
+            isActive = false
+        )
+        trackDao.insert(track)
+        trackPointDao.insertAll(enrichedPoints)
+
+        Log.i(TAG, "GPX import: ${enrichedPoints.size} points for track '$trackName'")
+        return ImportResult(trackId, trackName, enrichedPoints.size)
+    }
+
+    private suspend fun importFromCsv(content: String): ImportResult {
+        val trackId = UUID.randomUUID().toString()
+        val lines = content.lines().filter { it.isNotBlank() }
+        if (lines.size < 2) throw IllegalArgumentException("CSV file is empty or has no data rows")
+
+        val header = lines.first().split(",").map { it.trim().lowercase() }
+        val latIdx = header.indexOfFirst { it == "latitude" || it == "lat" }
+        val lonIdx = header.indexOfFirst { it == "longitude" || it == "lon" || it == "lng" }
+        if (latIdx < 0 || lonIdx < 0) throw IllegalArgumentException("CSV must have latitude and longitude columns")
+
+        val tsIdx = header.indexOfFirst { it == "timestamp" || it == "time" || it == "datetime" }
+        val altIdx = header.indexOfFirst { it == "altitude" || it == "ele" || it == "elevation" }
+        val speedIdx = header.indexOfFirst { it == "speed_kmh" || it == "speed" }
+        val hrIdx = header.indexOfFirst { it == "heart_rate" || it == "hr" || it == "heartrate" }
+        val cadIdx = header.indexOfFirst { it == "cadence" }
+        val actIdx = header.indexOfFirst { it == "activity" || it == "activity_type" }
+        val accIdx = header.indexOfFirst { it == "accuracy" }
+        val satIdx = header.indexOfFirst { it == "satellites" || it == "satellites_used" }
+
+        val isoFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+
+        val points = mutableListOf<TrackPoint>()
+        for (line in lines.drop(1)) {
+            val cols = line.split(",").map { it.trim() }
+            val lat = cols.getOrNull(latIdx)?.toDoubleOrNull() ?: continue
+            val lon = cols.getOrNull(lonIdx)?.toDoubleOrNull() ?: continue
+
+            val timestamp = if (tsIdx >= 0) {
+                val tsVal = cols.getOrNull(tsIdx) ?: ""
+                tsVal.toLongOrNull() ?: try { isoFmt.parse(tsVal)?.time } catch (e: Exception) { null }
+                ?: System.currentTimeMillis()
+            } else System.currentTimeMillis()
+
+            val altitude = if (altIdx >= 0) cols.getOrNull(altIdx)?.toDoubleOrNull() else null
+            val speedKmh = if (speedIdx >= 0) cols.getOrNull(speedIdx)?.toFloatOrNull() ?: 0f else 0f
+            val heartRate = if (hrIdx >= 0) cols.getOrNull(hrIdx)?.toIntOrNull() else null
+            val cadence = if (cadIdx >= 0) cols.getOrNull(cadIdx)?.toIntOrNull() else null
+            val activity = if (actIdx >= 0) cols.getOrNull(actIdx)?.let { parseActivityType(it) } ?: ActivityType.UNKNOWN else ActivityType.UNKNOWN
+            val accuracy = if (accIdx >= 0) cols.getOrNull(accIdx)?.toFloatOrNull() else null
+            val satellites = if (satIdx >= 0) cols.getOrNull(satIdx)?.toIntOrNull() else null
+
+            points.add(TrackPoint(
+                trackId = trackId,
+                latitude = lat,
+                longitude = lon,
+                altitude = altitude,
+                speedKmh = speedKmh,
+                speedMs = speedKmh / 3.6f,
+                timestamp = timestamp,
+                heartRate = heartRate,
+                cadence = cadence,
+                activityType = activity,
+                accuracy = accuracy,
+                satellitesUsed = satellites,
+                isAccurate = true
+            ))
+        }
+
+        if (points.isEmpty()) throw IllegalArgumentException("No valid data rows found in CSV")
+
+        // Calculate stats
+        var totalDistance = 0.0
+        for (i in 1 until points.size) {
+            totalDistance += LocationTracker.distanceBetween(
+                points[i - 1].latitude, points[i - 1].longitude,
+                points[i].latitude, points[i].longitude
+            )
+        }
+        val avgSpeed = points.filter { it.speedKmh > 0 }.map { it.speedKmh }.average().let {
+            if (it.isNaN()) 0.0 else it
+        }
+        val maxSpeed = points.maxOf { it.speedKmh }.toDouble()
+        val dominant = points.map { it.activityType }
+            .groupBy { it }
+            .maxByOrNull { it.value.size }
+            ?.key ?: ActivityType.UNKNOWN
+
+        val sdf = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+        val track = TrackSession(
+            id = trackId,
+            name = "Imported ${sdf.format(Date(points.first().timestamp))}",
+            startTime = points.first().timestamp,
+            endTime = points.last().timestamp,
+            distanceMeters = totalDistance,
+            avgSpeedKmh = avgSpeed,
+            maxSpeedKmh = maxSpeed,
+            activityType = dominant,
+            isActive = false
+        )
+        trackDao.insert(track)
+        trackPointDao.insertAll(points)
+
+        Log.i(TAG, "CSV import: ${points.size} points")
+        return ImportResult(trackId, track.name, points.size)
+    }
+
+    private fun parseActivityType(value: String): ActivityType =
+        try { ActivityType.valueOf(value.uppercase()) } catch (e: Exception) { ActivityType.UNKNOWN }
+
+    private fun parseWearableType(value: String): WearableType =
+        try { WearableType.valueOf(value.uppercase()) } catch (e: Exception) { WearableType.UNKNOWN }
+
+    private fun unescapeXml(text: String): String = text
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
 
     // ─── LOCATION ─────────────────────────────────────────
 

@@ -1,6 +1,9 @@
 package com.trackjourney.ui.screens.tracks
 
 import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,6 +55,31 @@ class TracksViewModel @Inject constructor(
     private val _exportError = MutableStateFlow<String?>(null)
     val exportError: StateFlow<String?> = _exportError.asStateFlow()
 
+    private val _importResult = MutableStateFlow<TrackRepository.ImportResult?>(null)
+    val importResult: StateFlow<TrackRepository.ImportResult?> = _importResult.asStateFlow()
+
+    private val _importError = MutableStateFlow<String?>(null)
+    val importError: StateFlow<String?> = _importError.asStateFlow()
+
+    fun importTrack(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val result = repository.importTrack(uri)
+                _importResult.value = result
+            } catch (e: Exception) {
+                _importError.value = e.message ?: "Import failed"
+            }
+        }
+    }
+
+    fun clearImportResult() {
+        _importResult.value = null
+    }
+
+    fun clearImportError() {
+        _importError.value = null
+    }
+
     fun deleteTrack(trackId: String) {
         viewModelScope.launch { repository.deleteTrack(trackId) }
     }
@@ -101,10 +129,19 @@ fun TracksScreen(
     val tracks by viewModel.tracks.collectAsState()
     val exportedFile by viewModel.exportedFile.collectAsState()
     val exportError by viewModel.exportError.collectAsState()
+    val importResult by viewModel.importResult.collectAsState()
+    val importError by viewModel.importError.collectAsState()
     var selectedFilter by remember { mutableStateOf<ActivityType?>(null) }
     var sortOption by remember { mutableStateOf(TrackSortOption.DATE_DESC) }
     var showSortMenu by remember { mutableStateOf(false) }
     var exportTrackId by remember { mutableStateOf<String?>(null) }
+
+    // File picker for import
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.importTrack(it) }
+    }
 
     // Share the exported file when ready
     LaunchedEffect(exportedFile) {
@@ -129,12 +166,24 @@ fun TracksScreen(
         }
     }
 
-    // Show error snackbar
+    // Show snackbar for errors and import success
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(exportError) {
         exportError?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearExportError()
+        }
+    }
+    LaunchedEffect(importError) {
+        importError?.let {
+            snackbarHostState.showSnackbar("Import failed: $it")
+            viewModel.clearImportError()
+        }
+    }
+    LaunchedEffect(importResult) {
+        importResult?.let {
+            snackbarHostState.showSnackbar("Imported \"${it.trackName}\" with ${it.pointCount} points")
+            viewModel.clearImportResult()
         }
     }
 
@@ -170,6 +219,19 @@ fun TracksScreen(
                 }
             },
             actions = {
+                IconButton(onClick = {
+                    importLauncher.launch(arrayOf(
+                        "application/json",
+                        "application/gpx+xml",
+                        "text/xml",
+                        "application/xml",
+                        "text/csv",
+                        "text/comma-separated-values",
+                        "*/*"
+                    ))
+                }) {
+                    Icon(Icons.Filled.FileUpload, contentDescription = "Import track")
+                }
                 Box {
                     IconButton(onClick = { showSortMenu = true }) {
                         Icon(Icons.Filled.Sort, contentDescription = "Sort tracks")

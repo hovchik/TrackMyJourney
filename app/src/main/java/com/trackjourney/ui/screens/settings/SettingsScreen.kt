@@ -448,6 +448,11 @@ private data class PermissionItem(
 
 private val requiredPermissions = buildList {
     add(PermissionItem(
+        Manifest.permission.INTERNET,
+        "Internet",
+        Icons.Filled.Wifi
+    ))
+    add(PermissionItem(
         Manifest.permission.ACCESS_FINE_LOCATION,
         "Location",
         Icons.Filled.LocationOn

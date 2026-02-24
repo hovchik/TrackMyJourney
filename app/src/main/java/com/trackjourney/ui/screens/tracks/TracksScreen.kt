@@ -352,6 +352,7 @@ fun TracksScreen(
                     TrackCard(
                         track = track,
                         points = trackPoints,
+                        currency = currentSettings.currency,
                         onClick = { onTrackClick(track.id) },
                         onExport = { exportTrackId = track.id },
                         onDelete = { viewModel.deleteTrack(track.id) },
@@ -514,6 +515,7 @@ private fun EmptyTracksState(hasFilter: Boolean, filterName: String?) {
 private fun TrackCard(
     track: TrackSession,
     points: List<TrackPoint>,
+    currency: String,
     onClick: () -> Unit,
     onExport: () -> Unit,
     onDelete: () -> Unit,
@@ -730,7 +732,7 @@ private fun TrackCard(
                         DetailItem(
                             modifier = Modifier.fillMaxWidth(),
                             label = "Ride Cost",
-                            value = "${currentSettings.currency}${String.format(Locale.US, "%.2f", cost)}"
+                            value = "${currency}${String.format(Locale.US, "%.2f", cost)}"
                         )
                     }
 

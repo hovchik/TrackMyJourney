@@ -399,7 +399,8 @@ data class TrackingSettings(
     val userWeightKg: Float = 70f,                // default 70 kg
     val userHeightCm: Float = 170f,               // default 170 cm
     val trackingMode: TrackingMode = TrackingMode.HIGH_ACCURACY,
-    val selectedCarId: String? = null              // ID of the active car profile
+    val selectedCarId: String? = null,             // ID of the active car profile
+    val currency: String = "$"                     // currency symbol for ride cost
 )
 
 enum class ExportFormat { JSON, GPX, CSV }

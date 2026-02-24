@@ -176,7 +176,7 @@ fun MapScreen(
                             append(" \u2022 \uD83D\uDD0B${bStart - bEnd}%")
                         }
                         uiState.rideCost?.let { cost ->
-                            append(" \u2022 ${String.format("%.2f", cost)}")
+                            append(" \u2022 ${uiState.settings.currency}${String.format("%.2f", cost)}")
                         }
                     } else null,
                     expanded = trackDropdownExpanded,
@@ -230,13 +230,13 @@ fun MapScreen(
             ActivityBadge(activity = uiState.currentActivity, speed = uiState.currentSpeed)
         }
 
-        // ── Back arrow (top start, saved track) ──────────────
+        // ── Back arrow (top start, below track selector) ───────
         androidx.compose.animation.AnimatedVisibility(
             visible = uiState.isViewingSavedTrack && !uiState.isTracking,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
-                .padding(start = 12.dp, top = 12.dp),
+                .padding(start = 12.dp, top = 68.dp),
             enter = slideInHorizontally { -it } + fadeIn(),
             exit = slideOutHorizontally { -it } + fadeOut()
         ) {
@@ -461,6 +461,7 @@ fun MapScreen(
     uiState.completedTrack?.let { completed ->
         TrackCompletionDialog(
             info = completed,
+            currency = uiState.settings.currency,
             onDismiss = { viewModel.dismissCompletedTrack() },
             onViewOnMap = {
                 viewModel.dismissCompletedTrack()
@@ -1023,6 +1024,7 @@ private fun WearableStatusChip(
 @Composable
 private fun TrackCompletionDialog(
     info: CompletedTrackInfo,
+    currency: String = "$",
     onDismiss: () -> Unit,
     onViewOnMap: () -> Unit
 ) {
@@ -1247,7 +1249,7 @@ private fun TrackCompletionDialog(
                                     tint = Accent
                                 )
                                 Text(
-                                    "Ride cost: ${String.format(Locale.US, "%.2f", cost)}",
+                                    "Ride cost: $currency${String.format(Locale.US, "%.2f", cost)}",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Accent

@@ -42,6 +42,10 @@ class TrackingService : Service() {
         const val ACTION_RESUME = "com.trackjourney.ACTION_RESUME"
         const val EXTRA_TRACK_NAME = "track_name"
 
+        /** Observable flag — true while the service is actively tracking. */
+        private val _isRunning = MutableStateFlow(false)
+        val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+
         fun startTracking(context: Context, trackName: String = "") {
             val intent = Intent(context, TrackingService::class.java).apply {
                 action = ACTION_START
@@ -132,6 +136,7 @@ class TrackingService : Service() {
                 }
 
                 Log.i(TAG, "Tracking started: ${track.id}")
+                _isRunning.value = true
 
                 // Observe settings — collectLatest cancels the old
                 // trackWithSettings and restarts with new settings when
@@ -196,7 +201,7 @@ class TrackingService : Service() {
             }
 
             TrackingMode.ENERGY_EFFICIENCY -> {
-                // Fixed 10s interval with balanced priority
+                // Fixed 26s interval with balanced priority
                 val interval = smartIntervalManager.getInitialInterval(settings)
                 locationTracker.locationUpdatesWithInterval(
                     intervalMs = interval,
@@ -308,6 +313,7 @@ class TrackingService : Service() {
             wearableScanJob?.cancel()
             wearableScanJob = null
             currentTrackId = null
+            _isRunning.value = false
             locationTracker.stopTracking()
             satelliteTracker.stopMonitoring()
             motionSensorManager.stopMonitoring()
@@ -378,6 +384,7 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
+        _isRunning.value = false
         serviceScope.cancel()
         locationTracker.stopTracking()
         satelliteTracker.stopMonitoring()

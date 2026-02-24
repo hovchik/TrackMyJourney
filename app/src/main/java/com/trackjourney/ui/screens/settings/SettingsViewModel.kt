@@ -90,6 +90,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateCurrency(currency: String) {
+        viewModelScope.launch {
+            repository.updateSettings { updateCurrency(currency) }
+        }
+    }
+
     // ─── Car Profiles ────────────────────────────────────
 
     val allCars: StateFlow<List<CarProfile>> = repository.getAllCars()

@@ -23,6 +23,7 @@ class SettingsDataStore(
         val USER_HEIGHT_CM = floatPreferencesKey("user_height_cm")
         val TRACKING_MODE = stringPreferencesKey("tracking_mode")
         val SELECTED_CAR_ID = stringPreferencesKey("selected_car_id")
+        val CURRENCY = stringPreferencesKey("currency")
     }
 
     val settings: Flow<TrackingSettings> = context.dataStore.data.map { prefs ->
@@ -42,7 +43,8 @@ class SettingsDataStore(
             trackingMode = try {
                 TrackingMode.valueOf(prefs[TRACKING_MODE] ?: "HIGH_ACCURACY")
             } catch (e: Exception) { TrackingMode.HIGH_ACCURACY },
-            selectedCarId = prefs[SELECTED_CAR_ID]
+            selectedCarId = prefs[SELECTED_CAR_ID],
+            currency = prefs[CURRENCY] ?: "$"
         )
     }
 
@@ -82,6 +84,10 @@ class SettingsDataStore(
         context.dataStore.edit { it[TRACKING_MODE] = mode.name }
     }
 
+    suspend fun updateCurrency(currency: String) {
+        context.dataStore.edit { it[CURRENCY] = currency }
+    }
+
     suspend fun updateSelectedCarId(carId: String?) {
         context.dataStore.edit { prefs ->
             if (carId != null) {
@@ -108,6 +114,7 @@ class SettingsDataStore(
             } else {
                 prefs.remove(SELECTED_CAR_ID)
             }
+            prefs[CURRENCY] = settings.currency
         }
     }
 }

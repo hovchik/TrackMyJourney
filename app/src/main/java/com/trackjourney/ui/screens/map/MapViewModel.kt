@@ -85,6 +85,7 @@ class MapViewModel @Inject constructor(
     init {
         observeActiveTrack()
         observeSettings()
+        observeServiceRunning()
         fetchInitialLocation()
 
         // Check if navigated with a trackId to view a saved track
@@ -255,6 +256,24 @@ class MapViewModel @Inject constructor(
         wearableReadingJob = viewModelScope.launch {
             wearableManager.latestReading.collect { reading ->
                 _uiState.update { it.copy(wearableReading = reading) }
+            }
+        }
+    }
+
+    /**
+     * If the foreground service stops (e.g. location toggle turned off,
+     * system kills it), automatically end the active track so the
+     * Start button reappears.
+     */
+    private fun observeServiceRunning() {
+        viewModelScope.launch {
+            TrackingService.isRunning.collect { running ->
+                if (!running && _uiState.value.isTracking) {
+                    // Service died but DB still says active — end it
+                    _uiState.value.currentTrack?.id?.let { trackId ->
+                        repository.endTrack(trackId)
+                    }
+                }
             }
         }
     }

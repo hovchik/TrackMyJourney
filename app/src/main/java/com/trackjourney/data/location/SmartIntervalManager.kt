@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * Modes:
  *  - HIGH_ACCURACY:      Uses the user's configured interval (1–30s), ignores AI.
- *  - ENERGY_EFFICIENCY:  Fixed 10s interval, balanced accuracy mode.
+ *  - ENERGY_EFFICIENCY:  Fixed 26s interval, balanced accuracy mode.
  *  - AI_BATTERY_SAVER:   Dynamic interval computed per-update:
  *      • Charging detected → 3s (maximum accuracy while plugged in)
  *      • Highway (>80 km/h) → 15s (predictable straight-line motion)
@@ -35,7 +35,7 @@ class SmartIntervalManager(
         private const val INTERVAL_STATIONARY = 10000L
 
         // Energy Efficiency fixed interval
-        private const val INTERVAL_ENERGY_EFFICIENCY = 10000L
+        private const val INTERVAL_ENERGY_EFFICIENCY = 26000L
 
         // Speed thresholds (km/h)
         private const val HIGHWAY_SPEED = 80f

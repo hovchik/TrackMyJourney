@@ -558,10 +558,42 @@ fun SettingsScreen(
                 CarProfileCard(
                     car = car,
                     isSelected = isSelected,
+                    currency = settings.currency,
                     onSelect = { viewModel.selectCar(if (isSelected) null else car.id) },
                     onEdit = { editingCar = car },
                     onDelete = { viewModel.deleteCar(car.id) }
                 )
+            }
+        }
+
+        // ── Currency ──
+        item {
+            SettingsCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.AttachMoney, contentDescription = null, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Currency", fontWeight = FontWeight.Medium)
+                        Text(
+                            "Symbol shown with ride costs",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row {
+                        listOf("$", "\u20AC", "\u00A3", "\u00A5", "\u20BD").forEach { symbol ->
+                            FilterChip(
+                                selected = settings.currency == symbol,
+                                onClick = { viewModel.updateCurrency(symbol) },
+                                label = { Text(symbol, fontSize = 13.sp) },
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -586,7 +618,7 @@ fun SettingsScreen(
                     TrackingMode.entries.forEach { mode ->
                         val (icon, description) = when (mode) {
                             TrackingMode.HIGH_ACCURACY -> Icons.Filled.GpsFixed to "Best precision, uses configured interval"
-                            TrackingMode.ENERGY_EFFICIENCY -> Icons.Filled.BatterySaver to "Fixed 10s interval, saves battery"
+                            TrackingMode.ENERGY_EFFICIENCY -> Icons.Filled.BatterySaver to "Fixed 26s interval, saves battery"
                             TrackingMode.AI_BATTERY_SAVER -> Icons.Filled.AutoAwesome to "AI adjusts interval by speed & charging"
                         }
                         Row(
@@ -957,6 +989,7 @@ fun SettingsScreen(
 private fun CarProfileCard(
     car: CarProfile,
     isSelected: Boolean,
+    currency: String = "$",
     onSelect: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
@@ -1041,7 +1074,7 @@ private fun CarProfileCard(
                     DetailChip(Icons.Filled.Bolt, "${String.format("%.0f", car.batteryCapacityKwh)} kWh")
                     DetailChip(Icons.Filled.Speed, "${String.format("%.1f", car.electricConsumption)} kWh/100km")
                     if (car.fuelPricePerLiter > 0) {
-                        DetailChip(Icons.Filled.AttachMoney, "${String.format("%.2f", car.fuelPricePerLiter)}/kWh")
+                        DetailChip(Icons.Filled.AttachMoney, "$currency${String.format("%.2f", car.fuelPricePerLiter)}/kWh")
                     }
                 } else {
                     if (car.engineSize > 0) {
@@ -1049,7 +1082,7 @@ private fun CarProfileCard(
                     }
                     DetailChip(Icons.Filled.WaterDrop, "${String.format("%.1f", car.fuelConsumption)} L/100km")
                     if (car.fuelPricePerLiter > 0) {
-                        DetailChip(Icons.Filled.AttachMoney, "${String.format("%.2f", car.fuelPricePerLiter)}/L")
+                        DetailChip(Icons.Filled.AttachMoney, "$currency${String.format("%.2f", car.fuelPricePerLiter)}/L")
                     }
                 }
             }

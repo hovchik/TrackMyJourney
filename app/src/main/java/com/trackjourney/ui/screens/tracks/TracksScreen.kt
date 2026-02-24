@@ -53,6 +53,9 @@ class TracksViewModel @Inject constructor(
     val tracksWithPoints: StateFlow<List<TrackWithPoints>> = repository.getAllTracksWithPoints()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val settings: StateFlow<TrackingSettings> = repository.settings
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TrackingSettings())
+
     private val _exportedFile = MutableStateFlow<java.io.File?>(null)
     val exportedFile: StateFlow<java.io.File?> = _exportedFile.asStateFlow()
 
@@ -130,6 +133,7 @@ fun TracksScreen(
     onTrackClick: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val currentSettings by viewModel.settings.collectAsState()
     val tracks by viewModel.tracks.collectAsState()
     val tracksWithPoints by viewModel.tracksWithPoints.collectAsState()
     val exportedFile by viewModel.exportedFile.collectAsState()
@@ -726,7 +730,7 @@ private fun TrackCard(
                         DetailItem(
                             modifier = Modifier.fillMaxWidth(),
                             label = "Ride Cost",
-                            value = String.format(Locale.US, "%.2f", cost)
+                            value = "${currentSettings.currency}${String.format(Locale.US, "%.2f", cost)}"
                         )
                     }
 

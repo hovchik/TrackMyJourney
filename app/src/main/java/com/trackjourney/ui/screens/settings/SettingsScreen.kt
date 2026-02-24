@@ -584,7 +584,7 @@ fun SettingsScreen(
                         )
                     }
                     Row {
-                        listOf("$", "\u20AC", "\u00A3", "\u00A5", "\u20BD").forEach { symbol ->
+                        listOf("$", "\u20AC", "\u00A3", "\u00A5", "\u20BD", "\u058F").forEach { symbol ->
                             FilterChip(
                                 selected = settings.currency == symbol,
                                 onClick = { viewModel.updateCurrency(symbol) },
@@ -964,6 +964,7 @@ fun SettingsScreen(
     if (showAddCarDialog) {
         CarProfileDialog(
             car = null,
+            currency = settings.currency,
             onDismiss = { showAddCarDialog = false },
             onSave = { car ->
                 viewModel.addCar(car)
@@ -976,6 +977,7 @@ fun SettingsScreen(
     editingCar?.let { car ->
         CarProfileDialog(
             car = car,
+            currency = settings.currency,
             onDismiss = { editingCar = null },
             onSave = { updated ->
                 viewModel.updateCar(updated)
@@ -1074,7 +1076,7 @@ private fun CarProfileCard(
                     DetailChip(Icons.Filled.Bolt, "${String.format("%.0f", car.batteryCapacityKwh)} kWh")
                     DetailChip(Icons.Filled.Speed, "${String.format("%.1f", car.electricConsumption)} kWh/100km")
                     if (car.fuelPricePerLiter > 0) {
-                        DetailChip(Icons.Filled.AttachMoney, "$currency${String.format("%.2f", car.fuelPricePerLiter)}/kWh")
+                        DetailChip(Icons.Filled.Sell, "$currency${String.format("%.2f", car.fuelPricePerLiter)}/kWh")
                     }
                 } else {
                     if (car.engineSize > 0) {
@@ -1082,7 +1084,7 @@ private fun CarProfileCard(
                     }
                     DetailChip(Icons.Filled.WaterDrop, "${String.format("%.1f", car.fuelConsumption)} L/100km")
                     if (car.fuelPricePerLiter > 0) {
-                        DetailChip(Icons.Filled.AttachMoney, "$currency${String.format("%.2f", car.fuelPricePerLiter)}/L")
+                        DetailChip(Icons.Filled.Sell, "$currency${String.format("%.2f", car.fuelPricePerLiter)}/L")
                     }
                 }
             }
@@ -1149,6 +1151,7 @@ private fun DetailChip(icon: ImageVector, text: String) {
 @Composable
 private fun CarProfileDialog(
     car: CarProfile?,
+    currency: String = "$",
     onDismiss: () -> Unit,
     onSave: (CarProfile) -> Unit
 ) {
@@ -1270,7 +1273,7 @@ private fun CarProfileDialog(
                         onValueChange = { fuelPricePerLiter = it },
                         label = { Text("Price per kWh") },
                         placeholder = { Text("e.g. 0.15") },
-                        leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
+                        leadingIcon = { Text(currency, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth(),
@@ -1311,7 +1314,7 @@ private fun CarProfileDialog(
                         onValueChange = { fuelPricePerLiter = it },
                         label = { Text("Price per Liter") },
                         placeholder = { Text("e.g. 1.50") },
-                        leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
+                        leadingIcon = { Text(currency, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth(),

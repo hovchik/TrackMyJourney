@@ -1,10 +1,12 @@
 package com.trackjourney.service
 
 import android.app.*
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.location.LocationManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
@@ -79,6 +81,20 @@ class TrackingService : Service() {
     private var pointCount = 0
     private var batteryAtStart: Int? = null
 
+    /** Stops tracking when the device location toggle is switched off. */
+    private val locationProviderReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == LocationManager.PROVIDERS_CHANGED_ACTION) {
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                val gpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                if (!gpsEnabled && trackingJob?.isActive == true) {
+                    Log.i(TAG, "Location provider disabled — auto-stopping tracking")
+                    stopTracking()
+                }
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -101,6 +117,12 @@ class TrackingService : Service() {
 
     private fun startTracking(trackName: String) {
         if (trackingJob?.isActive == true) return
+
+        // Listen for location toggle changes so we can auto-stop
+        registerReceiver(
+            locationProviderReceiver,
+            IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
+        )
 
         val notification = buildNotification("Starting tracking...")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -385,6 +407,7 @@ class TrackingService : Service() {
 
     override fun onDestroy() {
         _isRunning.value = false
+        try { unregisterReceiver(locationProviderReceiver) } catch (_: Exception) {}
         serviceScope.cancel()
         locationTracker.stopTracking()
         satelliteTracker.stopMonitoring()

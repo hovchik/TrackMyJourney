@@ -230,36 +230,6 @@ fun MapScreen(
             ActivityBadge(activity = uiState.currentActivity, speed = uiState.currentSpeed)
         }
 
-        // ── Back arrow (top start, below track selector) ───────
-        androidx.compose.animation.AnimatedVisibility(
-            visible = uiState.isViewingSavedTrack && !uiState.isTracking,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(start = 12.dp, top = 68.dp),
-            enter = slideInHorizontally { -it } + fadeIn(),
-            exit = slideOutHorizontally { -it } + fadeOut()
-        ) {
-            FilledIconButton(
-                onClick = {
-                    viewModel.clearSavedTrack()
-                    onBackFromTrack?.invoke()
-                },
-                modifier = Modifier.size(42.dp),
-                shape = CircleShape,
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = Color.White,
-                    contentColor = OverlayDark
-                )
-            ) {
-                Icon(
-                    Icons.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-
         // ── Speed legend (bottom start, saved track) ────────
         androidx.compose.animation.AnimatedVisibility(
             visible = uiState.isViewingSavedTrack,

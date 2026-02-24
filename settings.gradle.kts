@@ -5,7 +5,7 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-dependencyResolution {
+dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
@@ -13,5 +13,5 @@ dependencyResolution {
     }
 }
 
-rootProject.name = "TrackMyJourney"
+rootProject.name = "Pathwise"
 include(":app")

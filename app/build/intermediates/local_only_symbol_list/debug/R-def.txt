@@ -1,0 +1,10 @@
+R_DEF: Internal format may change without notice
+local
+drawable ic_stop
+drawable ic_tracking
+string app_name
+string pause_tracking
+string resume_tracking
+string start_tracking
+string stop_tracking
+style Theme.TrackMyJourney

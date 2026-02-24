@@ -1,6 +1,6 @@
-# TrackMyJourney 🗺️
+# Pathwise 🗺️
 
-An Android application that tracks your movements on OpenStreetMap, integrates with Garmin/Samsung smartwatches via Bluetooth LE for health metrics, and uses on-device AI to analyze your trips.
+**Pathwise** (formerly TrackMyJourney) — an Android application that tracks your movements on OpenStreetMap, integrates with Garmin/Samsung smartwatches via Bluetooth LE for health metrics, and uses on-device AI to analyze your trips.
 
 ## Features
 

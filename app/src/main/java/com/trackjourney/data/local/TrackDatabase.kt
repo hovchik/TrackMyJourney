@@ -9,8 +9,8 @@ import kotlinx.coroutines.flow.Flow
 // ─────────────────────────────────────────────────────────
 
 @Database(
-    entities = [TrackSession::class, TrackPoint::class, HealthData::class, AiAnalysis::class],
-    version = 6,
+    entities = [TrackSession::class, TrackPoint::class, HealthData::class, AiAnalysis::class, CarProfile::class],
+    version = 7,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -19,6 +19,7 @@ abstract class TrackDatabase : RoomDatabase() {
     abstract fun trackPointDao(): TrackPointDao
     abstract fun healthDataDao(): HealthDataDao
     abstract fun aiAnalysisDao(): AiAnalysisDao
+    abstract fun carProfileDao(): CarProfileDao
 }
 
 // ─────────────────────────────────────────────────────────
@@ -39,6 +40,13 @@ class Converters {
     @TypeConverter
     fun toWearableType(value: String): WearableType =
         try { WearableType.valueOf(value) } catch (e: Exception) { WearableType.UNKNOWN }
+
+    @TypeConverter
+    fun fromFuelType(value: FuelType): String = value.name
+
+    @TypeConverter
+    fun toFuelType(value: String): FuelType =
+        try { FuelType.valueOf(value) } catch (e: Exception) { FuelType.PETROL }
 }
 
 // ─────────────────────────────────────────────────────────
@@ -191,4 +199,33 @@ interface AiAnalysisDao {
 
     @Query("SELECT * FROM ai_analyses ORDER BY timestamp DESC")
     fun getAllAnalyses(): Flow<List<AiAnalysis>>
+}
+
+// ─────────────────────────────────────────────────────────
+//  CAR PROFILE DAO
+// ─────────────────────────────────────────────────────────
+
+@Dao
+interface CarProfileDao {
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(car: CarProfile)
+
+    @Update
+    suspend fun update(car: CarProfile)
+
+    @Delete
+    suspend fun delete(car: CarProfile)
+
+    @Query("SELECT * FROM car_profiles ORDER BY created_at ASC")
+    fun getAllCars(): Flow<List<CarProfile>>
+
+    @Query("SELECT * FROM car_profiles WHERE id = :id")
+    suspend fun getCarById(id: String): CarProfile?
+
+    @Query("SELECT * FROM car_profiles WHERE id = :id")
+    fun observeCarById(id: String): Flow<CarProfile?>
+
+    @Query("SELECT COUNT(*) FROM car_profiles")
+    suspend fun getCarCount(): Int
 }

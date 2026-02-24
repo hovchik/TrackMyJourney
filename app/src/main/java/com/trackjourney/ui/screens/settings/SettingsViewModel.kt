@@ -90,58 +90,25 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun updateCarModel(model: String) {
-        viewModelScope.launch {
-            repository.updateSettings { updateCarModel(model) }
-        }
+    // ─── Car Profiles ────────────────────────────────────
+
+    val allCars: StateFlow<List<CarProfile>> = repository.getAllCars()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun addCar(car: CarProfile) {
+        viewModelScope.launch { repository.addCar(car) }
     }
 
-    fun updateCarYear(year: Int) {
-        viewModelScope.launch {
-            repository.updateSettings { updateCarYear(year) }
-        }
+    fun updateCar(car: CarProfile) {
+        viewModelScope.launch { repository.updateCar(car) }
     }
 
-    fun updateEngineSize(size: Float) {
-        viewModelScope.launch {
-            repository.updateSettings { updateEngineSize(size) }
-        }
+    fun deleteCar(carId: String) {
+        viewModelScope.launch { repository.deleteCar(carId) }
     }
 
-    fun updateIsElectricCar(isElectric: Boolean) {
-        viewModelScope.launch {
-            repository.updateSettings { updateIsElectricCar(isElectric) }
-        }
-    }
-
-    fun updateFuelType(type: FuelType) {
-        viewModelScope.launch {
-            repository.updateSettings { updateFuelType(type) }
-        }
-    }
-
-    fun updateFuelPricePerLiter(price: Float) {
-        viewModelScope.launch {
-            repository.updateSettings { updateFuelPricePerLiter(price) }
-        }
-    }
-
-    fun updateFuelConsumption(consumption: Float) {
-        viewModelScope.launch {
-            repository.updateSettings { updateFuelConsumption(consumption) }
-        }
-    }
-
-    fun updateBatteryCapacityKwh(capacity: Float) {
-        viewModelScope.launch {
-            repository.updateSettings { updateBatteryCapacityKwh(capacity) }
-        }
-    }
-
-    fun updateElectricConsumption(consumption: Float) {
-        viewModelScope.launch {
-            repository.updateSettings { updateElectricConsumption(consumption) }
-        }
+    fun selectCar(carId: String?) {
+        viewModelScope.launch { repository.selectCar(carId) }
     }
 
     // ─── Full database export / import ──────────────────

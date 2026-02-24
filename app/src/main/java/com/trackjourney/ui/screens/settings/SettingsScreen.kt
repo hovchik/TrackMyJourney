@@ -11,7 +11,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -33,6 +35,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import com.trackjourney.data.bluetooth.WearableConnectionState
+import com.trackjourney.data.model.CarProfile
 import com.trackjourney.data.model.ExportFormat
 import com.trackjourney.data.model.FuelType
 import com.trackjourney.data.model.TrackingMode
@@ -55,6 +58,9 @@ fun SettingsScreen(
     val importError by viewModel.importError.collectAsState()
     val isExporting by viewModel.isExporting.collectAsState()
     val isImporting by viewModel.isImporting.collectAsState()
+    val allCars by viewModel.allCars.collectAsState()
+    var showAddCarDialog by remember { mutableStateOf(false) }
+    var editingCar by remember { mutableStateOf<CarProfile?>(null) }
 
     // File picker for importing backup
     val importLauncher = rememberLauncherForActivityResult(
@@ -480,235 +486,82 @@ fun SettingsScreen(
             }
         }
 
-        // ── CAR PROFILE ─────────────────────────────────
+        // ── CAR PROFILES ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Car Profile",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
-
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Car Model
-                    var carModelText by remember(settings.carModel) { mutableStateOf(settings.carModel) }
-                    OutlinedTextField(
-                        value = carModelText,
-                        onValueChange = {
-                            carModelText = it
-                            viewModel.updateCarModel(it)
-                        },
-                        label = { Text("Car Model") },
-                        placeholder = { Text("e.g. Toyota Camry") },
-                        leadingIcon = { Icon(Icons.Filled.DirectionsCar, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    // Car Year
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Year", fontWeight = FontWeight.Medium)
-                            Text(
-                                "${settings.carYear}",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Slider(
-                        value = settings.carYear.toFloat(),
-                        onValueChange = { viewModel.updateCarYear(it.toInt()) },
-                        valueRange = 1990f..2026f,
-                        steps = 35
-                    )
-
-                    // Engine Size
-                    var engineText by remember(settings.engineSize) {
-                        mutableStateOf(if (settings.engineSize > 0) String.format("%.1f", settings.engineSize) else "")
-                    }
-                    OutlinedTextField(
-                        value = engineText,
-                        onValueChange = {
-                            engineText = it
-                            it.toFloatOrNull()?.let { v -> viewModel.updateEngineSize(v) }
-                        },
-                        label = { Text("Engine Size (L)") },
-                        placeholder = { Text("e.g. 2.0") },
-                        leadingIcon = { Icon(Icons.Filled.Speed, contentDescription = null) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    // Electric / Gas toggle
-                    SettingsSwitch(
-                        icon = Icons.Filled.ElectricCar,
-                        title = "Electric Vehicle",
-                        subtitle = if (settings.isElectricCar) "Track battery usage per km" else "Track fuel consumption per km",
-                        checked = settings.isElectricCar,
-                        onCheckedChange = { viewModel.updateIsElectricCar(it) }
-                    )
+                Text(
+                    "My Cars",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(vertical = 8.dp)
+                        .weight(1f)
+                )
+                TextButton(onClick = { showAddCarDialog = true }) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add Car")
                 }
             }
         }
 
-        // Fuel / Electric settings (separate card for clarity)
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (settings.isElectricCar) {
-                        // ── Electric car fields ──
-                        Text("Electric Vehicle Settings", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-
-                        // Battery Capacity
-                        var battCapText by remember(settings.batteryCapacityKwh) {
-                            mutableStateOf(String.format("%.0f", settings.batteryCapacityKwh))
-                        }
-                        OutlinedTextField(
-                            value = battCapText,
-                            onValueChange = {
-                                battCapText = it
-                                it.toFloatOrNull()?.let { v -> viewModel.updateBatteryCapacityKwh(v) }
-                            },
-                            label = { Text("Battery Capacity (kWh)") },
-                            placeholder = { Text("e.g. 60") },
-                            leadingIcon = { Icon(Icons.Filled.BatteryChargingFull, contentDescription = null) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+        if (allCars.isEmpty()) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Filled.DirectionsCar,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
-
-                        // Avg consumption kWh/100km
-                        var elecConsText by remember(settings.electricConsumption) {
-                            mutableStateOf(String.format("%.1f", settings.electricConsumption))
-                        }
-                        OutlinedTextField(
-                            value = elecConsText,
-                            onValueChange = {
-                                elecConsText = it
-                                it.toFloatOrNull()?.let { v -> viewModel.updateElectricConsumption(v) }
-                            },
-                            label = { Text("Avg Consumption (kWh/100km)") },
-                            placeholder = { Text("e.g. 15") },
-                            leadingIcon = { Icon(Icons.Filled.Bolt, contentDescription = null) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "No cars added yet",
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
-                        // Price per kWh (reusing fuelPricePerLiter field)
-                        var priceKwhText by remember(settings.fuelPricePerLiter) {
-                            mutableStateOf(if (settings.fuelPricePerLiter > 0) String.format("%.2f", settings.fuelPricePerLiter) else "")
-                        }
-                        OutlinedTextField(
-                            value = priceKwhText,
-                            onValueChange = {
-                                priceKwhText = it
-                                it.toFloatOrNull()?.let { v -> viewModel.updateFuelPricePerLiter(v) }
-                            },
-                            label = { Text("Price per kWh") },
-                            placeholder = { Text("e.g. 0.15") },
-                            leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                        Text(
+                            "Add a car to track ride costs",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
-                    } else {
-                        // ── Gas car fields ──
-                        Text("Fuel Settings", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-
-                        // Fuel type selector
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { showAddCarDialog = true },
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Icon(Icons.Filled.LocalGasStation, contentDescription = null, modifier = Modifier.size(24.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Fuel Type", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                            Row {
-                                FuelType.entries.forEach { type ->
-                                    FilterChip(
-                                        selected = settings.fuelType == type,
-                                        onClick = { viewModel.updateFuelType(type) },
-                                        label = { Text(type.label, fontSize = 12.sp) },
-                                        modifier = Modifier.padding(start = 4.dp)
-                                    )
-                                }
-                            }
+                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Add Your First Car")
                         }
-
-                        // Fuel consumption L/100km
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Filled.WaterDrop, contentDescription = null, modifier = Modifier.size(24.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Fuel Consumption", fontWeight = FontWeight.Medium)
-                                Text(
-                                    "${String.format("%.1f", settings.fuelConsumption)} L/100km",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        Slider(
-                            value = settings.fuelConsumption,
-                            onValueChange = { viewModel.updateFuelConsumption(it) },
-                            valueRange = 2f..30f,
-                            steps = 55
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("2 L", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("30 L", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-
-                        // Price per liter
-                        var priceLiterText by remember(settings.fuelPricePerLiter) {
-                            mutableStateOf(if (settings.fuelPricePerLiter > 0) String.format("%.2f", settings.fuelPricePerLiter) else "")
-                        }
-                        OutlinedTextField(
-                            value = priceLiterText,
-                            onValueChange = {
-                                priceLiterText = it
-                                it.toFloatOrNull()?.let { v -> viewModel.updateFuelPricePerLiter(v) }
-                            },
-                            label = { Text("Price per Liter") },
-                            placeholder = { Text("e.g. 1.50") },
-                            leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
                     }
                 }
+            }
+        } else {
+            items(allCars.size) { index ->
+                val car = allCars[index]
+                val isSelected = settings.selectedCarId == car.id
+                CarProfileCard(
+                    car = car,
+                    isSelected = isSelected,
+                    onSelect = { viewModel.selectCar(if (isSelected) null else car.id) },
+                    onEdit = { editingCar = car },
+                    onDelete = { viewModel.deleteCar(car.id) }
+                )
             }
         }
 
@@ -1074,6 +927,392 @@ fun SettingsScreen(
         modifier = Modifier.align(Alignment.BottomCenter)
     )
     } // end Box
+
+    // Add Car Dialog
+    if (showAddCarDialog) {
+        CarProfileDialog(
+            car = null,
+            onDismiss = { showAddCarDialog = false },
+            onSave = { car ->
+                viewModel.addCar(car)
+                showAddCarDialog = false
+            }
+        )
+    }
+
+    // Edit Car Dialog
+    editingCar?.let { car ->
+        CarProfileDialog(
+            car = car,
+            onDismiss = { editingCar = null },
+            onSave = { updated ->
+                viewModel.updateCar(updated)
+                editingCar = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun CarProfileCard(
+    car: CarProfile,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 1.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else MaterialTheme.colorScheme.surface
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() }
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Car icon with selection indicator
+                Surface(
+                    color = if (isSelected) Primary.copy(alpha = 0.15f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (car.isElectric) Icons.Filled.ElectricCar else Icons.Filled.DirectionsCar,
+                            contentDescription = null,
+                            tint = if (isSelected) Primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        car.name.ifEmpty { car.carModel.ifEmpty { "Unnamed Car" } },
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        buildString {
+                            if (car.carModel.isNotEmpty()) append(car.carModel)
+                            if (car.carYear > 0) {
+                                if (isNotEmpty()) append(" ")
+                                append("(${car.carYear})")
+                            }
+                        }.ifEmpty { "No details" },
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (isSelected) {
+                    Surface(
+                        color = Primary,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            "Active",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            // Car details summary
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (car.isElectric) {
+                    DetailChip(Icons.Filled.Bolt, "${String.format("%.0f", car.batteryCapacityKwh)} kWh")
+                    DetailChip(Icons.Filled.Speed, "${String.format("%.1f", car.electricConsumption)} kWh/100km")
+                    if (car.fuelPricePerLiter > 0) {
+                        DetailChip(Icons.Filled.AttachMoney, "${String.format("%.2f", car.fuelPricePerLiter)}/kWh")
+                    }
+                } else {
+                    if (car.engineSize > 0) {
+                        DetailChip(Icons.Filled.Speed, "${String.format("%.1f", car.engineSize)}L ${car.fuelType.label}")
+                    }
+                    DetailChip(Icons.Filled.WaterDrop, "${String.format("%.1f", car.fuelConsumption)} L/100km")
+                    if (car.fuelPricePerLiter > 0) {
+                        DetailChip(Icons.Filled.AttachMoney, "${String.format("%.2f", car.fuelPricePerLiter)}/L")
+                    }
+                }
+            }
+
+            // Action buttons
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onEdit) {
+                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Edit", fontSize = 13.sp)
+                }
+                TextButton(
+                    onClick = { showDeleteConfirm = true },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Error)
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Delete", fontSize = 13.sp)
+                }
+            }
+        }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Car") },
+            text = { Text("Delete \"${car.name.ifEmpty { car.carModel }}\"? This cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete()
+                        showDeleteConfirm = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Error)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun DetailChip(icon: ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.width(3.dp))
+        Text(text, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CarProfileDialog(
+    car: CarProfile?,
+    onDismiss: () -> Unit,
+    onSave: (CarProfile) -> Unit
+) {
+    val isEditing = car != null
+    var name by remember { mutableStateOf(car?.name ?: "") }
+    var carModel by remember { mutableStateOf(car?.carModel ?: "") }
+    var carYear by remember { mutableStateOf(car?.carYear?.toFloat() ?: 2024f) }
+    var engineSize by remember { mutableStateOf(car?.engineSize?.let { if (it > 0) String.format("%.1f", it) else "" } ?: "") }
+    var isElectric by remember { mutableStateOf(car?.isElectric ?: false) }
+    var fuelType by remember { mutableStateOf(car?.fuelType ?: FuelType.PETROL) }
+    var fuelPricePerLiter by remember { mutableStateOf(car?.fuelPricePerLiter?.let { if (it > 0) String.format("%.2f", it) else "" } ?: "") }
+    var fuelConsumption by remember { mutableStateOf(car?.fuelConsumption?.let { String.format("%.1f", it) } ?: "8.0") }
+    var batteryCapacityKwh by remember { mutableStateOf(car?.batteryCapacityKwh?.let { String.format("%.0f", it) } ?: "60") }
+    var electricConsumption by remember { mutableStateOf(car?.electricConsumption?.let { String.format("%.1f", it) } ?: "15.0") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isEditing) "Edit Car" else "Add Car") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Display Name") },
+                    placeholder = { Text("e.g. My Daily Driver") },
+                    leadingIcon = { Icon(Icons.Filled.Label, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = carModel,
+                    onValueChange = { carModel = it },
+                    label = { Text("Car Model") },
+                    placeholder = { Text("e.g. Toyota Camry") },
+                    leadingIcon = { Icon(Icons.Filled.DirectionsCar, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Year: ${carYear.toInt()}", fontWeight = FontWeight.Medium)
+                }
+                Slider(
+                    value = carYear,
+                    onValueChange = { carYear = it },
+                    valueRange = 1990f..2026f,
+                    steps = 35
+                )
+
+                OutlinedTextField(
+                    value = engineSize,
+                    onValueChange = { engineSize = it },
+                    label = { Text("Engine Size (L)") },
+                    placeholder = { Text("e.g. 2.0") },
+                    leadingIcon = { Icon(Icons.Filled.Speed, contentDescription = null) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        if (isElectric) Icons.Filled.ElectricCar else Icons.Filled.DirectionsCar,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Electric Vehicle", fontWeight = FontWeight.Medium)
+                        Text(
+                            if (isElectric) "Battery powered" else "Fuel powered",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = isElectric, onCheckedChange = { isElectric = it })
+                }
+
+                if (isElectric) {
+                    OutlinedTextField(
+                        value = batteryCapacityKwh,
+                        onValueChange = { batteryCapacityKwh = it },
+                        label = { Text("Battery Capacity (kWh)") },
+                        placeholder = { Text("e.g. 60") },
+                        leadingIcon = { Icon(Icons.Filled.BatteryChargingFull, contentDescription = null) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = electricConsumption,
+                        onValueChange = { electricConsumption = it },
+                        label = { Text("Avg Consumption (kWh/100km)") },
+                        placeholder = { Text("e.g. 15") },
+                        leadingIcon = { Icon(Icons.Filled.Bolt, contentDescription = null) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = fuelPricePerLiter,
+                        onValueChange = { fuelPricePerLiter = it },
+                        label = { Text("Price per kWh") },
+                        placeholder = { Text("e.g. 0.15") },
+                        leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.LocalGasStation, contentDescription = null, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Fuel Type", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    }
+                    Row {
+                        FuelType.entries.forEach { type ->
+                            FilterChip(
+                                selected = fuelType == type,
+                                onClick = { fuelType = type },
+                                label = { Text(type.label, fontSize = 12.sp) },
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = fuelConsumption,
+                        onValueChange = { fuelConsumption = it },
+                        label = { Text("Fuel Consumption (L/100km)") },
+                        placeholder = { Text("e.g. 8.0") },
+                        leadingIcon = { Icon(Icons.Filled.WaterDrop, contentDescription = null) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = fuelPricePerLiter,
+                        onValueChange = { fuelPricePerLiter = it },
+                        label = { Text("Price per Liter") },
+                        placeholder = { Text("e.g. 1.50") },
+                        leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val profile = (car ?: CarProfile()).copy(
+                        name = name,
+                        carModel = carModel,
+                        carYear = carYear.toInt(),
+                        engineSize = engineSize.toFloatOrNull() ?: 0f,
+                        isElectric = isElectric,
+                        fuelType = fuelType,
+                        fuelPricePerLiter = fuelPricePerLiter.toFloatOrNull() ?: 0f,
+                        fuelConsumption = fuelConsumption.toFloatOrNull() ?: 8f,
+                        batteryCapacityKwh = batteryCapacityKwh.toFloatOrNull() ?: 60f,
+                        electricConsumption = electricConsumption.toFloatOrNull() ?: 15f
+                    )
+                    onSave(profile)
+                },
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(if (isEditing) "Save" else "Add")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 private data class PermissionItem(

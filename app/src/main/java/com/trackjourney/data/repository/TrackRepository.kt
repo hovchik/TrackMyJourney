@@ -26,6 +26,7 @@ class TrackRepository(
     private val trackPointDao: TrackPointDao,
     private val healthDataDao: HealthDataDao,
     private val aiAnalysisDao: AiAnalysisDao,
+    private val carProfileDao: CarProfileDao,
     private val locationTracker: LocationTracker,
     private val aiEngine: LocalAiEngine,
     private val settingsDataStore: SettingsDataStore,
@@ -108,25 +109,26 @@ class TrackRepository(
     }
 
     /**
-     * Calculate the ride cost based on distance and car settings.
+     * Calculate the ride cost based on distance and car profile.
      *
      * For gas cars:  cost = (distanceKm / 100) * fuelConsumption * fuelPricePerLiter
      * For electric:  cost = (distanceKm / 100) * electricConsumption * pricePerKwh
      *                (electricity price is stored in fuelPricePerLiter field)
      *
-     * Returns null if car is not configured (price = 0).
+     * Returns null if no car is selected or price = 0.
      */
-    fun calculateRideCost(distanceMeters: Double, settings: TrackingSettings): Double? {
+    fun calculateRideCost(distanceMeters: Double, car: CarProfile?): Double? {
+        if (car == null) return null
         val distanceKm = distanceMeters / 1000.0
         if (distanceKm <= 0) return null
 
-        return if (settings.isElectricCar) {
-            val pricePerKwh = settings.fuelPricePerLiter
+        return if (car.isElectric) {
+            val pricePerKwh = car.fuelPricePerLiter
             if (pricePerKwh <= 0f) return null
-            (distanceKm / 100.0) * settings.electricConsumption * pricePerKwh
+            (distanceKm / 100.0) * car.electricConsumption * pricePerKwh
         } else {
-            if (settings.fuelPricePerLiter <= 0f) return null
-            (distanceKm / 100.0) * settings.fuelConsumption * settings.fuelPricePerLiter
+            if (car.fuelPricePerLiter <= 0f) return null
+            (distanceKm / 100.0) * car.fuelConsumption * car.fuelPricePerLiter
         }
     }
 
@@ -333,8 +335,9 @@ class TrackRepository(
         val currentSettings = settingsDataStore.settings.first()
         val calories = calculateCalories(dominant, durationMs, currentSettings.userWeightKg)
 
-        // Calculate ride cost based on distance and car settings
-        val rideCost = calculateRideCost(totalDistance, currentSettings)
+        // Calculate ride cost based on distance and selected car profile
+        val selectedCar = currentSettings.selectedCarId?.let { carProfileDao.getCarById(it) }
+        val rideCost = calculateRideCost(totalDistance, selectedCar)
 
         trackDao.update(track.copy(
             distanceMeters = totalDistance,
@@ -1119,6 +1122,39 @@ class TrackRepository(
 
         Log.i(TAG, "Full database import: $tracksImported tracks, $totalPoints points")
         FullImportResult(tracksImported, totalPoints)
+    }
+
+    // ─── CAR PROFILES ──────────────────────────────────────
+
+    fun getAllCars(): Flow<List<CarProfile>> = carProfileDao.getAllCars()
+
+    suspend fun getCarById(id: String): CarProfile? = carProfileDao.getCarById(id)
+
+    fun observeCarById(id: String): Flow<CarProfile?> = carProfileDao.observeCarById(id)
+
+    suspend fun addCar(car: CarProfile) {
+        carProfileDao.insert(car)
+        // If this is the first car, auto-select it
+        if (carProfileDao.getCarCount() == 1) {
+            settingsDataStore.updateSelectedCarId(car.id)
+        }
+    }
+
+    suspend fun updateCar(car: CarProfile) {
+        carProfileDao.update(car)
+    }
+
+    suspend fun deleteCar(carId: String) {
+        carProfileDao.getCarById(carId)?.let { carProfileDao.delete(it) }
+        // If deleted car was selected, clear selection
+        val currentSettings = settingsDataStore.settings.first()
+        if (currentSettings.selectedCarId == carId) {
+            settingsDataStore.updateSelectedCarId(null)
+        }
+    }
+
+    suspend fun selectCar(carId: String?) {
+        settingsDataStore.updateSelectedCarId(carId)
     }
 
     // ─── LOCATION ─────────────────────────────────────────

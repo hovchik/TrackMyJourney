@@ -210,6 +210,51 @@ data class AiAnalysis(
 )
 
 // ─────────────────────────────────────────────────────────
+//  CAR PROFILE — Saved vehicle for ride cost calculation
+// ─────────────────────────────────────────────────────────
+
+@Entity(tableName = "car_profiles")
+data class CarProfile(
+    @PrimaryKey
+    val id: String = UUID.randomUUID().toString(),
+
+    @ColumnInfo(name = "name")
+    val name: String = "",                          // display name, e.g. "My Tesla"
+
+    @ColumnInfo(name = "car_model")
+    val carModel: String = "",                      // e.g. "Toyota Camry"
+
+    @ColumnInfo(name = "car_year")
+    val carYear: Int = 2024,
+
+    @ColumnInfo(name = "engine_size")
+    val engineSize: Float = 0f,                     // liters (e.g. 2.0)
+
+    @ColumnInfo(name = "is_electric")
+    val isElectric: Boolean = false,
+
+    // Gas car fields
+    @ColumnInfo(name = "fuel_type")
+    val fuelType: FuelType = FuelType.PETROL,
+
+    @ColumnInfo(name = "fuel_price_per_liter")
+    val fuelPricePerLiter: Float = 0f,              // local currency per liter
+
+    @ColumnInfo(name = "fuel_consumption")
+    val fuelConsumption: Float = 8f,                // liters per 100 km
+
+    // Electric car fields
+    @ColumnInfo(name = "battery_capacity_kwh")
+    val batteryCapacityKwh: Float = 60f,            // kWh
+
+    @ColumnInfo(name = "electric_consumption")
+    val electricConsumption: Float = 15f,            // kWh per 100 km
+
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+// ─────────────────────────────────────────────────────────
 //  ENUMS
 // ─────────────────────────────────────────────────────────
 
@@ -354,19 +399,7 @@ data class TrackingSettings(
     val userWeightKg: Float = 70f,                // default 70 kg
     val userHeightCm: Float = 170f,               // default 170 cm
     val trackingMode: TrackingMode = TrackingMode.HIGH_ACCURACY,
-
-    // ── Car Profile ──
-    val carModel: String = "",
-    val carYear: Int = 2024,
-    val engineSize: Float = 0f,                   // liters (e.g. 2.0)
-    val isElectricCar: Boolean = false,
-    // Gas car fields
-    val fuelType: FuelType = FuelType.PETROL,
-    val fuelPricePerLiter: Float = 0f,            // local currency per liter
-    val fuelConsumption: Float = 8f,              // liters per 100 km
-    // Electric car fields
-    val batteryCapacityKwh: Float = 60f,          // kWh
-    val electricConsumption: Float = 15f           // kWh per 100 km
+    val selectedCarId: String? = null              // ID of the active car profile
 )
 
 enum class ExportFormat { JSON, GPX, CSV }

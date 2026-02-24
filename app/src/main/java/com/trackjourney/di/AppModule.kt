@@ -38,6 +38,7 @@ object AppModule {
     @Provides fun provideTrackPointDao(db: TrackDatabase) = db.trackPointDao()
     @Provides fun provideHealthDataDao(db: TrackDatabase) = db.healthDataDao()
     @Provides fun provideAiAnalysisDao(db: TrackDatabase) = db.aiAnalysisDao()
+    @Provides fun provideCarProfileDao(db: TrackDatabase) = db.carProfileDao()
 
     @Provides
     @Singleton
@@ -79,6 +80,7 @@ object AppModule {
         trackPointDao: TrackPointDao,
         healthDataDao: HealthDataDao,
         aiAnalysisDao: AiAnalysisDao,
+        carProfileDao: CarProfileDao,
         locationTracker: LocationTracker,
         aiEngine: LocalAiEngine,
         settingsDataStore: SettingsDataStore,
@@ -86,7 +88,7 @@ object AppModule {
         motionSensorManager: MotionSensorManager
     ) = TrackRepository(
         context, trackDao, trackPointDao, healthDataDao,
-        aiAnalysisDao, locationTracker, aiEngine, settingsDataStore, gpsSatelliteTracker,
-        motionSensorManager
+        aiAnalysisDao, carProfileDao, locationTracker, aiEngine, settingsDataStore,
+        gpsSatelliteTracker, motionSensorManager
     )
 }

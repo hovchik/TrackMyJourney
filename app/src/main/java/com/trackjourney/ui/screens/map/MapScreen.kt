@@ -671,7 +671,6 @@ private fun ActivityBadge(activity: ActivityType, speed: Float, modifier: Modifi
 // ═══════════════════════════════════════════════════════════
 
 @Composable
-@Composable
 private fun ActivityLegend(
     configs: List<ActivityConfig>,
     modifier: Modifier = Modifier

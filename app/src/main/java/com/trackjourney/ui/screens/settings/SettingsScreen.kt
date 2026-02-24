@@ -566,30 +566,39 @@ fun SettingsScreen(
             }
         }
 
-        // ── Currency ──
+        // ── CURRENCY ─────────────────────────────────
         item {
-            SettingsCard {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.AttachMoney, contentDescription = null, modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Currency", fontWeight = FontWeight.Medium)
-                        Text(
-                            "Symbol shown with ride costs",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Row {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Currency",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Symbol shown with ride costs",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         listOf("$", "\u20AC", "\u00A3", "\u00A5", "\u20BD", "\u058F").forEach { symbol ->
                             FilterChip(
                                 selected = settings.currency == symbol,
                                 onClick = { viewModel.updateCurrency(symbol) },
-                                label = { Text(symbol, fontSize = 13.sp) },
-                                modifier = Modifier.padding(start = 4.dp)
+                                label = { Text(symbol, fontSize = 14.sp) }
                             )
                         }
                     }

@@ -108,6 +108,29 @@ class TrackRepository(
     }
 
     /**
+     * Calculate the ride cost based on distance and car settings.
+     *
+     * For gas cars:  cost = (distanceKm / 100) * fuelConsumption * fuelPricePerLiter
+     * For electric:  cost = (distanceKm / 100) * electricConsumption * pricePerKwh
+     *                (electricity price is stored in fuelPricePerLiter field)
+     *
+     * Returns null if car is not configured (price = 0).
+     */
+    fun calculateRideCost(distanceMeters: Double, settings: TrackingSettings): Double? {
+        val distanceKm = distanceMeters / 1000.0
+        if (distanceKm <= 0) return null
+
+        return if (settings.isElectricCar) {
+            val pricePerKwh = settings.fuelPricePerLiter
+            if (pricePerKwh <= 0f) return null
+            (distanceKm / 100.0) * settings.electricConsumption * pricePerKwh
+        } else {
+            if (settings.fuelPricePerLiter <= 0f) return null
+            (distanceKm / 100.0) * settings.fuelConsumption * settings.fuelPricePerLiter
+        }
+    }
+
+    /**
      * Calculate calories burned using MET (Metabolic Equivalent of Task) values.
      *
      * Formula: Calories = MET * weightKg * durationHours
@@ -310,13 +333,17 @@ class TrackRepository(
         val currentSettings = settingsDataStore.settings.first()
         val calories = calculateCalories(dominant, durationMs, currentSettings.userWeightKg)
 
+        // Calculate ride cost based on distance and car settings
+        val rideCost = calculateRideCost(totalDistance, currentSettings)
+
         trackDao.update(track.copy(
             distanceMeters = totalDistance,
             avgSpeedKmh = avgSpeed.toDouble(),
             maxSpeedKmh = maxSpeed.toDouble(),
             activityType = dominant,
             avgHeartRate = avgHr,
-            caloriesBurned = calories
+            caloriesBurned = calories,
+            rideCost = rideCost
         ))
     }
 
@@ -436,7 +463,8 @@ class TrackRepository(
                     endPlaceName = track.endPlaceName,
                     caloriesBurned = track.caloriesBurned,
                     batteryStart = track.batteryStart,
-                    batteryEnd = track.batteryEnd
+                    batteryEnd = track.batteryEnd,
+                    rideCost = track.rideCost
                 ),
                 points = points.map { pt ->
                     TrackPointExport(

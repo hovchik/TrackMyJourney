@@ -41,7 +41,8 @@ data class MapUiState(
     val avgSpeedKmh: Double = 0.0,
     val maxSpeedKmh: Double = 0.0,
     val batteryStart: Int? = null,
-    val batteryEnd: Int? = null
+    val batteryEnd: Int? = null,
+    val rideCost: Double? = null
 )
 
 data class CompletedTrackInfo(
@@ -58,7 +59,8 @@ data class CompletedTrackInfo(
     val caloriesBurned: Double = 0.0,
     val batteryStart: Int? = null,
     val batteryEnd: Int? = null,
-    val activityDurations: Map<ActivityType, Long> = emptyMap()
+    val activityDurations: Map<ActivityType, Long> = emptyMap(),
+    val rideCost: Double? = null
 )
 
 @HiltViewModel
@@ -124,7 +126,8 @@ class MapViewModel @Inject constructor(
                         avgSpeedKmh = track.avgSpeedKmh,
                         maxSpeedKmh = track.maxSpeedKmh,
                         batteryStart = track.batteryStart,
-                        batteryEnd = track.batteryEnd
+                        batteryEnd = track.batteryEnd,
+                        rideCost = track.rideCost
                     )
                 }
             }
@@ -141,7 +144,8 @@ class MapViewModel @Inject constructor(
                 isViewingSavedTrack = false,
                 viewedTrackName = "",
                 batteryStart = null,
-                batteryEnd = null
+                batteryEnd = null,
+                rideCost = null
             )
         }
     }
@@ -191,7 +195,8 @@ class MapViewModel @Inject constructor(
                                     caloriesBurned = prevTrack.caloriesBurned,
                                     batteryStart = prevTrack.batteryStart,
                                     batteryEnd = prevTrack.batteryEnd,
-                                    activityDurations = it.activityDurations
+                                    activityDurations = it.activityDurations,
+                                    rideCost = prevTrack.rideCost
                                 )
                             )
                         }

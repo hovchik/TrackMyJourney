@@ -8,8 +8,7 @@ import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.bluetooth.WearableReading
 import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.location.SatelliteInfo
-import com.trackjourney.data.model.ExportFormat
-import com.trackjourney.data.model.TrackingSettings
+import com.trackjourney.data.model.*
 import com.trackjourney.data.repository.TrackRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -82,6 +81,66 @@ class SettingsViewModel @Inject constructor(
     fun updateUserHeightCm(height: Float) {
         viewModelScope.launch {
             repository.updateSettings { updateUserHeightCm(height) }
+        }
+    }
+
+    fun updateTrackingMode(mode: TrackingMode) {
+        viewModelScope.launch {
+            repository.updateSettings { updateTrackingMode(mode) }
+        }
+    }
+
+    fun updateCarModel(model: String) {
+        viewModelScope.launch {
+            repository.updateSettings { updateCarModel(model) }
+        }
+    }
+
+    fun updateCarYear(year: Int) {
+        viewModelScope.launch {
+            repository.updateSettings { updateCarYear(year) }
+        }
+    }
+
+    fun updateEngineSize(size: Float) {
+        viewModelScope.launch {
+            repository.updateSettings { updateEngineSize(size) }
+        }
+    }
+
+    fun updateIsElectricCar(isElectric: Boolean) {
+        viewModelScope.launch {
+            repository.updateSettings { updateIsElectricCar(isElectric) }
+        }
+    }
+
+    fun updateFuelType(type: FuelType) {
+        viewModelScope.launch {
+            repository.updateSettings { updateFuelType(type) }
+        }
+    }
+
+    fun updateFuelPricePerLiter(price: Float) {
+        viewModelScope.launch {
+            repository.updateSettings { updateFuelPricePerLiter(price) }
+        }
+    }
+
+    fun updateFuelConsumption(consumption: Float) {
+        viewModelScope.launch {
+            repository.updateSettings { updateFuelConsumption(consumption) }
+        }
+    }
+
+    fun updateBatteryCapacityKwh(capacity: Float) {
+        viewModelScope.launch {
+            repository.updateSettings { updateBatteryCapacityKwh(capacity) }
+        }
+    }
+
+    fun updateElectricConsumption(consumption: Float) {
+        viewModelScope.launch {
+            repository.updateSettings { updateElectricConsumption(consumption) }
         }
     }
 

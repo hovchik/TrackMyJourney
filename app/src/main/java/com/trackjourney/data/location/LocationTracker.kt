@@ -190,6 +190,55 @@ class LocationTracker(
         }
     }
 
+    /**
+     * Emits location updates with a dynamically adjustable interval.
+     * Used by AI Battery Saver and Energy Efficiency modes where the interval
+     * can change based on speed, charging state, etc.
+     *
+     * @param intervalMs The initial interval; the caller should cancel and restart
+     *   the flow when the interval needs to change.
+     * @param minDistanceMeters Minimum displacement between updates.
+     * @param priority GPS priority level.
+     */
+    @SuppressLint("MissingPermission")
+    fun locationUpdatesWithInterval(
+        intervalMs: Long,
+        minDistanceMeters: Float,
+        priority: Int = Priority.PRIORITY_HIGH_ACCURACY
+    ): Flow<Location> = callbackFlow {
+        Log.i(TAG, "Starting dynamic location updates: interval=${intervalMs}ms, minDist=${minDistanceMeters}m")
+
+        val request = LocationRequest.Builder(priority, intervalMs).apply {
+            setMinUpdateIntervalMillis(intervalMs / 2)
+            setMinUpdateDistanceMeters(minDistanceMeters)
+            setWaitForAccurateLocation(priority == Priority.PRIORITY_HIGH_ACCURACY)
+            setGranularity(
+                if (priority == Priority.PRIORITY_HIGH_ACCURACY) Granularity.GRANULARITY_FINE
+                else Granularity.GRANULARITY_PERMISSION_LEVEL
+            )
+            setMaxUpdateDelayMillis(intervalMs / 2)
+        }.build()
+
+        val callback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                result.locations.forEach { location ->
+                    trySend(location)
+                }
+            }
+        }
+
+        fusedLocationClient.requestLocationUpdates(
+            request,
+            callback,
+            Looper.getMainLooper()
+        )
+
+        awaitClose {
+            Log.i(TAG, "Removing dynamic location updates (was interval=${intervalMs}ms)")
+            fusedLocationClient.removeLocationUpdates(callback)
+        }
+    }
+
     @SuppressLint("MissingPermission")
     suspend fun getLastKnownLocation(): Location? {
         return try {

@@ -175,6 +175,9 @@ fun MapScreen(
                         if (bStart != null && bEnd != null) {
                             append(" \u2022 \uD83D\uDD0B${bStart - bEnd}%")
                         }
+                        uiState.rideCost?.let { cost ->
+                            append(" \u2022 ${String.format("%.2f", cost)}")
+                        }
                     } else null,
                     expanded = trackDropdownExpanded,
                     onExpandedChange = { trackDropdownExpanded = it },
@@ -1220,6 +1223,34 @@ private fun TrackCompletionDialog(
                                     "${info.batteryStart}% \u2192 ${info.batteryEnd}%  (${info.batteryStart - info.batteryEnd}% used)",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Ride Cost
+                    info.rideCost?.let { cost ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            color = Accent.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.AttachMoney,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = Accent
+                                )
+                                Text(
+                                    "Ride cost: ${String.format(Locale.US, "%.2f", cost)}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Accent
                                 )
                             }
                         }

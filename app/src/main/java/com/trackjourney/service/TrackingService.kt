@@ -14,9 +14,12 @@ import com.trackjourney.R
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.SettingsDataStore
+import com.trackjourney.data.location.BatteryMonitor
 import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
 import com.trackjourney.data.location.MotionSensorManager
+import com.trackjourney.data.location.SmartIntervalManager
+import com.trackjourney.data.model.TrackingMode
 import com.trackjourney.data.model.TrackingSettings
 import com.trackjourney.data.repository.TrackRepository
 import com.trackjourney.ui.MainActivity
@@ -61,6 +64,8 @@ class TrackingService : Service() {
     @Inject lateinit var settingsDataStore: SettingsDataStore
     @Inject lateinit var wearableManager: WearableManager
     @Inject lateinit var motionSensorManager: MotionSensorManager
+    @Inject lateinit var batteryMonitor: BatteryMonitor
+    @Inject lateinit var smartIntervalManager: SmartIntervalManager
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var trackingJob: Job? = null
@@ -106,6 +111,9 @@ class TrackingService : Service() {
         // Start physical motion sensor monitoring (accelerometer + gyroscope)
         motionSensorManager.startMonitoring()
 
+        // Start battery monitoring (for AI battery saver charging detection)
+        batteryMonitor.startMonitoring()
+
         // Auto-scan for Garmin/Samsung wearable if Bluetooth is available
         startWearableScan()
 
@@ -129,7 +137,7 @@ class TrackingService : Service() {
                 // trackWithSettings and restarts with new settings when
                 // interval/distance changes in the Settings screen
                 settingsDataStore.settings.collectLatest { settings ->
-                    Log.i(TAG, "Applying settings: interval=${settings.recordIntervalMs}ms, minDist=${settings.minDistanceMeters}m")
+                    Log.i(TAG, "Applying settings: mode=${settings.trackingMode}, interval=${settings.recordIntervalMs}ms, minDist=${settings.minDistanceMeters}m")
                     trackWithSettings(track.id, settings)
                 }
             } catch (e: CancellationException) {
@@ -175,30 +183,102 @@ class TrackingService : Service() {
     private suspend fun trackWithSettings(trackId: String, settings: TrackingSettings) {
         var lastNotificationTime = 0L
 
-        locationTracker.locationUpdates(settings).collect { location ->
-            if (!isPaused) {
-                // Get latest wearable reading if connected
-                val wearableReading = wearableManager.latestReading.value
-
-                val point = repository.addTrackPoint(trackId, location, wearableReading)
-                if (point != null) {
-                    pointCount++
+        when (settings.trackingMode) {
+            TrackingMode.HIGH_ACCURACY -> {
+                // Use the standard fixed-interval flow
+                locationTracker.locationUpdates(settings).collect { location ->
+                    if (!isPaused) {
+                        handleLocationUpdate(trackId, location, settings, lastNotificationTime).let {
+                            lastNotificationTime = it
+                        }
+                    }
                 }
+            }
 
-                // Throttle notification updates to at most once per 2 seconds
-                val now = System.currentTimeMillis()
-                if (now - lastNotificationTime >= 2000L) {
-                    lastNotificationTime = now
-                    val satInfo = satelliteTracker.satelliteInfo.value
-                    val speedKmh = LocationTracker.msToKmh(location.speed)
-                    val accuracyStr = if (point?.isAccurate == false) " [!]" else ""
-                    val hrStr = wearableReading?.heartRate?.let { " | HR $it" } ?: ""
-                    updateNotification(
-                        "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}$hrStr$accuracyStr"
-                    )
+            TrackingMode.ENERGY_EFFICIENCY -> {
+                // Fixed 10s interval with balanced priority
+                val interval = smartIntervalManager.getInitialInterval(settings)
+                locationTracker.locationUpdatesWithInterval(
+                    intervalMs = interval,
+                    minDistanceMeters = settings.minDistanceMeters
+                ).collect { location ->
+                    if (!isPaused) {
+                        handleLocationUpdate(trackId, location, settings, lastNotificationTime).let {
+                            lastNotificationTime = it
+                        }
+                    }
+                }
+            }
+
+            TrackingMode.AI_BATTERY_SAVER -> {
+                // Dynamic interval — re-evaluate after each location update.
+                // We use a MutableStateFlow to track the current interval
+                // and restart the location flow when it changes.
+                var currentInterval = smartIntervalManager.getInitialInterval(settings)
+                var lastSpeedKmh = 0f
+
+                while (true) {
+                    var intervalChanged = false
+
+                    locationTracker.locationUpdatesWithInterval(
+                        intervalMs = currentInterval,
+                        minDistanceMeters = settings.minDistanceMeters
+                    ).collect { location ->
+                        if (!isPaused) {
+                            lastSpeedKmh = LocationTracker.msToKmh(location.speed)
+                            handleLocationUpdate(trackId, location, settings, lastNotificationTime).let {
+                                lastNotificationTime = it
+                            }
+
+                            // Check if the interval should change
+                            val newInterval = smartIntervalManager.computeInterval(settings, lastSpeedKmh)
+                            if (newInterval != currentInterval) {
+                                currentInterval = newInterval
+                                intervalChanged = true
+                                // Cancel current collection to restart with new interval
+                                return@collect
+                            }
+                        }
+                    }
+
+                    // If interval didn't change, the flow completed normally (shouldn't happen)
+                    if (!intervalChanged) break
                 }
             }
         }
+    }
+
+    private suspend fun handleLocationUpdate(
+        trackId: String,
+        location: android.location.Location,
+        settings: TrackingSettings,
+        lastNotificationTime: Long
+    ): Long {
+        val wearableReading = wearableManager.latestReading.value
+
+        val point = repository.addTrackPoint(trackId, location, wearableReading)
+        if (point != null) {
+            pointCount++
+        }
+
+        // Throttle notification updates to at most once per 2 seconds
+        val now = System.currentTimeMillis()
+        if (now - lastNotificationTime >= 2000L) {
+            val satInfo = satelliteTracker.satelliteInfo.value
+            val speedKmh = LocationTracker.msToKmh(location.speed)
+            val accuracyStr = if (point?.isAccurate == false) " [!]" else ""
+            val hrStr = wearableReading?.heartRate?.let { " | HR $it" } ?: ""
+            val modeStr = when (settings.trackingMode) {
+                TrackingMode.HIGH_ACCURACY -> ""
+                TrackingMode.ENERGY_EFFICIENCY -> " | ECO"
+                TrackingMode.AI_BATTERY_SAVER -> " | AI"
+            }
+            updateNotification(
+                "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}$hrStr$modeStr$accuracyStr"
+            )
+            return now
+        }
+        return lastNotificationTime
     }
 
     private fun pauseTracking() {
@@ -231,6 +311,7 @@ class TrackingService : Service() {
             locationTracker.stopTracking()
             satelliteTracker.stopMonitoring()
             motionSensorManager.stopMonitoring()
+            batteryMonitor.stopMonitoring()
             wearableManager.disconnect()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -301,6 +382,7 @@ class TrackingService : Service() {
         locationTracker.stopTracking()
         satelliteTracker.stopMonitoring()
         motionSensorManager.stopMonitoring()
+        batteryMonitor.stopMonitoring()
         wearableManager.disconnect()
         super.onDestroy()
     }

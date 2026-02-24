@@ -56,7 +56,10 @@ data class TrackSession(
     val batteryEnd: Int? = null,
 
     @ColumnInfo(name = "is_active")
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
+
+    @ColumnInfo(name = "ride_cost")
+    val rideCost: Double? = null
 )
 
 // ─────────────────────────────────────────────────────────
@@ -267,7 +270,8 @@ data class TrackSessionExport(
     @SerializedName("end_place_name") val endPlaceName: String?,
     @SerializedName("calories_burned") val caloriesBurned: Double = 0.0,
     @SerializedName("battery_start") val batteryStart: Int? = null,
-    @SerializedName("battery_end") val batteryEnd: Int? = null
+    @SerializedName("battery_end") val batteryEnd: Int? = null,
+    @SerializedName("ride_cost") val rideCost: Double? = null
 )
 
 data class TrackPointExport(
@@ -348,7 +352,33 @@ data class TrackingSettings(
     val exportFormat: ExportFormat = ExportFormat.JSON,
     val userName: String = "",
     val userWeightKg: Float = 70f,                // default 70 kg
-    val userHeightCm: Float = 170f                // default 170 cm
+    val userHeightCm: Float = 170f,               // default 170 cm
+    val trackingMode: TrackingMode = TrackingMode.HIGH_ACCURACY,
+
+    // ── Car Profile ──
+    val carModel: String = "",
+    val carYear: Int = 2024,
+    val engineSize: Float = 0f,                   // liters (e.g. 2.0)
+    val isElectricCar: Boolean = false,
+    // Gas car fields
+    val fuelType: FuelType = FuelType.PETROL,
+    val fuelPricePerLiter: Float = 0f,            // local currency per liter
+    val fuelConsumption: Float = 8f,              // liters per 100 km
+    // Electric car fields
+    val batteryCapacityKwh: Float = 60f,          // kWh
+    val electricConsumption: Float = 15f           // kWh per 100 km
 )
 
 enum class ExportFormat { JSON, GPX, CSV }
+
+enum class TrackingMode(val label: String) {
+    HIGH_ACCURACY("High Accuracy"),
+    ENERGY_EFFICIENCY("Energy Efficiency"),
+    AI_BATTERY_SAVER("AI Battery Saver")
+}
+
+enum class FuelType(val label: String) {
+    PETROL("Petrol"),
+    DIESEL("Diesel"),
+    LPG("LPG")
+}

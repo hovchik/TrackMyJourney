@@ -5,9 +5,11 @@ import androidx.room.Room
 import com.trackjourney.data.ai.LocalAiEngine
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.*
+import com.trackjourney.data.location.BatteryMonitor
 import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
 import com.trackjourney.data.location.MotionSensorManager
+import com.trackjourney.data.location.SmartIntervalManager
 import com.trackjourney.data.repository.TrackRepository
 import dagger.Module
 import dagger.Provides
@@ -60,6 +62,14 @@ object AppModule {
     @Provides
     @Singleton
     fun provideMotionSensorManager(@ApplicationContext context: Context) = MotionSensorManager(context)
+
+    @Provides
+    @Singleton
+    fun provideBatteryMonitor(@ApplicationContext context: Context) = BatteryMonitor(context)
+
+    @Provides
+    @Singleton
+    fun provideSmartIntervalManager(batteryMonitor: BatteryMonitor) = SmartIntervalManager(batteryMonitor)
 
     @Provides
     @Singleton

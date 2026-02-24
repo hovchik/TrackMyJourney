@@ -720,6 +720,16 @@ private fun TrackCard(
                         }
                     }
 
+                    // Ride Cost
+                    track.rideCost?.let { cost ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        DetailItem(
+                            modifier = Modifier.fillMaxWidth(),
+                            label = "Ride Cost",
+                            value = String.format(Locale.US, "%.2f", cost)
+                        )
+                    }
+
                     // AI Summary
                     track.aiSummary?.let { summary ->
                         Spacer(modifier = Modifier.height(12.dp))

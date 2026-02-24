@@ -30,8 +30,12 @@ import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.ExportFormat
+import com.trackjourney.data.model.FuelType
+import com.trackjourney.data.model.TrackingMode
 import com.trackjourney.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -476,6 +480,306 @@ fun SettingsScreen(
             }
         }
 
+        // ── CAR PROFILE ─────────────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Car Profile",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Car Model
+                    var carModelText by remember(settings.carModel) { mutableStateOf(settings.carModel) }
+                    OutlinedTextField(
+                        value = carModelText,
+                        onValueChange = {
+                            carModelText = it
+                            viewModel.updateCarModel(it)
+                        },
+                        label = { Text("Car Model") },
+                        placeholder = { Text("e.g. Toyota Camry") },
+                        leadingIcon = { Icon(Icons.Filled.DirectionsCar, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Car Year
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Year", fontWeight = FontWeight.Medium)
+                            Text(
+                                "${settings.carYear}",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Slider(
+                        value = settings.carYear.toFloat(),
+                        onValueChange = { viewModel.updateCarYear(it.toInt()) },
+                        valueRange = 1990f..2026f,
+                        steps = 35
+                    )
+
+                    // Engine Size
+                    var engineText by remember(settings.engineSize) {
+                        mutableStateOf(if (settings.engineSize > 0) String.format("%.1f", settings.engineSize) else "")
+                    }
+                    OutlinedTextField(
+                        value = engineText,
+                        onValueChange = {
+                            engineText = it
+                            it.toFloatOrNull()?.let { v -> viewModel.updateEngineSize(v) }
+                        },
+                        label = { Text("Engine Size (L)") },
+                        placeholder = { Text("e.g. 2.0") },
+                        leadingIcon = { Icon(Icons.Filled.Speed, contentDescription = null) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Electric / Gas toggle
+                    SettingsSwitch(
+                        icon = Icons.Filled.ElectricCar,
+                        title = "Electric Vehicle",
+                        subtitle = if (settings.isElectricCar) "Track battery usage per km" else "Track fuel consumption per km",
+                        checked = settings.isElectricCar,
+                        onCheckedChange = { viewModel.updateIsElectricCar(it) }
+                    )
+                }
+            }
+        }
+
+        // Fuel / Electric settings (separate card for clarity)
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (settings.isElectricCar) {
+                        // ── Electric car fields ──
+                        Text("Electric Vehicle Settings", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+
+                        // Battery Capacity
+                        var battCapText by remember(settings.batteryCapacityKwh) {
+                            mutableStateOf(String.format("%.0f", settings.batteryCapacityKwh))
+                        }
+                        OutlinedTextField(
+                            value = battCapText,
+                            onValueChange = {
+                                battCapText = it
+                                it.toFloatOrNull()?.let { v -> viewModel.updateBatteryCapacityKwh(v) }
+                            },
+                            label = { Text("Battery Capacity (kWh)") },
+                            placeholder = { Text("e.g. 60") },
+                            leadingIcon = { Icon(Icons.Filled.BatteryChargingFull, contentDescription = null) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        // Avg consumption kWh/100km
+                        var elecConsText by remember(settings.electricConsumption) {
+                            mutableStateOf(String.format("%.1f", settings.electricConsumption))
+                        }
+                        OutlinedTextField(
+                            value = elecConsText,
+                            onValueChange = {
+                                elecConsText = it
+                                it.toFloatOrNull()?.let { v -> viewModel.updateElectricConsumption(v) }
+                            },
+                            label = { Text("Avg Consumption (kWh/100km)") },
+                            placeholder = { Text("e.g. 15") },
+                            leadingIcon = { Icon(Icons.Filled.Bolt, contentDescription = null) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        // Price per kWh (reusing fuelPricePerLiter field)
+                        var priceKwhText by remember(settings.fuelPricePerLiter) {
+                            mutableStateOf(if (settings.fuelPricePerLiter > 0) String.format("%.2f", settings.fuelPricePerLiter) else "")
+                        }
+                        OutlinedTextField(
+                            value = priceKwhText,
+                            onValueChange = {
+                                priceKwhText = it
+                                it.toFloatOrNull()?.let { v -> viewModel.updateFuelPricePerLiter(v) }
+                            },
+                            label = { Text("Price per kWh") },
+                            placeholder = { Text("e.g. 0.15") },
+                            leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    } else {
+                        // ── Gas car fields ──
+                        Text("Fuel Settings", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+
+                        // Fuel type selector
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.LocalGasStation, contentDescription = null, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Fuel Type", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Row {
+                                FuelType.entries.forEach { type ->
+                                    FilterChip(
+                                        selected = settings.fuelType == type,
+                                        onClick = { viewModel.updateFuelType(type) },
+                                        label = { Text(type.label, fontSize = 12.sp) },
+                                        modifier = Modifier.padding(start = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Fuel consumption L/100km
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.WaterDrop, contentDescription = null, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Fuel Consumption", fontWeight = FontWeight.Medium)
+                                Text(
+                                    "${String.format("%.1f", settings.fuelConsumption)} L/100km",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Slider(
+                            value = settings.fuelConsumption,
+                            onValueChange = { viewModel.updateFuelConsumption(it) },
+                            valueRange = 2f..30f,
+                            steps = 55
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("2 L", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("30 L", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+
+                        // Price per liter
+                        var priceLiterText by remember(settings.fuelPricePerLiter) {
+                            mutableStateOf(if (settings.fuelPricePerLiter > 0) String.format("%.2f", settings.fuelPricePerLiter) else "")
+                        }
+                        OutlinedTextField(
+                            value = priceLiterText,
+                            onValueChange = {
+                                priceLiterText = it
+                                it.toFloatOrNull()?.let { v -> viewModel.updateFuelPricePerLiter(v) }
+                            },
+                            label = { Text("Price per Liter") },
+                            placeholder = { Text("e.g. 1.50") },
+                            leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── TRACKING MODE ─────────────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Tracking Mode",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    TrackingMode.entries.forEach { mode ->
+                        val (icon, description) = when (mode) {
+                            TrackingMode.HIGH_ACCURACY -> Icons.Filled.GpsFixed to "Best precision, uses configured interval"
+                            TrackingMode.ENERGY_EFFICIENCY -> Icons.Filled.BatterySaver to "Fixed 10s interval, saves battery"
+                            TrackingMode.AI_BATTERY_SAVER -> Icons.Filled.AutoAwesome to "AI adjusts interval by speed & charging"
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.updateTrackingMode(mode) }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = settings.trackingMode == mode,
+                                onClick = { viewModel.updateTrackingMode(mode) }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(mode.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                Text(
+                                    description,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    if (settings.trackingMode == TrackingMode.AI_BATTERY_SAVER) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                "Charging = 3s | Highway = 15s | City = 5s | Walking = 3s | Stationary = 10s",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // ── RECORDING SETTINGS ──────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
@@ -488,38 +792,40 @@ fun SettingsScreen(
             )
         }
 
-        // Record interval
-        item {
-            SettingsCard {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Timer, contentDescription = null, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Record Interval", fontWeight = FontWeight.Medium)
-                            Text(
-                                formatInterval(settings.recordIntervalMs),
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+        // Record interval (only show when High Accuracy is selected)
+        if (settings.trackingMode == TrackingMode.HIGH_ACCURACY) {
+            item {
+                SettingsCard {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.Timer, contentDescription = null, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Record Interval", fontWeight = FontWeight.Medium)
+                                Text(
+                                    formatInterval(settings.recordIntervalMs),
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Slider(
-                        value = settings.recordIntervalMs.toFloat(),
-                        onValueChange = { viewModel.updateRecordInterval(it.toLong()) },
-                        valueRange = 1000f..30000f,
-                        steps = 28
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("1s", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("30s", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Slider(
+                            value = settings.recordIntervalMs.toFloat(),
+                            onValueChange = { viewModel.updateRecordInterval(it.toLong()) },
+                            valueRange = 1000f..30000f,
+                            steps = 28
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("1s", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("30s", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

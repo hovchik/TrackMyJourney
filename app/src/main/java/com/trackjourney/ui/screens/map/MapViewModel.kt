@@ -36,7 +36,10 @@ data class MapUiState(
     val wearableReading: WearableReading? = null,
     val isViewingSavedTrack: Boolean = false,
     val viewedTrackName: String = "",
-    val completedTrack: CompletedTrackInfo? = null
+    val completedTrack: CompletedTrackInfo? = null,
+    val activityDurations: Map<ActivityType, Long> = emptyMap(),
+    val avgSpeedKmh: Double = 0.0,
+    val maxSpeedKmh: Double = 0.0
 )
 
 data class CompletedTrackInfo(
@@ -52,7 +55,8 @@ data class CompletedTrackInfo(
     val pointCount: Int,
     val caloriesBurned: Double = 0.0,
     val batteryStart: Int? = null,
-    val batteryEnd: Int? = null
+    val batteryEnd: Int? = null,
+    val activityDurations: Map<ActivityType, Long> = emptyMap()
 )
 
 @HiltViewModel
@@ -113,7 +117,10 @@ class MapViewModel @Inject constructor(
                         distanceKm = track.distanceMeters / 1000.0,
                         isViewingSavedTrack = true,
                         viewedTrackName = track.name.ifEmpty { "Unnamed Track" },
-                        currentActivity = track.activityType
+                        currentActivity = track.activityType,
+                        activityDurations = computeActivityDurations(points),
+                        avgSpeedKmh = track.avgSpeedKmh,
+                        maxSpeedKmh = track.maxSpeedKmh
                     )
                 }
             }
@@ -177,7 +184,8 @@ class MapViewModel @Inject constructor(
                                     pointCount = _uiState.value.pointCount,
                                     caloriesBurned = prevTrack.caloriesBurned,
                                     batteryStart = prevTrack.batteryStart,
-                                    batteryEnd = prevTrack.batteryEnd
+                                    batteryEnd = prevTrack.batteryEnd,
+                                    activityDurations = it.activityDurations
                                 )
                             )
                         }
@@ -206,7 +214,10 @@ class MapViewModel @Inject constructor(
                                     currentSpeed = lastPoint?.speedKmh ?: 0f,
                                     currentActivity = lastPoint?.activityType ?: ActivityType.UNKNOWN,
                                     distanceKm = (track.distanceMeters) / 1000.0,
-                                    gpsAccuracy = lastPoint?.accuracy
+                                    gpsAccuracy = lastPoint?.accuracy,
+                                    activityDurations = computeActivityDurations(points),
+                                    avgSpeedKmh = track.avgSpeedKmh,
+                                    maxSpeedKmh = track.maxSpeedKmh
                                 )
                             }
                         }
@@ -273,5 +284,25 @@ class MapViewModel @Inject constructor(
 
     fun dismissCompletedTrack() {
         _uiState.update { it.copy(completedTrack = null) }
+    }
+
+    companion object {
+        /**
+         * Compute how many milliseconds were spent in each activity type,
+         * by walking through consecutive track points and attributing the
+         * time gap between two points to the first point's activity.
+         */
+        fun computeActivityDurations(points: List<TrackPoint>): Map<ActivityType, Long> {
+            if (points.size < 2) return emptyMap()
+            val durations = mutableMapOf<ActivityType, Long>()
+            for (i in 0 until points.size - 1) {
+                val dt = points[i + 1].timestamp - points[i].timestamp
+                if (dt in 1..300_000) { // ignore gaps > 5 min (pauses)
+                    val activity = points[i].activityType
+                    durations[activity] = (durations[activity] ?: 0L) + dt
+                }
+            }
+            return durations
+        }
     }
 }

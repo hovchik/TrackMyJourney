@@ -6,7 +6,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,8 +26,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,12 +42,14 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.ActivityType
+import com.trackjourney.data.model.TrackPoint
 import com.trackjourney.data.model.TrackSession
 import com.trackjourney.ui.components.OsmMapView
 import com.trackjourney.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.sin
 
 private val OverlayDark = Color(0xFF1A1A2E)
 
@@ -55,6 +64,7 @@ fun MapScreen(
     var showTrackNameDialog by remember { mutableStateOf(false) }
     var trackName by remember { mutableStateOf("") }
     var trackDropdownExpanded by remember { mutableStateOf(false) }
+    var showExpandedTimeline by remember { mutableStateOf(false) }
     val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy  HH:mm", Locale.getDefault()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -205,11 +215,28 @@ fun MapScreen(
             visible = uiState.isViewingSavedTrack,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 12.dp, bottom = 24.dp),
+                .padding(start = 12.dp, bottom = 100.dp),
             enter = slideInHorizontally { -it } + fadeIn(),
             exit = slideOutHorizontally { -it } + fadeOut()
         ) {
             SpeedLegend()
+        }
+
+        // ── Compact activity timeline (bottom, saved track) ──
+        AnimatedVisibility(
+            visible = uiState.isViewingSavedTrack && uiState.trackPoints.size >= 2,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut()
+        ) {
+            CompactTimelineBar(
+                points = uiState.trackPoints,
+                activityDurations = uiState.activityDurations,
+                onExpand = { showExpandedTimeline = true }
+            )
         }
 
         // ── Tracking controls (bottom end) ──────────────────
@@ -365,6 +392,16 @@ fun MapScreen(
                 viewModel.dismissCompletedTrack()
                 viewModel.loadSavedTrack(completed.trackId)
             }
+        )
+    }
+
+    // ── Expanded timeline dialog ─────────────────────────────
+    if (showExpandedTimeline && uiState.trackPoints.size >= 2) {
+        ExpandedTimelineDialog(
+            points = uiState.trackPoints,
+            activityDurations = uiState.activityDurations,
+            trackName = uiState.viewedTrackName,
+            onDismiss = { showExpandedTimeline = false }
         )
     }
 }
@@ -548,55 +585,89 @@ private fun TrackingStatsBar(state: MapUiState) {
         shape = RoundedCornerShape(20.dp),
         shadowElevation = 10.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+                .padding(horizontal = 12.dp, vertical = 14.dp)
         ) {
-            StatItem(
-                value = String.format("%.2f", state.distanceKm),
-                unit = "km",
-                label = "Distance",
-                accentColor = PrimaryLight
-            )
-            StatDivider()
-            StatItem(
-                value = String.format("%.1f", state.currentSpeed),
-                unit = "km/h",
-                label = "Speed",
-                accentColor = Accent
-            )
-            StatDivider()
-            StatItem(
-                value = state.pointCount.toString(),
-                unit = "pts",
-                label = "Points",
-                accentColor = Secondary
-            )
-            StatDivider()
-            StatItem(
-                value = "${state.satelliteInfo.usedInFix}/${state.satelliteInfo.totalVisible}",
-                unit = "",
-                label = "Sats",
-                accentColor = when {
-                    state.satelliteInfo.usedInFix >= 8 -> PrimaryLight
-                    state.satelliteInfo.usedInFix >= 4 -> Accent
-                    else -> Error
-                }
-            )
-            state.wearableReading?.heartRate?.let { hr ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                StatItem(
+                    value = String.format("%.2f", state.distanceKm),
+                    unit = "km",
+                    label = "Distance",
+                    accentColor = PrimaryLight
+                )
                 StatDivider()
                 StatItem(
-                    value = hr.toString(),
-                    unit = "bpm",
-                    label = "Heart",
+                    value = String.format("%.2f", state.currentSpeed),
+                    unit = "km/h",
+                    label = "Speed",
+                    accentColor = Accent
+                )
+                StatDivider()
+                StatItem(
+                    value = String.format("%.1f", state.avgSpeedKmh),
+                    unit = "km/h",
+                    label = "Avg",
+                    accentColor = Secondary
+                )
+                StatDivider()
+                StatItem(
+                    value = "${state.satelliteInfo.usedInFix}/${state.satelliteInfo.totalVisible}",
+                    unit = "",
+                    label = "Sats",
                     accentColor = when {
-                        hr < 60 -> Accent
-                        hr <= 140 -> PrimaryLight
+                        state.satelliteInfo.usedInFix >= 8 -> PrimaryLight
+                        state.satelliteInfo.usedInFix >= 4 -> Accent
                         else -> Error
                     }
                 )
+                state.wearableReading?.heartRate?.let { hr ->
+                    StatDivider()
+                    StatItem(
+                        value = hr.toString(),
+                        unit = "bpm",
+                        label = "Heart",
+                        accentColor = when {
+                            hr < 60 -> Accent
+                            hr <= 140 -> PrimaryLight
+                            else -> Error
+                        }
+                    )
+                }
+            }
+
+            // Activity duration chips
+            if (state.activityDurations.isNotEmpty()) {
+                val moving = state.activityDurations.filter {
+                    it.key != ActivityType.STATIONARY && it.key != ActivityType.UNKNOWN
+                }
+                if (moving.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        moving.entries
+                            .sortedByDescending { it.value }
+                            .forEach { (activity, ms) ->
+                                val (color, _, icon) = activityDisplayInfo(activity)
+                                val mins = ms / 60_000
+                                if (mins > 0) {
+                                    ActivityDurationChip(
+                                        icon = icon,
+                                        label = "${mins}m",
+                                        color = color
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                            }
+                    }
+                }
             }
         }
     }
@@ -643,6 +714,23 @@ private fun StatDivider() {
             .height(28.dp)
             .background(Color.White.copy(alpha = 0.12f))
     )
+}
+
+@Composable
+private fun ActivityDurationChip(icon: ImageVector, label: String, color: Color) {
+    Surface(
+        color = color.copy(alpha = 0.2f),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(12.dp))
+            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = color)
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -968,7 +1056,7 @@ private fun TrackCompletionDialog(
                     ) {
                         CompletionStat(String.format(Locale.US, "%.2f", info.distanceKm), "km", "Distance", accentColor)
                         CompletionStat(durationText, "", "Duration", Secondary)
-                        CompletionStat(String.format(Locale.US, "%.1f", info.avgSpeedKmh), "km/h", "Avg Speed", Walking)
+                        CompletionStat(String.format(Locale.US, "%.2f", info.avgSpeedKmh), "km/h", "Avg Speed", Walking)
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -977,9 +1065,66 @@ private fun TrackCompletionDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        CompletionStat(String.format(Locale.US, "%.1f", info.maxSpeedKmh), "km/h", "Max Speed", Accent)
+                        CompletionStat(String.format(Locale.US, "%.2f", info.maxSpeedKmh), "km/h", "Max Speed", Accent)
                         CompletionStat(String.format(Locale.US, "%.0f", info.caloriesBurned), "kcal", "Calories", Running)
                         CompletionStat(info.pointCount.toString(), "pts", "GPS Points", Primary)
+                    }
+
+                    // Activity duration breakdown
+                    val movingDurations = info.activityDurations.filter {
+                        it.key != ActivityType.STATIONARY && it.key != ActivityType.UNKNOWN
+                    }
+                    if (movingDurations.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                Text(
+                                    "Activity Breakdown",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    movingDurations.entries
+                                        .sortedByDescending { it.value }
+                                        .forEach { (activity, ms) ->
+                                            val (color, label, icon) = activityDisplayInfo(activity)
+                                            val mins = ms / 60_000
+                                            val secs = (ms % 60_000) / 1000
+                                            val timeText = if (mins >= 60) {
+                                                "${mins / 60}h ${mins % 60}m"
+                                            } else if (mins > 0) {
+                                                "${mins}m ${secs}s"
+                                            } else {
+                                                "${secs}s"
+                                            }
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                            ) {
+                                                Icon(icon, null, tint = color, modifier = Modifier.size(14.dp))
+                                                Text(
+                                                    "$label $timeText",
+                                                    fontSize = 11.sp,
+                                                    color = color,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
+                                }
+                            }
+                        }
                     }
 
                     // Battery
@@ -1236,4 +1381,521 @@ private fun activityDisplayInfo(type: ActivityType): Triple<Color, String, Image
     ActivityType.FLYING     -> Triple(Flying, "Flying", Icons.Filled.Flight)
     ActivityType.STATIONARY -> Triple(Stationary, "Stationary", Icons.Filled.PauseCircle)
     ActivityType.UNKNOWN    -> Triple(Stationary, "Unknown", Icons.Filled.QuestionMark)
+}
+
+private fun activityColor(type: ActivityType): Color = when (type) {
+    ActivityType.WALKING    -> Walking
+    ActivityType.RUNNING    -> Running
+    ActivityType.CYCLING    -> Cycling
+    ActivityType.DRIVING    -> Driving
+    ActivityType.FLYING     -> Flying
+    ActivityType.STATIONARY -> Stationary
+    ActivityType.UNKNOWN    -> Color.Gray
+}
+
+// ═══════════════════════════════════════════════════════════
+//  COMPACT TIMELINE BAR (bottom of map, saved track)
+// ═══════════════════════════════════════════════════════════
+
+private data class TimelineSegment(
+    val activity: ActivityType,
+    val startTime: Long,
+    val endTime: Long
+)
+
+private fun buildTimelineSegments(points: List<TrackPoint>): List<TimelineSegment> {
+    if (points.isEmpty()) return emptyList()
+    val segments = mutableListOf<TimelineSegment>()
+    var currentActivity = points.first().activityType
+    var segStart = points.first().timestamp
+    for (i in 1 until points.size) {
+        if (points[i].activityType != currentActivity) {
+            segments.add(TimelineSegment(currentActivity, segStart, points[i - 1].timestamp))
+            currentActivity = points[i].activityType
+            segStart = points[i].timestamp
+        }
+    }
+    segments.add(TimelineSegment(currentActivity, segStart, points.last().timestamp))
+    // Merge segments shorter than 10 seconds
+    if (segments.size <= 1) return segments
+    val merged = mutableListOf<TimelineSegment>()
+    var cur = segments.first()
+    for (i in 1 until segments.size) {
+        val next = segments[i]
+        if (cur.endTime - cur.startTime < 10_000L) {
+            cur = TimelineSegment(next.activity, cur.startTime, next.endTime)
+        } else {
+            merged.add(cur)
+            cur = next
+        }
+    }
+    merged.add(cur)
+    return merged
+}
+
+@Composable
+private fun CompactTimelineBar(
+    points: List<TrackPoint>,
+    activityDurations: Map<ActivityType, Long>,
+    onExpand: () -> Unit
+) {
+    val segments = remember(points) { buildTimelineSegments(points) }
+    if (segments.isEmpty()) return
+
+    val trackStart = points.first().timestamp
+    val trackEnd = points.last().timestamp
+    val total = (trackEnd - trackStart).coerceAtLeast(1L)
+    val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        color = OverlayDark.copy(alpha = 0.90f),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 8.dp,
+        onClick = onExpand
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Activity Timeline",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.Filled.OpenInFull,
+                    contentDescription = "Expand",
+                    tint = Color.White.copy(alpha = 0.5f),
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Vector timeline bar
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .clip(RoundedCornerShape(6.dp))
+            ) {
+                val w = size.width
+                val h = size.height
+                for (seg in segments) {
+                    val startFrac = (seg.startTime - trackStart).toFloat() / total
+                    val endFrac = (seg.endTime - trackStart).toFloat() / total
+                    val startX = startFrac * w
+                    val endX = endFrac * w
+                    if (endX - startX < 1f) continue
+                    drawRect(
+                        color = activityColor(seg.activity),
+                        topLeft = Offset(startX, 0f),
+                        size = Size(endX - startX, h)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(timeFmt.format(Date(trackStart)), fontSize = 9.sp, color = Color.White.copy(alpha = 0.5f))
+                Text(timeFmt.format(Date(trackEnd)), fontSize = 9.sp, color = Color.White.copy(alpha = 0.5f))
+            }
+
+            // Activity duration chips
+            val moving = activityDurations.filter {
+                it.key != ActivityType.STATIONARY && it.key != ActivityType.UNKNOWN
+            }
+            if (moving.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    moving.entries.sortedByDescending { it.value }.forEach { (activity, ms) ->
+                        val (color, _, icon) = activityDisplayInfo(activity)
+                        val mins = ms / 60_000
+                        if (mins > 0) {
+                            ActivityDurationChip(icon = icon, label = "${mins}m", color = color)
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  EXPANDED TIMELINE DIALOG (fullscreen, zoomable)
+// ═══════════════════════════════════════════════════════════
+
+@Composable
+private fun ExpandedTimelineDialog(
+    points: List<TrackPoint>,
+    activityDurations: Map<ActivityType, Long>,
+    trackName: String,
+    onDismiss: () -> Unit
+) {
+    val segments = remember(points) { buildTimelineSegments(points) }
+    if (segments.isEmpty()) {
+        onDismiss()
+        return
+    }
+
+    val trackStart = points.first().timestamp
+    val trackEnd = points.last().timestamp
+    val total = (trackEnd - trackStart).coerceAtLeast(1L)
+    val timeFmt = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val dateFmt = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
+
+    var zoomLevel by remember { mutableStateOf(1f) }
+    val scrollState = rememberScrollState()
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Activity Timeline",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            trackName,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Date range
+                Text(
+                    "${dateFmt.format(Date(trackStart))}  ${timeFmt.format(Date(trackStart))} \u2192 ${timeFmt.format(Date(trackEnd))}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Zoom controls
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Zoom",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FilledIconButton(
+                        onClick = { zoomLevel = (zoomLevel - 1f).coerceAtLeast(1f) },
+                        modifier = Modifier.size(28.dp),
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Icon(Icons.Filled.Remove, null, modifier = Modifier.size(16.dp))
+                    }
+                    Text(
+                        "${zoomLevel.toInt()}x",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Primary
+                    )
+                    FilledIconButton(
+                        onClick = { zoomLevel = (zoomLevel + 1f).coerceAtMost(10f) },
+                        modifier = Modifier.size(28.dp),
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Icon(Icons.Filled.Add, null, modifier = Modifier.size(16.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Zoomable + pannable vector timeline
+                val density = LocalDensity.current
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(scrollState)
+                ) {
+                    val totalWidth = with(density) { (300.dp * zoomLevel).toPx() }
+                    Canvas(
+                        modifier = Modifier
+                            .width(with(density) { totalWidth.toDp() })
+                            .height(80.dp)
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, _, zoom, _ ->
+                                    zoomLevel = (zoomLevel * zoom).coerceIn(1f, 10f)
+                                }
+                            }
+                    ) {
+                        val w = size.width
+                        val h = size.height
+                        val barTop = h * 0.2f
+                        val barHeight = h * 0.35f
+                        val barBottom = barTop + barHeight
+
+                        // Background track
+                        drawRoundRect(
+                            color = Color.Gray.copy(alpha = 0.1f),
+                            topLeft = Offset(0f, barTop),
+                            size = Size(w, barHeight),
+                            cornerRadius = CornerRadius(barHeight / 2)
+                        )
+
+                        // Activity segments
+                        for (seg in segments) {
+                            val startFrac = (seg.startTime - trackStart).toFloat() / total
+                            val endFrac = (seg.endTime - trackStart).toFloat() / total
+                            val startX = startFrac * w
+                            val endX = endFrac * w
+                            if (endX - startX < 1f) continue
+
+                            val color = activityColor(seg.activity)
+
+                            // Filled bar
+                            drawRoundRect(
+                                color = color,
+                                topLeft = Offset(startX, barTop),
+                                size = Size(endX - startX, barHeight),
+                                cornerRadius = CornerRadius(barHeight / 2)
+                            )
+
+                            // Activity-specific pattern overlay
+                            when (seg.activity) {
+                                ActivityType.WALKING -> {
+                                    // Dashed pattern
+                                    var dx = startX + 4f
+                                    while (dx < endX - 4f) {
+                                        val dashEnd = (dx + 6f).coerceAtMost(endX - 2f)
+                                        drawLine(
+                                            Color.White.copy(alpha = 0.3f),
+                                            Offset(dx, barTop + barHeight / 2),
+                                            Offset(dashEnd, barTop + barHeight / 2),
+                                            strokeWidth = 1.5f
+                                        )
+                                        dx = dashEnd + 4f
+                                    }
+                                }
+                                ActivityType.RUNNING -> {
+                                    // Wavy overlay
+                                    val wavePath = Path()
+                                    wavePath.moveTo(startX, barTop + barHeight / 2)
+                                    var rx = startX
+                                    while (rx <= endX) {
+                                        val wy = barTop + barHeight / 2 + 3f * sin((rx - startX) * 0.5f)
+                                        wavePath.lineTo(rx, wy)
+                                        rx += 1f
+                                    }
+                                    drawPath(wavePath, Color.White.copy(alpha = 0.25f),
+                                        style = Stroke(width = 1.5f, cap = StrokeCap.Round))
+                                }
+                                ActivityType.CYCLING -> {
+                                    // Small circles
+                                    var cx = startX + 8f
+                                    while (cx < endX - 4f) {
+                                        drawCircle(
+                                            Color.White.copy(alpha = 0.25f),
+                                            radius = 3f,
+                                            center = Offset(cx, barTop + barHeight / 2),
+                                            style = Stroke(width = 1f)
+                                        )
+                                        cx += 10f
+                                    }
+                                }
+                                ActivityType.DRIVING -> {
+                                    // Solid + dots
+                                    var dotX = startX + 8f
+                                    while (dotX < endX - 4f) {
+                                        drawCircle(
+                                            Color.White.copy(alpha = 0.3f),
+                                            radius = 2f,
+                                            center = Offset(dotX, barTop + barHeight / 2)
+                                        )
+                                        dotX += 12f
+                                    }
+                                }
+                                else -> {} // No overlay for stationary/flying/unknown
+                            }
+
+                            // Transition marker
+                            if (seg != segments.first()) {
+                                drawLine(
+                                    Color.White.copy(alpha = 0.6f),
+                                    Offset(startX, barTop - 2f),
+                                    Offset(startX, barBottom + 2f),
+                                    strokeWidth = 1.5f
+                                )
+                            }
+                        }
+
+                        // Time tick marks along bottom
+                        val tickIntervalMs = when {
+                            total < 600_000L   -> 60_000L     // < 10min → every 1min
+                            total < 3_600_000L -> 300_000L    // < 1hr → every 5min
+                            total < 7_200_000L -> 600_000L    // < 2hr → every 10min
+                            else               -> 1_800_000L  // else → every 30min
+                        }
+                        var tickTime = trackStart - (trackStart % tickIntervalMs) + tickIntervalMs
+                        while (tickTime < trackEnd) {
+                            val frac = (tickTime - trackStart).toFloat() / total
+                            val tx = frac * w
+                            drawLine(
+                                Color.Gray.copy(alpha = 0.3f),
+                                Offset(tx, barBottom + 4f),
+                                Offset(tx, barBottom + 12f),
+                                strokeWidth = 1f
+                            )
+                            tickTime += tickIntervalMs
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Time labels below zoomable area
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(timeFmt.format(Date(trackStart)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (segments.size > 1) {
+                        Text(timeFmt.format(Date(trackStart + total / 2)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(timeFmt.format(Date(trackEnd)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Activity breakdown list
+                Text(
+                    "Activity Breakdown",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val totalMovingMs = activityDurations.values.sum().coerceAtLeast(1L)
+                activityDurations.entries
+                    .sortedByDescending { it.value }
+                    .forEach { (activity, ms) ->
+                        val (color, label, icon) = activityDisplayInfo(activity)
+                        val mins = ms / 60_000
+                        val secs = (ms % 60_000) / 1000
+                        val pct = (ms * 100f / totalMovingMs).toInt()
+                        val timeStr = when {
+                            mins >= 60 -> "${mins / 60}h ${mins % 60}m"
+                            mins > 0 -> "${mins}m ${secs}s"
+                            else -> "${secs}s"
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = color.copy(alpha = 0.12f),
+                                shape = CircleShape,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Text(timeStr, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = color)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("$pct%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        // Progress bar
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 38.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(pct / 100f)
+                                    .fillMaxHeight()
+                                    .background(color, RoundedCornerShape(1.5.dp))
+                            )
+                        }
+                    }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Legend for vector patterns
+                Text(
+                    "Segment Legend",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    segments.map { it.activity }.distinct().forEach { activity ->
+                        val (color, label, _) = activityDisplayInfo(activity)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 16.dp, height = 8.dp)
+                                    .background(color, RoundedCornerShape(4.dp))
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(label, fontSize = 10.sp, color = color, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

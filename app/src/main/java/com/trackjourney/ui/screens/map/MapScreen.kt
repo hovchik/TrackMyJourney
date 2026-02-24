@@ -1,8 +1,5 @@
 package com.trackjourney.ui.screens.map
 
-import android.Manifest
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -64,8 +61,6 @@ fun MapScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val allTracks by viewModel.allTracks.collectAsState()
-    var showTrackNameDialog by remember { mutableStateOf(false) }
-    var trackName by remember { mutableStateOf("") }
     var trackDropdownExpanded by remember { mutableStateOf(false) }
     var showExpandedTimeline by remember { mutableStateOf(false) }
     val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy  HH:mm", Locale.getDefault()) }
@@ -104,22 +99,6 @@ fun MapScreen(
         && displayPoints.isNotEmpty()) {
         displayPoints.last()
     } else null
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allGranted = permissions.values.all { it }
-        if (allGranted && showTrackNameDialog) {
-            viewModel.startTracking(trackName)
-            showTrackNameDialog = false
-        }
-    }
-
-    val requiredPermissions = arrayOf(
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION,
-        Manifest.permission.POST_NOTIFICATIONS
-    )
 
     // Layout: Column with map (fills space) + fixed timeline at bottom
     Column(modifier = Modifier.fillMaxSize()) {
@@ -242,105 +221,6 @@ fun MapScreen(
             SpeedLegend()
         }
 
-        // ── Tracking controls (bottom end) ──────────────────
-        androidx.compose.animation.AnimatedVisibility(
-            visible = uiState.isTracking,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 24.dp),
-            enter = slideInVertically { it / 2 } + fadeIn(),
-            exit = slideOutVertically { it / 2 } + fadeOut()
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Pause / Resume pill
-                Surface(
-                    onClick = {
-                        if (uiState.isPaused) viewModel.resumeTracking()
-                        else viewModel.pauseTracking()
-                    },
-                    color = Color.White,
-                    shape = RoundedCornerShape(16.dp),
-                    shadowElevation = 6.dp,
-                    modifier = Modifier.height(40.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            if (uiState.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                            contentDescription = null,
-                            tint = OverlayDark,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            if (uiState.isPaused) "Resume" else "Pause",
-                            color = OverlayDark,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-
-                // Stop button
-                FloatingActionButton(
-                    onClick = { viewModel.stopTracking() },
-                    containerColor = Error,
-                    shape = CircleShape,
-                    modifier = Modifier.size(60.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 8.dp,
-                        pressedElevation = 12.dp
-                    )
-                ) {
-                    Icon(
-                        Icons.Filled.Stop,
-                        contentDescription = "Stop",
-                        modifier = Modifier.size(28.dp),
-                        tint = Color.White
-                    )
-                }
-            }
-        }
-
-        // ── Start FAB (bottom center, when idle) ──────────────
-        androidx.compose.animation.AnimatedVisibility(
-            visible = !uiState.isTracking && !uiState.isViewingSavedTrack,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 28.dp),
-            enter = scaleIn() + fadeIn(),
-            exit = scaleOut() + fadeOut()
-        ) {
-            ExtendedFloatingActionButton(
-                onClick = { showTrackNameDialog = true },
-                containerColor = Primary,
-                shape = RoundedCornerShape(28.dp),
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 10.dp,
-                    pressedElevation = 14.dp
-                ),
-                modifier = Modifier.height(56.dp)
-            ) {
-                Icon(
-                    Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(26.dp),
-                    tint = Color.White
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Start Journey",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
         } // end Box (map + overlays)
 
         // ── Fixed activity timeline (bottom, saved track) ────
@@ -383,49 +263,6 @@ fun MapScreen(
             )
         }
     } // end Column
-
-    // ── Track name dialog ───────────────────────────────────
-    if (showTrackNameDialog) {
-        AlertDialog(
-            onDismissRequest = { showTrackNameDialog = false },
-            title = { Text("Start New Track", fontWeight = FontWeight.Bold) },
-            text = {
-                OutlinedTextField(
-                    value = trackName,
-                    onValueChange = { trackName = it },
-                    label = { Text("Track name (optional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        permissionLauncher.launch(requiredPermissions)
-                        viewModel.startTracking(trackName)
-                        showTrackNameDialog = false
-                        trackName = ""
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
-                ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Start")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showTrackNameDialog = false
-                    trackName = ""
-                }) {
-                    Text("Cancel")
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
-        )
-    }
 
     // ── Track completion dialog ─────────────────────────────
     uiState.completedTrack?.let { completed ->

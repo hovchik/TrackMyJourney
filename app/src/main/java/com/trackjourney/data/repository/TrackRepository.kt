@@ -78,6 +78,8 @@ class TrackRepository(
 
     fun getAllTracksWithPoints(): Flow<List<TrackWithPoints>> = trackDao.getAllTracksWithPoints()
 
+    suspend fun getTrackCount(): Int = trackDao.getTrackCount()
+
     fun observeActiveTrack(): Flow<TrackSession?> = trackDao.observeActiveTrack()
 
     suspend fun getActiveTrack(): TrackSession? = trackDao.getActiveTrack()

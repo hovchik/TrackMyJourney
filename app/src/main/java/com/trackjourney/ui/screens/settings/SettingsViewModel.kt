@@ -141,6 +141,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _isExporting.value = true
             try {
+                val count = repository.getTrackCount()
+                if (count == 0) {
+                    _exportError.value = "Nothing to export"
+                    return@launch
+                }
                 val file = repository.exportAllData()
                 if (file != null) {
                     _exportedBackupFile.value = file

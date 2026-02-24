@@ -168,9 +168,12 @@ fun MapScreen(
                     isViewingSavedTrack = uiState.isViewingSavedTrack,
                     viewedTrackName = uiState.viewedTrackName,
                     viewedActivity = uiState.currentActivity,
-                    trackStats = if (uiState.isViewingSavedTrack)
-                        "${uiState.pointCount} pts \u2022 ${String.format("%.2f km", uiState.distanceKm)}"
-                    else null,
+                    trackStats = if (uiState.isViewingSavedTrack) buildString {
+                        append("${uiState.pointCount} pts \u2022 ${String.format("%.2f km", uiState.distanceKm)}")
+                        if (uiState.batteryStart != null && uiState.batteryEnd != null) {
+                            append(" \u2022 \uD83D\uDD0B${uiState.batteryStart - uiState.batteryEnd}%")
+                        }
+                    } else null,
                     expanded = trackDropdownExpanded,
                     onExpandedChange = { trackDropdownExpanded = it },
                     dateFormatter = dateFormatter,
@@ -374,6 +377,8 @@ fun MapScreen(
             FixedTimelinePanel(
                 points = uiState.trackPoints,
                 activityDurations = uiState.activityDurations,
+                batteryStart = uiState.batteryStart,
+                batteryEnd = uiState.batteryEnd,
                 isPlaying = isPlayingBack,
                 playbackIndex = playbackIndex,
                 playbackSpeed = playbackSpeed,
@@ -1652,6 +1657,8 @@ private fun DrawScope.drawLegendSwatch(activity: ActivityType, x: Float, y: Floa
 private fun FixedTimelinePanel(
     points: List<TrackPoint>,
     activityDurations: Map<ActivityType, Long>,
+    batteryStart: Int?,
+    batteryEnd: Int?,
     isPlaying: Boolean,
     playbackIndex: Int,
     playbackSpeed: Float,
@@ -1689,9 +1696,51 @@ private fun FixedTimelinePanel(
                     "Activity Timeline",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White.copy(alpha = 0.8f),
-                    modifier = Modifier.weight(1f)
+                    color = Color.White.copy(alpha = 0.8f)
                 )
+
+                // Battery delta chip
+                if (batteryStart != null && batteryEnd != null) {
+                    val used = batteryStart - batteryEnd
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        color = when {
+                            used >= 20 -> Error.copy(alpha = 0.2f)
+                            used >= 10 -> Accent.copy(alpha = 0.2f)
+                            else -> PrimaryLight.copy(alpha = 0.2f)
+                        },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.BatteryStd,
+                                contentDescription = null,
+                                tint = when {
+                                    used >= 20 -> Error
+                                    used >= 10 -> Accent
+                                    else -> PrimaryLight
+                                },
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                "${batteryStart}% \u2192 ${batteryEnd}%  (-${used}%)",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = when {
+                                    used >= 20 -> Error
+                                    used >= 10 -> Accent
+                                    else -> PrimaryLight
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
 
                 // Speed toggle
                 Surface(

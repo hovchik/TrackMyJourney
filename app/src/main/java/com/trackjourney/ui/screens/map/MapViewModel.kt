@@ -39,7 +39,9 @@ data class MapUiState(
     val completedTrack: CompletedTrackInfo? = null,
     val activityDurations: Map<ActivityType, Long> = emptyMap(),
     val avgSpeedKmh: Double = 0.0,
-    val maxSpeedKmh: Double = 0.0
+    val maxSpeedKmh: Double = 0.0,
+    val batteryStart: Int? = null,
+    val batteryEnd: Int? = null
 )
 
 data class CompletedTrackInfo(
@@ -120,7 +122,9 @@ class MapViewModel @Inject constructor(
                         currentActivity = track.activityType,
                         activityDurations = computeActivityDurations(points),
                         avgSpeedKmh = track.avgSpeedKmh,
-                        maxSpeedKmh = track.maxSpeedKmh
+                        maxSpeedKmh = track.maxSpeedKmh,
+                        batteryStart = track.batteryStart,
+                        batteryEnd = track.batteryEnd
                     )
                 }
             }
@@ -135,7 +139,9 @@ class MapViewModel @Inject constructor(
                 pointCount = 0,
                 distanceKm = 0.0,
                 isViewingSavedTrack = false,
-                viewedTrackName = ""
+                viewedTrackName = "",
+                batteryStart = null,
+                batteryEnd = null
             )
         }
     }

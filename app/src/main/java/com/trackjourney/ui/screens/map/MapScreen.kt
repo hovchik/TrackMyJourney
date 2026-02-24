@@ -187,7 +187,7 @@ fun MapScreen(
         }
 
         // ── Right-side chips (GPS + Wearable) ───────────────
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = uiState.isTracking,
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -211,7 +211,7 @@ fun MapScreen(
         }
 
         // ── Activity badge (bottom center, during tracking) ─
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = uiState.isTracking,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -223,7 +223,7 @@ fun MapScreen(
         }
 
         // ── Back arrow (top start, saved track) ──────────────
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = uiState.isViewingSavedTrack && !uiState.isTracking,
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -253,7 +253,7 @@ fun MapScreen(
         }
 
         // ── Speed legend (bottom start, saved track) ────────
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = uiState.isViewingSavedTrack,
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -265,7 +265,7 @@ fun MapScreen(
         }
 
         // ── Tracking controls (bottom end) ──────────────────
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = uiState.isTracking,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -330,7 +330,7 @@ fun MapScreen(
         }
 
         // ── Start FAB (bottom center, when idle) ──────────────
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = !uiState.isTracking && !uiState.isViewingSavedTrack,
             modifier = Modifier
                 .align(Alignment.BottomCenter)

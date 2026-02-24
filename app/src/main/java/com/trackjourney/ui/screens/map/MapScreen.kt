@@ -170,8 +170,10 @@ fun MapScreen(
                     viewedActivity = uiState.currentActivity,
                     trackStats = if (uiState.isViewingSavedTrack) buildString {
                         append("${uiState.pointCount} pts \u2022 ${String.format("%.2f km", uiState.distanceKm)}")
-                        if (uiState.batteryStart != null && uiState.batteryEnd != null) {
-                            append(" \u2022 \uD83D\uDD0B${uiState.batteryStart - uiState.batteryEnd}%")
+                        val bStart = uiState.batteryStart
+                        val bEnd = uiState.batteryEnd
+                        if (bStart != null && bEnd != null) {
+                            append(" \u2022 \uD83D\uDD0B${bStart - bEnd}%")
                         }
                     } else null,
                     expanded = trackDropdownExpanded,

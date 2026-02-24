@@ -171,6 +171,7 @@ private fun TrackingToggleBar(
             ActivityType.DRIVING    -> Triple(Icons.Filled.DirectionsCar, Driving, "Driving")
             ActivityType.FLYING     -> Triple(Icons.Filled.Flight, Flying, "Flying")
             ActivityType.STATIONARY -> Triple(Icons.Filled.PauseCircle, Stationary, "Still")
+            ActivityType.HIKING     -> Triple(Icons.Filled.Terrain, Hiking, "Hiking")
             ActivityType.UNKNOWN    -> Triple(Icons.Filled.MyLocation, Primary, "Detecting")
         }
     }

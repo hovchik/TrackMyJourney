@@ -96,6 +96,7 @@ fun ActivityTimelineGraph(
                     ActivityType.RUNNING    -> drawWavyLine(startX, endX, lineY, color, strokeWidth, wavelength = 12f, amplitude = 6f)
                     ActivityType.CYCLING    -> drawCircleLine(startX, endX, lineY, color, strokeWidth)
                     ActivityType.STATIONARY -> drawDottedLine(startX, endX, lineY, color, strokeWidth)
+                    ActivityType.HIKING     -> drawDashedLine(startX, endX, lineY, color, strokeWidth)
                     ActivityType.UNKNOWN    -> drawDottedLine(startX, endX, lineY, Color.Gray, strokeWidth)
                 }
 
@@ -203,6 +204,7 @@ private fun LegendItem(activity: ActivityType) {
                 ActivityType.RUNNING    -> drawWavyLine(0f, size.width, y, color, sw, 6f, 3f)
                 ActivityType.CYCLING    -> drawCircleLine(0f, size.width, y, color, sw)
                 ActivityType.STATIONARY -> drawDottedLine(0f, size.width, y, color, sw)
+                ActivityType.HIKING     -> drawDashedLine(0f, size.width, y, color, sw)
                 ActivityType.UNKNOWN    -> drawDottedLine(0f, size.width, y, Color.Gray, sw)
             }
         }
@@ -355,5 +357,6 @@ private fun activityToColor(type: ActivityType): Color = when (type) {
     ActivityType.DRIVING    -> Driving
     ActivityType.FLYING     -> Flying
     ActivityType.STATIONARY -> Stationary
+    ActivityType.HIKING     -> Hiking
     ActivityType.UNKNOWN    -> Color.Gray
 }

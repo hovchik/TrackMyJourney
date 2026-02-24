@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -12,6 +14,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class SettingsDataStore(
     private val context: Context
 ) {
+    private val gson = Gson()
+
     companion object {
         val RECORD_INTERVAL_MS = longPreferencesKey("record_interval_ms")
         val MIN_DISTANCE_METERS = floatPreferencesKey("min_distance_meters")
@@ -24,6 +28,17 @@ class SettingsDataStore(
         val TRACKING_MODE = stringPreferencesKey("tracking_mode")
         val SELECTED_CAR_ID = stringPreferencesKey("selected_car_id")
         val CURRENCY = stringPreferencesKey("currency")
+        val ACTIVITY_CONFIGS = stringPreferencesKey("activity_configs")
+    }
+
+    private fun parseActivityConfigs(json: String?): List<ActivityConfig> {
+        if (json.isNullOrBlank()) return ActivityConfig.defaults()
+        return try {
+            val type = object : TypeToken<List<ActivityConfig>>() {}.type
+            gson.fromJson(json, type)
+        } catch (_: Exception) {
+            ActivityConfig.defaults()
+        }
     }
 
     val settings: Flow<TrackingSettings> = context.dataStore.data.map { prefs ->
@@ -44,7 +59,8 @@ class SettingsDataStore(
                 TrackingMode.valueOf(prefs[TRACKING_MODE] ?: "HIGH_ACCURACY")
             } catch (e: Exception) { TrackingMode.HIGH_ACCURACY },
             selectedCarId = prefs[SELECTED_CAR_ID],
-            currency = prefs[CURRENCY] ?: "$"
+            currency = prefs[CURRENCY] ?: "$",
+            activityConfigs = parseActivityConfigs(prefs[ACTIVITY_CONFIGS])
         )
     }
 
@@ -98,6 +114,10 @@ class SettingsDataStore(
         }
     }
 
+    suspend fun updateActivityConfigs(configs: List<ActivityConfig>) {
+        context.dataStore.edit { it[ACTIVITY_CONFIGS] = gson.toJson(configs) }
+    }
+
     suspend fun updateAll(settings: TrackingSettings) {
         context.dataStore.edit { prefs ->
             prefs[RECORD_INTERVAL_MS] = settings.recordIntervalMs
@@ -115,6 +135,7 @@ class SettingsDataStore(
                 prefs.remove(SELECTED_CAR_ID)
             }
             prefs[CURRENCY] = settings.currency
+            prefs[ACTIVITY_CONFIGS] = gson.toJson(settings.activityConfigs)
         }
     }
 }

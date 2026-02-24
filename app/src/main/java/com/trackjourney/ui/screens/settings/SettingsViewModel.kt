@@ -96,6 +96,40 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ─── Activity Configs ──────────────────────────────────
+
+    fun updateActivityConfigs(configs: List<ActivityConfig>) {
+        viewModelScope.launch {
+            repository.updateSettings { updateActivityConfigs(configs) }
+        }
+    }
+
+    fun toggleActivityConfig(activityType: String, isActive: Boolean) {
+        viewModelScope.launch {
+            val current = settings.value.activityConfigs.toMutableList()
+            val idx = current.indexOfFirst { it.activityType == activityType }
+            if (idx >= 0) {
+                current[idx] = current[idx].copy(isActive = isActive)
+                repository.updateSettings { updateActivityConfigs(current) }
+            }
+        }
+    }
+
+    fun addActivityConfig(config: ActivityConfig) {
+        viewModelScope.launch {
+            val current = settings.value.activityConfigs.toMutableList()
+            current.add(config)
+            repository.updateSettings { updateActivityConfigs(current) }
+        }
+    }
+
+    fun removeActivityConfig(activityType: String) {
+        viewModelScope.launch {
+            val current = settings.value.activityConfigs.filter { it.activityType != activityType }
+            repository.updateSettings { updateActivityConfigs(current) }
+        }
+    }
+
     // ─── Car Profiles ────────────────────────────────────
 
     val allCars: StateFlow<List<CarProfile>> = repository.getAllCars()

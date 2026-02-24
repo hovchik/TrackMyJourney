@@ -23,6 +23,7 @@ val Cycling = Color(0xFF2196F3)
 val Driving = Color(0xFF9C27B0)
 val Flying = Color(0xFFE91E63)
 val Stationary = Color(0xFF607D8B)
+val Hiking = Color(0xFF8BC34A)
 
 private val LightColors = lightColorScheme(
     primary = Primary,

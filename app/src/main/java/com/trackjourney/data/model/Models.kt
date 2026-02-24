@@ -265,17 +265,52 @@ enum class ActivityType {
     DRIVING,
     FLYING,
     STATIONARY,
+    HIKING,
     UNKNOWN;
 
     companion object {
-        fun fromSpeed(speedKmh: Float): ActivityType = when {
-            speedKmh < 0.5f    -> STATIONARY
-            speedKmh < 7f      -> WALKING
-            speedKmh < 15f     -> RUNNING
-            speedKmh < 35f     -> CYCLING
-            speedKmh < 200f    -> DRIVING
-            else                -> FLYING
+        fun fromSpeed(speedKmh: Float, configs: List<ActivityConfig>? = null): ActivityType {
+            if (!configs.isNullOrEmpty()) {
+                val activeConfigs = configs.filter { it.isActive }
+                    .sortedBy { it.minSpeedKmh }
+                for (cfg in activeConfigs) {
+                    if (speedKmh >= cfg.minSpeedKmh && speedKmh < cfg.maxSpeedKmh) {
+                        return try { valueOf(cfg.activityType) } catch (_: Exception) { UNKNOWN }
+                    }
+                }
+            }
+            return when {
+                speedKmh < 0.5f    -> STATIONARY
+                speedKmh < 7f      -> WALKING
+                speedKmh < 15f     -> RUNNING
+                speedKmh < 35f     -> CYCLING
+                speedKmh < 200f    -> DRIVING
+                else                -> FLYING
+            }
         }
+    }
+}
+
+data class ActivityConfig(
+    val activityType: String,
+    val displayName: String,
+    val iconName: String,
+    val minSpeedKmh: Float,
+    val maxSpeedKmh: Float,
+    val colorHex: Long,
+    val metValue: Double,
+    val isActive: Boolean = true
+) {
+    companion object {
+        fun defaults(): List<ActivityConfig> = listOf(
+            ActivityConfig("STATIONARY", "Stationary", "RadioButtonUnchecked", 0f, 0.5f, 0xFF607D8B, 1.0),
+            ActivityConfig("WALKING", "Walking", "DirectionsWalk", 0.5f, 6f, 0xFF4CAF50, 3.5),
+            ActivityConfig("HIKING", "Hiking", "Terrain", 2f, 6f, 0xFF8BC34A, 4.5, isActive = false),
+            ActivityConfig("RUNNING", "Running", "DirectionsRun", 6f, 15f, 0xFFFF9800, 8.0),
+            ActivityConfig("CYCLING", "Cycling", "DirectionsBike", 15f, 35f, 0xFF2196F3, 6.0),
+            ActivityConfig("DRIVING", "Driving", "DirectionsCar", 35f, 200f, 0xFF9C27B0, 0.0),
+            ActivityConfig("FLYING", "Flying", "Flight", 200f, 999f, 0xFFE91E63, 1.0)
+        )
     }
 }
 
@@ -400,7 +435,8 @@ data class TrackingSettings(
     val userHeightCm: Float = 170f,               // default 170 cm
     val trackingMode: TrackingMode = TrackingMode.HIGH_ACCURACY,
     val selectedCarId: String? = null,             // ID of the active car profile
-    val currency: String = "$"                     // currency symbol for ride cost
+    val currency: String = "$",                    // currency symbol for ride cost
+    val activityConfigs: List<ActivityConfig> = ActivityConfig.defaults()
 )
 
 enum class ExportFormat { JSON, GPX, CSV }

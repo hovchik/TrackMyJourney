@@ -39,6 +39,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trackjourney.data.bluetooth.WearableConnectionState
+import com.trackjourney.data.model.ActivityConfig
 import com.trackjourney.data.model.ActivityType
 import com.trackjourney.data.model.TrackPoint
 import com.trackjourney.data.model.TrackSession
@@ -114,6 +115,7 @@ fun MapScreen(
                 currentLatitude = playbackPoint?.latitude ?: uiState.currentLatitude,
                 currentLongitude = playbackPoint?.longitude ?: uiState.currentLongitude,
                 centerOnUser = uiState.isTracking || isPlayingBack,
+                isPlayback = isPlayingBack || (playbackIndex > 0 && playbackIndex < uiState.trackPoints.size - 1),
                 showActivityColors = !uiState.isViewingSavedTrack,
                 showSpeedColors = uiState.isViewingSavedTrack,
                 showDirectionArrows = uiState.isViewingSavedTrack
@@ -209,7 +211,7 @@ fun MapScreen(
             ActivityBadge(activity = uiState.currentActivity, speed = uiState.currentSpeed)
         }
 
-        // ── Speed legend (bottom start, saved track) ────────
+        // ── Activity legend (bottom start, saved track) ────────
         androidx.compose.animation.AnimatedVisibility(
             visible = uiState.isViewingSavedTrack,
             modifier = Modifier
@@ -218,7 +220,7 @@ fun MapScreen(
             enter = slideInHorizontally { -it } + fadeIn(),
             exit = slideOutHorizontally { -it } + fadeOut()
         ) {
-            SpeedLegend()
+            ActivityLegend(configs = uiState.settings.activityConfigs)
         }
 
         } // end Box (map + overlays)
@@ -249,10 +251,12 @@ fun MapScreen(
                 },
                 onSpeedChange = {
                     playbackSpeed = when {
+                        playbackSpeed < 1f -> 1f
                         playbackSpeed < 2f -> 2f
                         playbackSpeed < 4f -> 4f
                         playbackSpeed < 8f -> 8f
-                        else -> 1f
+                        playbackSpeed < 16f -> 16f
+                        else -> 0.5f
                     }
                 },
                 onSeek = { index ->
@@ -628,6 +632,7 @@ private fun ActivityBadge(activity: ActivityType, speed: Float, modifier: Modifi
         ActivityType.DRIVING    -> Triple(Icons.Filled.DirectionsCar, Driving, "Driving")
         ActivityType.FLYING     -> Triple(Icons.Filled.Flight, Flying, "Flying")
         ActivityType.STATIONARY -> Triple(Icons.Filled.PauseCircle, Stationary, "Stationary")
+        ActivityType.HIKING     -> Triple(Icons.Filled.Terrain, Hiking, "Hiking")
         ActivityType.UNKNOWN    -> Triple(Icons.Filled.QuestionMark, Stationary, "Detecting...")
     }
 
@@ -666,47 +671,69 @@ private fun ActivityBadge(activity: ActivityType, speed: Float, modifier: Modifi
 // ═══════════════════════════════════════════════════════════
 
 @Composable
-private fun SpeedLegend(modifier: Modifier = Modifier) {
+@Composable
+private fun ActivityLegend(
+    configs: List<ActivityConfig>,
+    modifier: Modifier = Modifier
+) {
+    val activeConfigs = configs.filter { it.isActive }
     Surface(
         modifier = modifier,
-        color = OverlayDark.copy(alpha = 0.85f),
+        color = OverlayDark.copy(alpha = 0.88f),
         shape = RoundedCornerShape(14.dp),
         shadowElevation = 4.dp
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                "Speed",
-                fontSize = 10.sp,
+                "ACTIVITIES",
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = 0.7f),
+                color = Color.White.copy(alpha = 0.5f),
                 letterSpacing = 1.sp
             )
-            Spacer(modifier = Modifier.height(6.dp))
-            // Gradient bar
-            Canvas(
-                modifier = Modifier
-                    .width(14.dp)
-                    .height(80.dp)
-                    .clip(RoundedCornerShape(7.dp))
-            ) {
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFFFF5722),  // Fast — red-orange
-                            Color(0xFFFFC107),  // Medium — amber
-                            Color(0xFF4CAF50)   // Slow — green
-                        )
-                    ),
-                    cornerRadius = CornerRadius(7.dp.toPx())
-                )
+            activeConfigs.forEach { cfg ->
+                val color = Color(cfg.colorHex)
+                val icon = activityIconFromName(cfg.iconName)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = color,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        cfg.displayName,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = color
+                    )
+                    Text(
+                        "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
+                        fontSize = 9.sp,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text("Slow", fontSize = 9.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Medium)
         }
     }
+}
+
+private fun activityIconFromName(name: String): ImageVector = when (name) {
+    "DirectionsWalk" -> Icons.Filled.DirectionsWalk
+    "DirectionsRun" -> Icons.Filled.DirectionsRun
+    "DirectionsBike" -> Icons.Filled.DirectionsBike
+    "DirectionsCar" -> Icons.Filled.DirectionsCar
+    "Flight" -> Icons.Filled.Flight
+    "PauseCircle" -> Icons.Filled.PauseCircle
+    "Terrain" -> Icons.Filled.Terrain
+    "RadioButtonUnchecked" -> Icons.Filled.RadioButtonUnchecked
+    else -> Icons.Filled.Circle
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1131,6 +1158,7 @@ private fun HorizonLandscape(
         ActivityType.DRIVING    -> Color(0xFF4A148C)
         ActivityType.FLYING     -> Color(0xFF880E4F)
         ActivityType.STATIONARY -> Color(0xFF37474F)
+        ActivityType.HIKING     -> Color(0xFF33691E)
         ActivityType.UNKNOWN    -> Color(0xFF37474F)
     }
     val skyBottom = when (activityType) {
@@ -1140,6 +1168,7 @@ private fun HorizonLandscape(
         ActivityType.DRIVING    -> Color(0xFFCE93D8)
         ActivityType.FLYING     -> Color(0xFFF48FB1)
         ActivityType.STATIONARY -> Color(0xFF78909C)
+        ActivityType.HIKING     -> Color(0xFFA5D6A7)
         ActivityType.UNKNOWN    -> Color(0xFF78909C)
     }
     val silhouetteColor = accentColor.copy(alpha = 0.35f)
@@ -1164,7 +1193,7 @@ private fun HorizonLandscape(
         )
 
         when (activityType) {
-            ActivityType.WALKING, ActivityType.RUNNING -> {
+            ActivityType.WALKING, ActivityType.RUNNING, ActivityType.HIKING -> {
                 val mountainPath = Path().apply {
                     moveTo(0f, h * 0.78f)
                     lineTo(w * 0.08f, h * 0.55f)
@@ -1291,6 +1320,7 @@ private fun activityDisplayInfo(type: ActivityType): Triple<Color, String, Image
     ActivityType.DRIVING    -> Triple(Driving, "Driving", Icons.Filled.DirectionsCar)
     ActivityType.FLYING     -> Triple(Flying, "Flying", Icons.Filled.Flight)
     ActivityType.STATIONARY -> Triple(Stationary, "Stationary", Icons.Filled.PauseCircle)
+    ActivityType.HIKING     -> Triple(Hiking, "Hiking", Icons.Filled.Terrain)
     ActivityType.UNKNOWN    -> Triple(Stationary, "Unknown", Icons.Filled.QuestionMark)
 }
 
@@ -1301,6 +1331,7 @@ private fun activityColor(type: ActivityType): Color = when (type) {
     ActivityType.DRIVING    -> Driving
     ActivityType.FLYING     -> Flying
     ActivityType.STATIONARY -> Stationary
+    ActivityType.HIKING     -> Hiking
     ActivityType.UNKNOWN    -> Color.Gray
 }
 
@@ -1592,10 +1623,10 @@ private fun FixedTimelinePanel(
                     modifier = Modifier.padding(end = 6.dp)
                 ) {
                     Text(
-                        "${playbackSpeed.toInt()}x",
+                        if (playbackSpeed < 1f) "0.5x" else "${playbackSpeed.toInt()}x",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (playbackSpeed > 1f) Primary else Color.White.copy(alpha = 0.6f),
+                        color = if (playbackSpeed != 1f) Primary else Color.White.copy(alpha = 0.6f),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }

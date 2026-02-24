@@ -35,6 +35,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import com.trackjourney.data.bluetooth.WearableConnectionState
+import com.trackjourney.data.model.ActivityConfig
 import com.trackjourney.data.model.CarProfile
 import com.trackjourney.data.model.ExportFormat
 import com.trackjourney.data.model.FuelType
@@ -61,6 +62,7 @@ fun SettingsScreen(
     val allCars by viewModel.allCars.collectAsState()
     var showAddCarDialog by remember { mutableStateOf(false) }
     var editingCar by remember { mutableStateOf<CarProfile?>(null) }
+    var showAddActivityDialog by remember { mutableStateOf(false) }
 
     // File picker for importing backup
     val importLauncher = rememberLauncherForActivityResult(
@@ -606,6 +608,69 @@ fun SettingsScreen(
             }
         }
 
+        // ── ACTIVITY TYPES ─────────────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Activity Types",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        items(settings.activityConfigs.size) { index ->
+            val cfg = settings.activityConfigs[index]
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.padding(vertical = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        activityIconForSettings(cfg.iconName),
+                        contentDescription = null,
+                        tint = Color(cfg.colorHex),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(cfg.displayName, fontWeight = FontWeight.Medium)
+                        Text(
+                            "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = cfg.isActive,
+                        onCheckedChange = { active ->
+                            viewModel.toggleActivityConfig(cfg.activityType, active)
+                        }
+                    )
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedButton(
+                onClick = { showAddActivityDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Add Activity Type")
+            }
+        }
+
         // ── TRACKING MODE ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
@@ -991,6 +1056,17 @@ fun SettingsScreen(
             onSave = { updated ->
                 viewModel.updateCar(updated)
                 editingCar = null
+            }
+        )
+    }
+
+    // Add Activity Type Dialog
+    if (showAddActivityDialog) {
+        AddActivityDialog(
+            onDismiss = { showAddActivityDialog = false },
+            onSave = { config ->
+                viewModel.addActivityConfig(config)
+                showAddActivityDialog = false
             }
         )
     }
@@ -1576,4 +1652,125 @@ private fun formatInterval(ms: Long): String = when {
     ms < 1000 -> "${ms}ms"
     ms < 60_000 -> "${ms / 1000}s"
     else -> "${ms / 60_000}min ${(ms % 60_000) / 1000}s"
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ACTIVITY TYPE HELPERS
+// ═══════════════════════════════════════════════════════════
+
+private val activityIcons = listOf(
+    "DirectionsWalk" to Icons.Filled.DirectionsWalk,
+    "DirectionsRun" to Icons.Filled.DirectionsRun,
+    "DirectionsBike" to Icons.Filled.DirectionsBike,
+    "DirectionsCar" to Icons.Filled.DirectionsCar,
+    "Flight" to Icons.Filled.Flight,
+    "Terrain" to Icons.Filled.Terrain,
+    "PauseCircle" to Icons.Filled.PauseCircle,
+    "Pool" to Icons.Filled.Pool,
+    "FitnessCenter" to Icons.Filled.FitnessCenter,
+    "Snowboarding" to Icons.Filled.Snowboarding,
+    "Skateboarding" to Icons.Filled.Skateboarding,
+    "Sailing" to Icons.Filled.Sailing,
+)
+
+private fun activityIconForSettings(name: String): ImageVector =
+    activityIcons.firstOrNull { it.first == name }?.second ?: Icons.Filled.Circle
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddActivityDialog(
+    onDismiss: () -> Unit,
+    onSave: (ActivityConfig) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var selectedIcon by remember { mutableStateOf("Terrain") }
+    var minSpeed by remember { mutableStateOf("") }
+    var maxSpeed by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Activity Type", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Text("Icon", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    activityIcons.forEach { (iconName, icon) ->
+                        FilterChip(
+                            selected = selectedIcon == iconName,
+                            onClick = { selectedIcon = iconName },
+                            label = {
+                                Icon(icon, contentDescription = iconName, modifier = Modifier.size(18.dp))
+                            }
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = minSpeed,
+                        onValueChange = { minSpeed = it },
+                        label = { Text("Min km/h") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = maxSpeed,
+                        onValueChange = { maxSpeed = it },
+                        label = { Text("Max km/h") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val min = minSpeed.toFloatOrNull() ?: 0f
+                    val max = maxSpeed.toFloatOrNull() ?: 0f
+                    if (name.isNotBlank() && max > min) {
+                        onSave(
+                            ActivityConfig(
+                                activityType = name.uppercase().replace(" ", "_"),
+                                displayName = name,
+                                iconName = selectedIcon,
+                                minSpeedKmh = min,
+                                maxSpeedKmh = max,
+                                colorHex = 0xFF4CAF50,
+                                metValue = 3.0,
+                                isActive = true
+                            )
+                        )
+                    }
+                },
+                enabled = name.isNotBlank() &&
+                        (minSpeed.toFloatOrNull() ?: -1f) >= 0f &&
+                        (maxSpeed.toFloatOrNull() ?: 0f) > (minSpeed.toFloatOrNull() ?: 0f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Add")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+        shape = RoundedCornerShape(20.dp)
+    )
 }

@@ -1027,6 +1027,7 @@ private fun activityColor(type: ActivityType): Color = when (type) {
     ActivityType.DRIVING    -> Driving
     ActivityType.FLYING     -> Flying
     ActivityType.STATIONARY -> Stationary
+    ActivityType.HIKING     -> Hiking
     ActivityType.UNKNOWN    -> Color.Gray
 }
 
@@ -1037,6 +1038,7 @@ private fun activityIcon(type: ActivityType): ImageVector = when (type) {
     ActivityType.DRIVING    -> Icons.Filled.DirectionsCar
     ActivityType.FLYING     -> Icons.Filled.Flight
     ActivityType.STATIONARY -> Icons.Filled.PauseCircle
+    ActivityType.HIKING     -> Icons.Filled.Terrain
     ActivityType.UNKNOWN    -> Icons.Filled.QuestionMark
 }
 

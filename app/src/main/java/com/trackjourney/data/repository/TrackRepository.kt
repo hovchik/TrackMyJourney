@@ -149,6 +149,12 @@ class TrackRepository(
     ): Double {
         if (activityType == ActivityType.DRIVING) return 0.0
 
+        // If configs are provided and this activity type is disabled, skip calorie calculation
+        if (!activityConfigs.isNullOrEmpty()) {
+            val cfg = activityConfigs.firstOrNull { it.activityType == activityType.name }
+            if (cfg != null && !cfg.isActive) return 0.0
+        }
+
         val met = activityConfigs
             ?.firstOrNull { it.activityType == activityType.name && it.isActive }
             ?.metValue
@@ -336,7 +342,7 @@ class TrackRepository(
         // Calculate calories based on activity, duration, and user weight
         val durationMs = points.last().timestamp - points.first().timestamp
         val currentSettings = settingsDataStore.settings.first()
-        val calories = calculateCalories(dominant, durationMs, currentSettings.userWeightKg)
+        val calories = calculateCalories(dominant, durationMs, currentSettings.userWeightKg, currentSettings.activityConfigs)
 
         // Calculate ride cost based on distance and selected car profile
         val selectedCar = currentSettings.selectedCarId?.let { carProfileDao.getCarById(it) }
@@ -958,7 +964,7 @@ class TrackRepository(
 
     suspend fun exportAllData(): File? = withContext(Dispatchers.IO) {
         try {
-            val allTracksWithPoints = trackDao.getAllTracksWithPoints().first()
+            val allTracksWithPoints = trackDao.getAllTracksWithPointsSync()
 
             val trackExports = allTracksWithPoints.map { twp ->
                 val analysis = aiAnalysisDao.getLatestAnalysis(twp.track.id)
@@ -978,7 +984,8 @@ class TrackRepository(
                         endPlaceName = track.endPlaceName,
                         caloriesBurned = track.caloriesBurned,
                         batteryStart = track.batteryStart,
-                        batteryEnd = track.batteryEnd
+                        batteryEnd = track.batteryEnd,
+                        rideCost = track.rideCost
                     ),
                     points = twp.points.map { pt ->
                         TrackPointExport(

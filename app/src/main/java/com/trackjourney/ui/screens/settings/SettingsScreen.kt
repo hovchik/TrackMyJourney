@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -395,94 +396,139 @@ fun SettingsScreen(
         // ── USER PROFILE ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "User Profile",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
-
-        item {
+            var profileExpanded by remember { mutableStateOf(false) }
             Card(
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.animateContentSize()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // User Name
-                    var nameText by remember(settings.userName) { mutableStateOf(settings.userName) }
-                    OutlinedTextField(
-                        value = nameText,
-                        onValueChange = {
-                            nameText = it
-                            viewModel.updateUserName(it)
-                        },
-                        label = { Text("Name") },
-                        leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    // Weight
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Header row with expand/collapse
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { profileExpanded = !profileExpanded },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.MonitorWeight, contentDescription = null, modifier = Modifier.size(24.dp))
+                        Surface(
+                            color = Primary.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.Person,
+                                    contentDescription = null,
+                                    tint = Primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Weight", fontWeight = FontWeight.Medium)
                             Text(
-                                "${settings.userWeightKg.toInt()} kg",
-                                fontSize = 13.sp,
+                                "User Profile",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                buildString {
+                                    if (settings.userName.isNotEmpty()) append(settings.userName)
+                                    else append("Not set")
+                                    append("  \u2022  ${settings.userWeightKg.toInt()} kg  \u2022  ${settings.userHeightCm.toInt()} cm")
+                                },
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                    Slider(
-                        value = settings.userWeightKg,
-                        onValueChange = { viewModel.updateUserWeightKg(it) },
-                        valueRange = 30f..200f,
-                        steps = 169
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("30 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("200 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-
-                    // Height
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Height, contentDescription = null, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Height", fontWeight = FontWeight.Medium)
-                            Text(
-                                "${settings.userHeightCm.toInt()} cm",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        IconButton(onClick = { profileExpanded = !profileExpanded }) {
+                            Icon(
+                                if (profileExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (profileExpanded) "Collapse" else "Expand"
                             )
                         }
                     }
-                    Slider(
-                        value = settings.userHeightCm,
-                        onValueChange = { viewModel.updateUserHeightCm(it) },
-                        valueRange = 100f..220f,
-                        steps = 119
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("100 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("220 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    // Expandable content
+                    if (profileExpanded) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // User Name
+                            var nameText by remember(settings.userName) { mutableStateOf(settings.userName) }
+                            OutlinedTextField(
+                                value = nameText,
+                                onValueChange = {
+                                    nameText = it
+                                    viewModel.updateUserName(it)
+                                },
+                                label = { Text("Name") },
+                                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            // Weight
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.MonitorWeight, contentDescription = null, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Weight", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "${settings.userWeightKg.toInt()} kg",
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Slider(
+                                value = settings.userWeightKg,
+                                onValueChange = { viewModel.updateUserWeightKg(it) },
+                                valueRange = 30f..200f,
+                                steps = 169
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("30 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("200 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+
+                            // Height
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Height, contentDescription = null, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Height", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "${settings.userHeightCm.toInt()} cm",
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Slider(
+                                value = settings.userHeightCm,
+                                onValueChange = { viewModel.updateUserHeightCm(it) },
+                                valueRange = 100f..220f,
+                                steps = 119
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("100 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("220 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
             }
@@ -622,38 +668,134 @@ fun SettingsScreen(
 
         items(settings.activityConfigs.size) { index ->
             val cfg = settings.activityConfigs[index]
+            var expanded by remember { mutableStateOf(false) }
+            var editMinSpeed by remember(cfg.minSpeedKmh) { mutableStateOf(cfg.minSpeedKmh) }
+            var editMaxSpeed by remember(cfg.maxSpeedKmh) { mutableStateOf(cfg.maxSpeedKmh) }
             Card(
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier.padding(vertical = 2.dp)
+                modifier = Modifier
+                    .padding(vertical = 2.dp)
+                    .animateContentSize()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        activityIconForSettings(cfg.iconName),
-                        contentDescription = null,
-                        tint = Color(cfg.colorHex),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(cfg.displayName, fontWeight = FontWeight.Medium)
-                        Text(
-                            "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            activityIconForSettings(cfg.iconName),
+                            contentDescription = null,
+                            tint = Color(cfg.colorHex),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { expanded = !expanded }
+                        ) {
+                            Text(cfg.displayName, fontWeight = FontWeight.Medium)
+                            Text(
+                                "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = { expanded = !expanded },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (expanded) "Collapse" else "Edit speed range",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Switch(
+                            checked = cfg.isActive,
+                            onCheckedChange = { active ->
+                                viewModel.toggleActivityConfig(cfg.activityType, active)
+                            }
                         )
                     }
-                    Switch(
-                        checked = cfg.isActive,
-                        onCheckedChange = { active ->
-                            viewModel.toggleActivityConfig(cfg.activityType, active)
+
+                    // Expandable speed range editor
+                    if (expanded) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    "Speed Range",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Min speed
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Min", fontSize = 12.sp, modifier = Modifier.width(32.dp))
+                                    Slider(
+                                        value = editMinSpeed,
+                                        onValueChange = {
+                                            editMinSpeed = it
+                                            if (editMinSpeed >= editMaxSpeed) {
+                                                editMaxSpeed = (editMinSpeed + 1f).coerceAtMost(999f)
+                                            }
+                                        },
+                                        onValueChangeFinished = {
+                                            viewModel.updateActivitySpeedRange(cfg.activityType, editMinSpeed, editMaxSpeed)
+                                        },
+                                        valueRange = 0f..998f,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        "${editMinSpeed.toInt()} km/h",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(cfg.colorHex),
+                                        modifier = Modifier.width(64.dp)
+                                    )
+                                }
+
+                                // Max speed
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Max", fontSize = 12.sp, modifier = Modifier.width(32.dp))
+                                    Slider(
+                                        value = editMaxSpeed,
+                                        onValueChange = {
+                                            editMaxSpeed = it
+                                            if (editMaxSpeed <= editMinSpeed) {
+                                                editMinSpeed = (editMaxSpeed - 1f).coerceAtLeast(0f)
+                                            }
+                                        },
+                                        onValueChangeFinished = {
+                                            viewModel.updateActivitySpeedRange(cfg.activityType, editMinSpeed, editMaxSpeed)
+                                        },
+                                        valueRange = 1f..999f,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        "${editMaxSpeed.toInt()} km/h",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(cfg.colorHex),
+                                        modifier = Modifier.width(64.dp)
+                                    )
+                                }
+                            }
                         }
-                    )
+                    }
                 }
             }
         }

@@ -302,7 +302,8 @@ fun TracksScreen(
                     } else null
                 )
             }
-            items(ActivityType.entries.filter { it != ActivityType.UNKNOWN }) { type ->
+            val activeTypeNames = currentSettings.activityConfigs.filter { it.isActive }.map { it.activityType }.toSet()
+            items(ActivityType.entries.filter { it != ActivityType.UNKNOWN && (activeTypeNames.isEmpty() || activeTypeNames.contains(it.name)) }) { type ->
                 FilterChip(
                     selected = selectedFilter == type,
                     onClick = {

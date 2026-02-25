@@ -123,6 +123,17 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateActivitySpeedRange(activityType: String, minSpeed: Float, maxSpeed: Float) {
+        viewModelScope.launch {
+            val current = settings.value.activityConfigs.toMutableList()
+            val idx = current.indexOfFirst { it.activityType == activityType }
+            if (idx >= 0) {
+                current[idx] = current[idx].copy(minSpeedKmh = minSpeed, maxSpeedKmh = maxSpeed)
+                repository.updateSettings { updateActivityConfigs(current) }
+            }
+        }
+    }
+
     fun removeActivityConfig(activityType: String) {
         viewModelScope.launch {
             val current = settings.value.activityConfigs.filter { it.activityType != activityType }

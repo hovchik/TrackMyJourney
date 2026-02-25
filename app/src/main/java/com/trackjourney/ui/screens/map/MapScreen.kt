@@ -273,6 +273,7 @@ fun MapScreen(
         TrackCompletionDialog(
             info = completed,
             currency = uiState.settings.currency,
+            activityConfigs = uiState.settings.activityConfigs,
             onDismiss = { viewModel.dismissCompletedTrack() },
             onViewOnMap = {
                 viewModel.dismissCompletedTrack()
@@ -287,6 +288,7 @@ fun MapScreen(
             points = uiState.trackPoints,
             activityDurations = uiState.activityDurations,
             trackName = uiState.viewedTrackName,
+            activityConfigs = uiState.settings.activityConfigs,
             onDismiss = { showExpandedTimeline = false }
         )
     }
@@ -858,6 +860,7 @@ private fun WearableStatusChip(
 private fun TrackCompletionDialog(
     info: CompletedTrackInfo,
     currency: String = "$",
+    activityConfigs: List<ActivityConfig> = emptyList(),
     onDismiss: () -> Unit,
     onViewOnMap: () -> Unit
 ) {
@@ -979,9 +982,11 @@ private fun TrackCompletionDialog(
                         CompletionStat(info.pointCount.toString(), "pts", "GPS Points", Primary)
                     }
 
-                    // Activity duration breakdown
-                    val movingDurations = info.activityDurations.filter {
-                        it.key != ActivityType.STATIONARY && it.key != ActivityType.UNKNOWN
+                    // Activity duration breakdown (filter out disabled, stationary, unknown)
+                    val activeTypes = activityConfigs.filter { it.isActive }.map { it.activityType }.toSet()
+                    val movingDurations = info.activityDurations.filter { (activity, _) ->
+                        activity != ActivityType.STATIONARY && activity != ActivityType.UNKNOWN &&
+                        (activeTypes.isEmpty() || activeTypes.contains(activity.name))
                     }
                     if (movingDurations.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
@@ -1772,6 +1777,7 @@ private fun ExpandedTimelineDialog(
     points: List<TrackPoint>,
     activityDurations: Map<ActivityType, Long>,
     trackName: String,
+    activityConfigs: List<ActivityConfig> = emptyList(),
     onDismiss: () -> Unit
 ) {
     val segments = remember(points) { buildTimelineSegments(points) }
@@ -1896,12 +1902,16 @@ private fun ExpandedTimelineDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Activity breakdown
+                // Activity breakdown (filter out disabled types)
                 Text("Activity Breakdown", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                val totalMs = activityDurations.values.sum().coerceAtLeast(1L)
-                activityDurations.entries.sortedByDescending { it.value }.forEach { (activity, ms) ->
+                val activeTypeNames = activityConfigs.filter { it.isActive }.map { it.activityType }.toSet()
+                val filteredDurations = activityDurations.filter { (activity, _) ->
+                    activeTypeNames.isEmpty() || activeTypeNames.contains(activity.name)
+                }
+                val totalMs = filteredDurations.values.sum().coerceAtLeast(1L)
+                filteredDurations.entries.sortedByDescending { it.value }.forEach { (activity, ms) ->
                     val (color, label, icon) = activityDisplayInfo(activity)
                     val pct = (ms * 100f / totalMs).toInt()
                     Row(

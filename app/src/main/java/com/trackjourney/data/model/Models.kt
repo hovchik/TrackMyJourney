@@ -413,7 +413,6 @@ data class FullDatabaseExport(
 // ─────────────────────────────────────────────────────────
 
 data class WebhookLocationPayload(
-    @SerializedName("key") val key: String,
     @SerializedName("timestamp") val timestamp: Long,
     @SerializedName("lat") val lat: Double,
     @SerializedName("lng") val lng: Double,

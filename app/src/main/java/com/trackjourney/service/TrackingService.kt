@@ -301,7 +301,6 @@ class TrackingService : Service() {
                 val speedKmh = LocationTracker.msToKmh(location.speed)
                 val activity = ActivityType.fromSpeed(speedKmh, settings.activityConfigs)
                 val payload = WebhookLocationPayload(
-                    key = settings.webhookKey,
                     timestamp = location.time / 1000,
                     lat = location.latitude,
                     lng = location.longitude,
@@ -314,7 +313,7 @@ class TrackingService : Service() {
                     battery = getBatteryLevel()
                 )
                 serviceScope.launch {
-                    webhookSender.send(settings.webhookUrl, payload)
+                    webhookSender.send(settings.webhookUrl, settings.webhookKey, payload)
                 }
             }
         }

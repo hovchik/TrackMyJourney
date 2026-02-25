@@ -20,10 +20,11 @@ class WebhookSender {
         private const val READ_TIMEOUT_MS = 10_000
     }
 
-    suspend fun send(baseUrl: String, payload: WebhookLocationPayload): Boolean =
+    suspend fun send(baseUrl: String, key: String, payload: WebhookLocationPayload): Boolean =
         withContext(Dispatchers.IO) {
             try {
-                val endpoint = baseUrl.trimEnd('/') + PATH
+                val encodedKey = java.net.URLEncoder.encode(key, "UTF-8")
+                val endpoint = baseUrl.trimEnd('/') + PATH + "?key=$encodedKey"
                 val json = gson.toJson(payload)
 
                 val connection = URL(endpoint).openConnection() as HttpURLConnection

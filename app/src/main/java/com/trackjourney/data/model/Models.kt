@@ -436,7 +436,8 @@ data class TrackingSettings(
     val trackingMode: TrackingMode = TrackingMode.HIGH_ACCURACY,
     val selectedCarId: String? = null,             // ID of the active car profile
     val currency: String = "$",                    // currency symbol for ride cost
-    val activityConfigs: List<ActivityConfig> = ActivityConfig.defaults()
+    val activityConfigs: List<ActivityConfig> = ActivityConfig.defaults(),
+    val aiMode: AiMode = AiMode.RULE_BASED
 )
 
 enum class ExportFormat { JSON, GPX, CSV }
@@ -445,6 +446,12 @@ enum class TrackingMode(val label: String) {
     HIGH_ACCURACY("High Accuracy"),
     ENERGY_EFFICIENCY("Energy Efficiency"),
     AI_BATTERY_SAVER("AI Battery Saver")
+}
+
+enum class AiMode(val label: String, val description: String) {
+    RULE_BASED("Rule-Based", "Fast classification from speed and sensor thresholds"),
+    TFLITE_MODEL("TFLite Model", "On-device ML model for nuanced classification"),
+    OFF("Off", "Disable automatic activity detection")
 }
 
 enum class FuelType(val label: String) {

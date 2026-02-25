@@ -29,6 +29,7 @@ class SettingsDataStore(
         val SELECTED_CAR_ID = stringPreferencesKey("selected_car_id")
         val CURRENCY = stringPreferencesKey("currency")
         val ACTIVITY_CONFIGS = stringPreferencesKey("activity_configs")
+        val AI_MODE = stringPreferencesKey("ai_mode")
     }
 
     private fun parseActivityConfigs(json: String?): List<ActivityConfig> {
@@ -60,7 +61,10 @@ class SettingsDataStore(
             } catch (e: Exception) { TrackingMode.HIGH_ACCURACY },
             selectedCarId = prefs[SELECTED_CAR_ID],
             currency = prefs[CURRENCY] ?: "$",
-            activityConfigs = parseActivityConfigs(prefs[ACTIVITY_CONFIGS])
+            activityConfigs = parseActivityConfigs(prefs[ACTIVITY_CONFIGS]),
+            aiMode = try {
+                AiMode.valueOf(prefs[AI_MODE] ?: "RULE_BASED")
+            } catch (e: Exception) { AiMode.RULE_BASED }
         )
     }
 
@@ -118,6 +122,10 @@ class SettingsDataStore(
         context.dataStore.edit { it[ACTIVITY_CONFIGS] = gson.toJson(configs) }
     }
 
+    suspend fun updateAiMode(mode: AiMode) {
+        context.dataStore.edit { it[AI_MODE] = mode.name }
+    }
+
     suspend fun updateAll(settings: TrackingSettings) {
         context.dataStore.edit { prefs ->
             prefs[RECORD_INTERVAL_MS] = settings.recordIntervalMs
@@ -136,6 +144,7 @@ class SettingsDataStore(
             }
             prefs[CURRENCY] = settings.currency
             prefs[ACTIVITY_CONFIGS] = gson.toJson(settings.activityConfigs)
+            prefs[AI_MODE] = settings.aiMode.name
         }
     }
 }

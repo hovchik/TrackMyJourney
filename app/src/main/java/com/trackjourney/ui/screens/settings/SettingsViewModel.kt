@@ -96,6 +96,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateAiMode(mode: AiMode) {
+        viewModelScope.launch {
+            repository.updateSettings { updateAiMode(mode) }
+        }
+    }
+
     // ─── Activity Configs ──────────────────────────────────
 
     fun updateActivityConfigs(configs: List<ActivityConfig>) {

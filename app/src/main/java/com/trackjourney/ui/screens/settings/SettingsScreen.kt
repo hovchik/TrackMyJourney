@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,8 +35,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import com.trackjourney.data.bluetooth.WearableConnectionState
+import com.trackjourney.data.model.AiMode
 import com.trackjourney.data.model.ActivityConfig
 import com.trackjourney.data.model.CarProfile
 import com.trackjourney.data.model.ExportFormat
@@ -654,162 +657,213 @@ fun SettingsScreen(
             }
         }
 
-        // ── ACTIVITY TYPES ─────────────────────────────────
+        // ── ACTIVITY TYPES (collapsible) ─────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Activity Types",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
-
-        items(settings.activityConfigs.size) { index ->
-            val cfg = settings.activityConfigs[index]
-            var expanded by remember { mutableStateOf(false) }
-            var editMinSpeed by remember(cfg.minSpeedKmh) { mutableStateOf(cfg.minSpeedKmh) }
-            var editMaxSpeed by remember(cfg.maxSpeedKmh) { mutableStateOf(cfg.maxSpeedKmh) }
+            var activitySectionExpanded by remember { mutableStateOf(false) }
             Card(
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier
-                    .padding(vertical = 2.dp)
-                    .animateContentSize()
+                modifier = Modifier.animateContentSize()
             ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Section header with expand/collapse
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { activitySectionExpanded = !activitySectionExpanded },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            activityIconForSettings(cfg.iconName),
-                            contentDescription = null,
-                            tint = Color(cfg.colorHex),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { expanded = !expanded }
+                        Surface(
+                            color = Primary.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(40.dp)
                         ) {
-                            Text(cfg.displayName, fontWeight = FontWeight.Medium)
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.DirectionsRun,
+                                    contentDescription = null,
+                                    tint = Primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
+                                "Activity Types",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            val activeCount = settings.activityConfigs.count { it.isActive }
+                            Text(
+                                "$activeCount of ${settings.activityConfigs.size} active",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        IconButton(
-                            onClick = { expanded = !expanded },
-                            modifier = Modifier.size(32.dp)
-                        ) {
+                        IconButton(onClick = { activitySectionExpanded = !activitySectionExpanded }) {
                             Icon(
-                                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                                contentDescription = if (expanded) "Collapse" else "Edit speed range",
-                                modifier = Modifier.size(20.dp)
+                                if (activitySectionExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (activitySectionExpanded) "Collapse" else "Expand"
                             )
                         }
-                        Switch(
-                            checked = cfg.isActive,
-                            onCheckedChange = { active ->
-                                viewModel.toggleActivityConfig(cfg.activityType, active)
-                            }
-                        )
                     }
 
-                    // Expandable speed range editor
-                    if (expanded) {
+                    if (activitySectionExpanded) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    "Speed Range",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
 
-                                // Min speed
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Min", fontSize = 12.sp, modifier = Modifier.width(32.dp))
-                                    Slider(
-                                        value = editMinSpeed,
-                                        onValueChange = {
-                                            editMinSpeed = it
-                                            if (editMinSpeed >= editMaxSpeed) {
-                                                editMaxSpeed = (editMinSpeed + 1f).coerceAtMost(999f)
+                        settings.activityConfigs.forEachIndexed { _, cfg ->
+                            var expanded by remember { mutableStateOf(false) }
+                            var editMinText by remember(cfg.minSpeedKmh) {
+                                mutableStateOf(cfg.minSpeedKmh.toInt().toString())
+                            }
+                            var editMaxText by remember(cfg.maxSpeedKmh) {
+                                mutableStateOf(cfg.maxSpeedKmh.toInt().toString())
+                            }
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 3.dp)
+                                    .animateContentSize()
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            activityIconForSettings(cfg.iconName),
+                                            contentDescription = null,
+                                            tint = Color(cfg.colorHex),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { expanded = !expanded }
+                                        ) {
+                                            Text(cfg.displayName, fontWeight = FontWeight.Medium)
+                                            Text(
+                                                "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { expanded = !expanded },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                                contentDescription = if (expanded) "Collapse" else "Edit speed range",
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Switch(
+                                            checked = cfg.isActive,
+                                            onCheckedChange = { active ->
+                                                viewModel.toggleActivityConfig(cfg.activityType, active)
                                             }
-                                        },
-                                        onValueChangeFinished = {
-                                            viewModel.updateActivitySpeedRange(cfg.activityType, editMinSpeed, editMaxSpeed)
-                                        },
-                                        valueRange = 0f..998f,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        "${editMinSpeed.toInt()} km/h",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(cfg.colorHex),
-                                        modifier = Modifier.width(64.dp)
-                                    )
-                                }
+                                        )
+                                    }
 
-                                // Max speed
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Max", fontSize = 12.sp, modifier = Modifier.width(32.dp))
-                                    Slider(
-                                        value = editMaxSpeed,
-                                        onValueChange = {
-                                            editMaxSpeed = it
-                                            if (editMaxSpeed <= editMinSpeed) {
-                                                editMinSpeed = (editMaxSpeed - 1f).coerceAtLeast(0f)
+                                    // Expandable speed range editor with text fields
+                                    if (expanded) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedTextField(
+                                                value = editMinText,
+                                                onValueChange = { value ->
+                                                    editMinText = value.filter { it.isDigit() }
+                                                },
+                                                label = { Text("Min km/h") },
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                keyboardActions = KeyboardActions(onDone = {
+                                                    val min = editMinText.toFloatOrNull() ?: cfg.minSpeedKmh
+                                                    val max = editMaxText.toFloatOrNull() ?: cfg.maxSpeedKmh
+                                                    if (min < max) {
+                                                        viewModel.updateActivitySpeedRange(cfg.activityType, min, max)
+                                                    }
+                                                }),
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(10.dp),
+                                                textStyle = TextStyle(
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(cfg.colorHex)
+                                                )
+                                            )
+                                            Text(
+                                                "\u2192",
+                                                fontSize = 16.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            OutlinedTextField(
+                                                value = editMaxText,
+                                                onValueChange = { value ->
+                                                    editMaxText = value.filter { it.isDigit() }
+                                                },
+                                                label = { Text("Max km/h") },
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                keyboardActions = KeyboardActions(onDone = {
+                                                    val min = editMinText.toFloatOrNull() ?: cfg.minSpeedKmh
+                                                    val max = editMaxText.toFloatOrNull() ?: cfg.maxSpeedKmh
+                                                    if (min < max) {
+                                                        viewModel.updateActivitySpeedRange(cfg.activityType, min, max)
+                                                    }
+                                                }),
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(10.dp),
+                                                textStyle = TextStyle(
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(cfg.colorHex)
+                                                )
+                                            )
+                                            FilledIconButton(
+                                                onClick = {
+                                                    val min = editMinText.toFloatOrNull() ?: cfg.minSpeedKmh
+                                                    val max = editMaxText.toFloatOrNull() ?: cfg.maxSpeedKmh
+                                                    if (min < max) {
+                                                        viewModel.updateActivitySpeedRange(cfg.activityType, min, max)
+                                                    }
+                                                },
+                                                modifier = Modifier.size(40.dp),
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = IconButtonDefaults.filledIconButtonColors(
+                                                    containerColor = Color(cfg.colorHex).copy(alpha = 0.15f),
+                                                    contentColor = Color(cfg.colorHex)
+                                                )
+                                            ) {
+                                                Icon(Icons.Filled.Check, contentDescription = "Apply", modifier = Modifier.size(20.dp))
                                             }
-                                        },
-                                        onValueChangeFinished = {
-                                            viewModel.updateActivitySpeedRange(cfg.activityType, editMinSpeed, editMaxSpeed)
-                                        },
-                                        valueRange = 1f..999f,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        "${editMaxSpeed.toInt()} km/h",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(cfg.colorHex),
-                                        modifier = Modifier.width(64.dp)
-                                    )
+                                        }
+                                    }
                                 }
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { showAddActivityDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Add Activity Type")
                         }
                     }
                 }
-            }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(4.dp))
-            OutlinedButton(
-                onClick = { showAddActivityDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Add Activity Type")
             }
         }
 
@@ -990,6 +1044,60 @@ fun SettingsScreen(
                     checked = settings.autoDetectActivity,
                     onCheckedChange = { viewModel.updateAutoDetect(it) }
                 )
+            }
+        }
+
+        // AI Engine chooser
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "AI Engine",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Choose how activities are classified during tracking",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    AiMode.entries.forEach { mode ->
+                        val icon = when (mode) {
+                            AiMode.RULE_BASED -> Icons.Filled.Speed
+                            AiMode.TFLITE_MODEL -> Icons.Filled.Psychology
+                            AiMode.OFF -> Icons.Filled.PowerSettingsNew
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.updateAiMode(mode) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = settings.aiMode == mode,
+                                onClick = { viewModel.updateAiMode(mode) }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(mode.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                Text(
+                                    mode.description,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 

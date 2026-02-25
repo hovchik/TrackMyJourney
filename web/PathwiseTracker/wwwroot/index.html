@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pathwise Tracker</title>
+
+    <!-- Leaflet (best open-source map library) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- SignalR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- ═══ Top Bar ═══════════════════════════════════ -->
+<header class="topbar">
+    <h1><span>Pathwise</span> Tracker</h1>
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="live">Live Tracking</button>
+        <button class="tab-btn" data-tab="explorer">Data Explorer</button>
+    </div>
+    <div class="topbar-right">
+        <div class="status-dot"></div>
+        <span class="status-text">Disconnected</span>
+    </div>
+</header>
+
+<!-- ═══ Live Tracking Tab ═════════════════════════ -->
+<div id="tab-live" class="tab-content active">
+    <div class="live-layout">
+        <div id="map"></div>
+        <aside class="sidebar">
+
+            <!-- Connect -->
+            <div class="connect-panel">
+                <label>Webhook Key</label>
+                <div class="input-row">
+                    <input type="text" id="webhook-key" placeholder="Paste your webhook key">
+                    <button class="btn btn-primary" id="btn-connect">Connect</button>
+                    <button class="btn btn-danger" id="btn-disconnect" style="display:none">Stop</button>
+                </div>
+
+                <div class="session-info" style="display:none">
+                    <div class="row">
+                        <span class="label">Session</span>
+                        <span class="value" id="session-id">--</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">Key</span>
+                        <span class="value" id="session-key">--</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">Started</span>
+                        <span class="value" id="session-started">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-panel">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Points</div>
+                        <div class="stat-value" id="stat-points">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Speed (km/h)</div>
+                        <div class="stat-value" id="stat-speed">--</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Altitude (m)</div>
+                        <div class="stat-value" id="stat-alt">--</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Activity</div>
+                        <div class="stat-value" id="stat-activity" style="font-size:13px">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Point log -->
+            <div class="point-log">
+                <h3>Point Log</h3>
+            </div>
+
+            <!-- Actions -->
+            <div class="sidebar-actions">
+                <button class="btn btn-outline btn-sm" id="btn-download">Download JSON</button>
+                <button class="btn btn-outline btn-sm" id="btn-clear">Clear Map</button>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<!-- ═══ Data Explorer Tab ═════════════════════════ -->
+<div id="tab-explorer" class="tab-content">
+    <div class="explorer-layout">
+        <div id="explorer-map"></div>
+        <aside class="explorer-sidebar">
+
+            <!-- Import -->
+            <div class="explorer-header">
+                <h2>Import Session Data</h2>
+                <div class="drop-zone">
+                    <input type="file" id="file-input" accept=".json">
+                    Drop a session JSON file here<br>or click to browse
+                </div>
+            </div>
+
+            <!-- Loaded session meta -->
+            <div class="loaded-session">
+                <h3>Session Info</h3>
+                <div class="meta-grid">
+                    <span class="meta-label">ID</span>
+                    <span class="meta-value" id="ex-session-id">--</span>
+                    <span class="meta-label">Points</span>
+                    <span class="meta-value" id="ex-points">--</span>
+                    <span class="meta-label">Started</span>
+                    <span class="meta-value" id="ex-started">--</span>
+                    <span class="meta-label">Ended</span>
+                    <span class="meta-value" id="ex-ended">--</span>
+                    <span class="meta-label">Duration</span>
+                    <span class="meta-value" id="ex-duration">--</span>
+                    <span class="meta-label">Activities</span>
+                    <span class="meta-value" id="ex-activities">--</span>
+                </div>
+            </div>
+
+            <!-- Visualization controls -->
+            <div class="explorer-controls">
+                <h3>Visualization</h3>
+                <div class="control-group">
+                    <label>Color Route By</label>
+                    <select id="color-by">
+                        <option value="none">Solid Color</option>
+                        <option value="activity">Activity Type</option>
+                        <option value="speed">Speed</option>
+                    </select>
+                </div>
+                <div class="toggle-row">
+                    <span>Show Point Markers</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-markers">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div style="margin-top:12px; display:flex; gap:8px">
+                    <button class="btn btn-outline btn-sm" id="btn-export-csv" style="flex:1">Export CSV</button>
+                    <button class="btn btn-outline btn-sm" id="btn-export-gpx" style="flex:1">Export GPX</button>
+                </div>
+            </div>
+
+            <!-- Point list -->
+            <div class="explorer-points">
+                <h3>Points</h3>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>

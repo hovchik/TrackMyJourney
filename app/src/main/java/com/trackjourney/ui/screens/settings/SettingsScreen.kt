@@ -1092,10 +1092,11 @@ fun SettingsScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = Primary)
                         ) {
                             if (isExporting) {
-                                CircularProgressIndicator(
+                                Icon(
+                                    Icons.Filled.Sync,
+                                    contentDescription = null,
                                     modifier = Modifier.size(18.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
+                                    tint = Color.White
                                 )
                             } else {
                                 Icon(
@@ -1121,9 +1122,10 @@ fun SettingsScreen(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             if (isImporting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp
+                                Icon(
+                                    Icons.Filled.Sync,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             } else {
                                 Icon(

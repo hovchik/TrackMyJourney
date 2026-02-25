@@ -75,7 +75,7 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideWebhookSender() = WebhookSender()
+    fun provideWebhookSender(@ApplicationContext context: Context) = WebhookSender(context)
 
     @Provides
     @Singleton

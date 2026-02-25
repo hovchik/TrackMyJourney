@@ -314,7 +314,10 @@ class TrackingService : Service() {
                     battery = getBatteryLevel()
                 )
                 serviceScope.launch {
-                    webhookSender.send(settings.webhookUrl, settings.webhookKey, payload)
+                    val sent = webhookSender.send(settings.webhookUrl, settings.webhookKey, payload)
+                    if (!sent) {
+                        Log.w(TAG, "Webhook delivery failed — ${webhookSender.pendingCount} queued for retry")
+                    }
                 }
             }
         }

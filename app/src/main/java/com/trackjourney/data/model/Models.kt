@@ -409,6 +409,24 @@ data class FullDatabaseExport(
 )
 
 // ─────────────────────────────────────────────────────────
+//  WEBHOOK LOCATION PAYLOAD
+// ─────────────────────────────────────────────────────────
+
+data class WebhookLocationPayload(
+    @SerializedName("key") val key: String,
+    @SerializedName("timestamp") val timestamp: Long,
+    @SerializedName("lat") val lat: Double,
+    @SerializedName("lng") val lng: Double,
+    @SerializedName("alt") val alt: Double?,
+    @SerializedName("speed_kmh") val speedKmh: Float,
+    @SerializedName("bearing") val bearing: Float?,
+    @SerializedName("accuracy_m") val accuracyM: Float?,
+    @SerializedName("activity") val activity: String,
+    @SerializedName("heart_rate") val heartRate: Int?,
+    @SerializedName("battery") val battery: Int?
+)
+
+// ─────────────────────────────────────────────────────────
 //  RELATION HELPERS
 // ─────────────────────────────────────────────────────────
 

@@ -11,6 +11,7 @@ import com.trackjourney.data.location.LocationTracker
 import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.location.SmartIntervalManager
 import com.trackjourney.data.repository.TrackRepository
+import com.trackjourney.data.webhook.WebhookSender
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -71,6 +72,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSmartIntervalManager(batteryMonitor: BatteryMonitor) = SmartIntervalManager(batteryMonitor)
+
+    @Provides
+    @Singleton
+    fun provideWebhookSender() = WebhookSender()
 
     @Provides
     @Singleton

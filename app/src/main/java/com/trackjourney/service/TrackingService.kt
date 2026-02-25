@@ -21,9 +21,12 @@ import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
 import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.location.SmartIntervalManager
+import com.trackjourney.data.model.ActivityType
 import com.trackjourney.data.model.TrackingMode
 import com.trackjourney.data.model.TrackingSettings
+import com.trackjourney.data.model.WebhookLocationPayload
 import com.trackjourney.data.repository.TrackRepository
+import com.trackjourney.data.webhook.WebhookSender
 import com.trackjourney.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
@@ -72,6 +75,7 @@ class TrackingService : Service() {
     @Inject lateinit var motionSensorManager: MotionSensorManager
     @Inject lateinit var batteryMonitor: BatteryMonitor
     @Inject lateinit var smartIntervalManager: SmartIntervalManager
+    @Inject lateinit var webhookSender: WebhookSender
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var trackingJob: Job? = null
@@ -80,6 +84,7 @@ class TrackingService : Service() {
     private var isPaused = false
     private var pointCount = 0
     private var batteryAtStart: Int? = null
+    private var lastWebhookSendTime = 0L
 
     /** Stops tracking when the device location toggle is switched off. */
     private val locationProviderReceiver = object : BroadcastReceiver() {
@@ -286,6 +291,32 @@ class TrackingService : Service() {
         val point = repository.addTrackPoint(trackId, location, wearableReading)
         if (point != null) {
             pointCount++
+        }
+
+        // Send webhook if enabled and interval has elapsed
+        if (settings.webhookEnabled && settings.webhookUrl.isNotBlank()) {
+            val now = System.currentTimeMillis()
+            if (now - lastWebhookSendTime >= settings.webhookIntervalMs) {
+                lastWebhookSendTime = now
+                val speedKmh = LocationTracker.msToKmh(location.speed)
+                val activity = ActivityType.fromSpeed(speedKmh, settings.activityConfigs)
+                val payload = WebhookLocationPayload(
+                    key = settings.webhookKey,
+                    timestamp = location.time / 1000,
+                    lat = location.latitude,
+                    lng = location.longitude,
+                    alt = if (location.hasAltitude()) location.altitude else null,
+                    speedKmh = speedKmh,
+                    bearing = if (location.hasBearing()) location.bearing else null,
+                    accuracyM = if (location.hasAccuracy()) location.accuracy else null,
+                    activity = activity.name.lowercase(),
+                    heartRate = wearableReading?.heartRate,
+                    battery = getBatteryLevel()
+                )
+                serviceScope.launch {
+                    webhookSender.send(settings.webhookUrl, payload)
+                }
+            }
         }
 
         // Throttle notification updates to at most once per 2 seconds

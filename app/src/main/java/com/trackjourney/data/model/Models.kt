@@ -279,7 +279,7 @@ enum class ActivityType {
                     }
                 }
             }
-            return when {
+            val fallback = when {
                 speedKmh < 0.5f    -> STATIONARY
                 speedKmh < 7f      -> WALKING
                 speedKmh < 15f     -> RUNNING
@@ -287,6 +287,20 @@ enum class ActivityType {
                 speedKmh < 200f    -> DRIVING
                 else                -> FLYING
             }
+            // If configs exist and the fallback type is disabled, return UNKNOWN
+            // so disabled activities never appear anywhere in the app.
+            if (!configs.isNullOrEmpty()) {
+                val isDisabled = configs.any { it.activityType == fallback.name && !it.isActive }
+                if (isDisabled) return UNKNOWN
+            }
+            return fallback
+        }
+
+        /** Returns true when [type] is enabled (or has no config entry at all). */
+        fun isActive(type: ActivityType, configs: List<ActivityConfig>?): Boolean {
+            if (configs.isNullOrEmpty()) return true
+            val cfg = configs.firstOrNull { it.activityType == type.name } ?: return true
+            return cfg.isActive
         }
     }
 }

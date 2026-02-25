@@ -242,12 +242,19 @@ class TrackRepository(
 
         // AI-based real-time activity detection using filtered speed + physical sensors
         val motionState = motionSensorManager.motionState.value
-        val activity = aiEngine.detectActivity(
+        val currentSettings = settingsDataStore.settings.first()
+        var activity = aiEngine.detectActivity(
             speedKmh = filteredSpeedKmh,
             altitude = if (location.hasAltitude()) location.altitude else null,
             previousAltitude = lastPoint?.altitude,
             motionState = motionState
         )
+
+        // If the detected activity type is disabled in the user's config,
+        // fall back to the speed-based classifier which respects isActive.
+        if (!ActivityType.isActive(activity, currentSettings.activityConfigs)) {
+            activity = ActivityType.fromSpeed(filteredSpeedKmh, currentSettings.activityConfigs)
+        }
 
         // If sensors say stationary but GPS reports movement, clamp speed to 0
         val effectiveSpeedKmh = if (activity == ActivityType.STATIONARY && filteredSpeedKmh > 0.5f) {
@@ -332,16 +339,17 @@ class TrackRepository(
 
         val avgHr = healthDataDao.getAverageHeartRate(trackId)
 
-        // Determine dominant activity from latest points
+        // Determine dominant activity from latest points, excluding disabled types
+        val currentSettings = settingsDataStore.settings.first()
         val recentActivities = points.takeLast(20).map { it.activityType }
         val dominant = recentActivities
+            .filter { ActivityType.isActive(it, currentSettings.activityConfigs) }
             .groupBy { it }
             .maxByOrNull { it.value.size }
             ?.key ?: ActivityType.UNKNOWN
 
         // Calculate calories based on activity, duration, and user weight
         val durationMs = points.last().timestamp - points.first().timestamp
-        val currentSettings = settingsDataStore.settings.first()
         val calories = calculateCalories(dominant, durationMs, currentSettings.userWeightKg, currentSettings.activityConfigs)
 
         // Calculate ride cost based on distance and selected car profile

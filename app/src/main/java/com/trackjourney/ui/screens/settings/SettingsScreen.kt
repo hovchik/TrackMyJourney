@@ -1026,74 +1026,152 @@ fun SettingsScreen(
         // ── AI SETTINGS ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "AI & Detection",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
-
-        item {
-            SettingsCard {
-                SettingsSwitch(
-                    icon = Icons.Filled.AutoAwesome,
-                    title = "Auto Activity Detection",
-                    subtitle = "Classify walking, driving, flying in real-time",
-                    checked = settings.autoDetectActivity,
-                    onCheckedChange = { viewModel.updateAutoDetect(it) }
-                )
-            }
-        }
-
-        // AI Engine chooser
-        item {
+            var aiSectionExpanded by remember { mutableStateOf(false) }
+            val localModelReachable by viewModel.localModelReachable.collectAsState()
+            val localModelChecking by viewModel.localModelChecking.collectAsState()
             Card(
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "AI Engine",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "Choose how activities are classified during tracking",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    AiMode.entries.forEach { mode ->
-                        val icon = when (mode) {
-                            AiMode.RULE_BASED -> Icons.Filled.Speed
-                            AiMode.TFLITE_MODEL -> Icons.Filled.Psychology
-                            AiMode.OFF -> Icons.Filled.PowerSettingsNew
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.updateAiMode(mode) }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = settings.aiMode == mode,
-                                onClick = { viewModel.updateAiMode(mode) }
+                Column(modifier = Modifier.animateContentSize()) {
+                    // Section header with expand/collapse
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { aiSectionExpanded = !aiSectionExpanded }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "AI & Detection",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(mode.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                Text(
-                                    mode.description,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            Text(
+                                "Engine: ${settings.aiMode.label}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { aiSectionExpanded = !aiSectionExpanded }) {
+                            Icon(
+                                if (aiSectionExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (aiSectionExpanded) "Collapse" else "Expand"
+                            )
+                        }
+                    }
+
+                    if (aiSectionExpanded) {
+                        @Suppress("DEPRECATION")
+                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // Auto detection switch
+                            SettingsSwitch(
+                                icon = Icons.Filled.Sensors,
+                                title = "Auto Activity Detection",
+                                subtitle = "Classify walking, driving, flying in real-time",
+                                checked = settings.autoDetectActivity,
+                                onCheckedChange = { viewModel.updateAutoDetect(it) }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "AI Engine",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Choose how activities are classified during tracking",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            AiMode.entries.forEach { mode ->
+                                val icon = when (mode) {
+                                    AiMode.RULE_BASED -> Icons.Filled.Speed
+                                    AiMode.TFLITE_MODEL -> Icons.Filled.Psychology
+                                    AiMode.LOCAL_MODEL -> Icons.Filled.PhoneAndroid
+                                    AiMode.OFF -> Icons.Filled.PowerSettingsNew
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.updateAiMode(mode) }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = settings.aiMode == mode,
+                                        onClick = { viewModel.updateAiMode(mode) }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(mode.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                        Text(
+                                            mode.description,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        // Reachability status for Local Model
+                                        if (mode == AiMode.LOCAL_MODEL) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (localModelChecking) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(12.dp),
+                                                        strokeWidth = 1.5.dp
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        "Checking availability\u2026",
+                                                        fontSize = 11.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        if (localModelReachable) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(14.dp),
+                                                        tint = if (localModelReachable) Accent else Error
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        if (localModelReachable) "Model available on device" else "Model not available",
+                                                        fontSize = 11.sp,
+                                                        color = if (localModelReachable) Accent else Error
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Recheck button for local model
+                            if (settings.aiMode == AiMode.LOCAL_MODEL) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = { viewModel.checkLocalModelReachability() },
+                                    enabled = !localModelChecking,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Re-check local model", fontSize = 13.sp)
+                                }
                             }
                         }
                     }

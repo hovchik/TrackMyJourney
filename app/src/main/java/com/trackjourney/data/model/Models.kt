@@ -451,6 +451,7 @@ enum class TrackingMode(val label: String) {
 enum class AiMode(val label: String, val description: String) {
     RULE_BASED("Rule-Based", "Fast classification from speed and sensor thresholds"),
     TFLITE_MODEL("TFLite Model", "On-device ML model for nuanced classification"),
+    LOCAL_MODEL("Local AI Model", "Use phone\u2019s built-in AI model for on-device inference"),
     OFF("Off", "Disable automatic activity detection")
 }
 

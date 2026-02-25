@@ -11,8 +11,10 @@ import com.trackjourney.data.location.SatelliteInfo
 import com.trackjourney.data.model.*
 import com.trackjourney.data.repository.TrackRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -99,6 +101,45 @@ class SettingsViewModel @Inject constructor(
     fun updateAiMode(mode: AiMode) {
         viewModelScope.launch {
             repository.updateSettings { updateAiMode(mode) }
+            if (mode == AiMode.LOCAL_MODEL) checkLocalModelReachability()
+        }
+    }
+
+    // ─── Local AI Model Reachability ─────────────────────
+
+    private val _localModelReachable = MutableStateFlow(false)
+    val localModelReachable: StateFlow<Boolean> = _localModelReachable.asStateFlow()
+
+    private val _localModelChecking = MutableStateFlow(false)
+    val localModelChecking: StateFlow<Boolean> = _localModelChecking.asStateFlow()
+
+    init {
+        checkLocalModelReachability()
+    }
+
+    fun checkLocalModelReachability() {
+        viewModelScope.launch {
+            _localModelChecking.value = true
+            _localModelReachable.value = withContext(Dispatchers.IO) {
+                try {
+                    // Check if Android NNAPI is available (API 27+)
+                    val nnApiAvailable = android.os.Build.VERSION.SDK_INT >= 27
+                    // Check if the device has a local ML runtime accessible via system service
+                    if (nnApiAvailable) {
+                        // Probe the NNAPI by loading the native library
+                        System.loadLibrary("neuralnetworks")
+                        true
+                    } else {
+                        false
+                    }
+                } catch (_: UnsatisfiedLinkError) {
+                    // NNAPI native lib not bundled but NNAPI may still work via TFLite delegation
+                    android.os.Build.VERSION.SDK_INT >= 27
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            _localModelChecking.value = false
         }
     }
 

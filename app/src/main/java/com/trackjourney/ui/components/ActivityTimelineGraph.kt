@@ -173,11 +173,11 @@ fun ActivityTimelineGraph(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Compact legend row
-        Row(
+        // Compact legend row (FlowRow wraps to next line when space runs out)
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             val usedActivities = segments.map { it.activity }.distinct()
             usedActivities.forEach { activity ->
@@ -192,11 +192,11 @@ private fun LegendItem(activity: ActivityType) {
     val color = activityToColor(activity)
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(end = 4.dp)
+        modifier = Modifier.padding(vertical = 2.dp)
     ) {
-        Canvas(modifier = Modifier.size(width = 20.dp, height = 12.dp)) {
+        Canvas(modifier = Modifier.size(width = 24.dp, height = 14.dp)) {
             val y = size.height / 2f
-            val sw = 2.5f
+            val sw = 2.8f
             when (activity) {
                 ActivityType.WALKING    -> drawDashedLine(0f, size.width, y, color, sw)
                 ActivityType.DRIVING    -> drawDotSolidLine(0f, size.width, y, color, sw)
@@ -208,10 +208,10 @@ private fun LegendItem(activity: ActivityType) {
                 ActivityType.UNKNOWN    -> drawDottedLine(0f, size.width, y, Color.Gray, sw)
             }
         }
-        Spacer(modifier = Modifier.width(3.dp))
+        Spacer(modifier = Modifier.width(4.dp))
         Text(
             activity.name.lowercase().replaceFirstChar { it.uppercase() },
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             color = color,
             fontWeight = FontWeight.Medium
         )

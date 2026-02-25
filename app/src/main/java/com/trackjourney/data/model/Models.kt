@@ -437,7 +437,11 @@ data class TrackingSettings(
     val selectedCarId: String? = null,             // ID of the active car profile
     val currency: String = "$",                    // currency symbol for ride cost
     val activityConfigs: List<ActivityConfig> = ActivityConfig.defaults(),
-    val aiMode: AiMode = AiMode.RULE_BASED
+    val aiMode: AiMode = AiMode.RULE_BASED,
+    val webhookEnabled: Boolean = false,
+    val webhookUrl: String = "",
+    val webhookKey: String = UUID.randomUUID().toString().replace("-", "").take(16),
+    val webhookIntervalMs: Long = 10000L          // 10 seconds default
 )
 
 enum class ExportFormat { JSON, GPX, CSV }

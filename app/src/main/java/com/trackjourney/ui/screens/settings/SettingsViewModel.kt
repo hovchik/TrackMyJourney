@@ -105,6 +105,32 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ─── Webhook Settings ──────────────────────────────
+
+    fun updateWebhookEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateSettings { updateWebhookEnabled(enabled) }
+        }
+    }
+
+    fun updateWebhookUrl(url: String) {
+        viewModelScope.launch {
+            repository.updateSettings { updateWebhookUrl(url) }
+        }
+    }
+
+    fun updateWebhookKey(key: String) {
+        viewModelScope.launch {
+            repository.updateSettings { updateWebhookKey(key) }
+        }
+    }
+
+    fun updateWebhookIntervalMs(intervalMs: Long) {
+        viewModelScope.launch {
+            repository.updateSettings { updateWebhookIntervalMs(intervalMs) }
+        }
+    }
+
     // ─── Local AI Model Reachability ─────────────────────
 
     private val _localModelReachable = MutableStateFlow(false)

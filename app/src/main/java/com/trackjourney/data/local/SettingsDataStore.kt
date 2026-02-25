@@ -30,6 +30,10 @@ class SettingsDataStore(
         val CURRENCY = stringPreferencesKey("currency")
         val ACTIVITY_CONFIGS = stringPreferencesKey("activity_configs")
         val AI_MODE = stringPreferencesKey("ai_mode")
+        val WEBHOOK_ENABLED = booleanPreferencesKey("webhook_enabled")
+        val WEBHOOK_URL = stringPreferencesKey("webhook_url")
+        val WEBHOOK_KEY = stringPreferencesKey("webhook_key")
+        val WEBHOOK_INTERVAL_MS = longPreferencesKey("webhook_interval_ms")
     }
 
     private fun parseActivityConfigs(json: String?): List<ActivityConfig> {
@@ -64,7 +68,11 @@ class SettingsDataStore(
             activityConfigs = parseActivityConfigs(prefs[ACTIVITY_CONFIGS]),
             aiMode = try {
                 AiMode.valueOf(prefs[AI_MODE] ?: "RULE_BASED")
-            } catch (e: Exception) { AiMode.RULE_BASED }
+            } catch (e: Exception) { AiMode.RULE_BASED },
+            webhookEnabled = prefs[WEBHOOK_ENABLED] ?: false,
+            webhookUrl = prefs[WEBHOOK_URL] ?: "",
+            webhookKey = prefs[WEBHOOK_KEY] ?: java.util.UUID.randomUUID().toString().replace("-", "").take(16),
+            webhookIntervalMs = prefs[WEBHOOK_INTERVAL_MS] ?: 10000L
         )
     }
 
@@ -126,6 +134,22 @@ class SettingsDataStore(
         context.dataStore.edit { it[AI_MODE] = mode.name }
     }
 
+    suspend fun updateWebhookEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[WEBHOOK_ENABLED] = enabled }
+    }
+
+    suspend fun updateWebhookUrl(url: String) {
+        context.dataStore.edit { it[WEBHOOK_URL] = url }
+    }
+
+    suspend fun updateWebhookKey(key: String) {
+        context.dataStore.edit { it[WEBHOOK_KEY] = key }
+    }
+
+    suspend fun updateWebhookIntervalMs(intervalMs: Long) {
+        context.dataStore.edit { it[WEBHOOK_INTERVAL_MS] = intervalMs }
+    }
+
     suspend fun updateAll(settings: TrackingSettings) {
         context.dataStore.edit { prefs ->
             prefs[RECORD_INTERVAL_MS] = settings.recordIntervalMs
@@ -145,6 +169,10 @@ class SettingsDataStore(
             prefs[CURRENCY] = settings.currency
             prefs[ACTIVITY_CONFIGS] = gson.toJson(settings.activityConfigs)
             prefs[AI_MODE] = settings.aiMode.name
+            prefs[WEBHOOK_ENABLED] = settings.webhookEnabled
+            prefs[WEBHOOK_URL] = settings.webhookUrl
+            prefs[WEBHOOK_KEY] = settings.webhookKey
+            prefs[WEBHOOK_INTERVAL_MS] = settings.webhookIntervalMs
         }
     }
 }

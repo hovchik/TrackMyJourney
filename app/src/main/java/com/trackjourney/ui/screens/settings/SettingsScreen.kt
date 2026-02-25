@@ -1233,6 +1233,180 @@ fun SettingsScreen(
             }
         }
 
+        // ── WEBHOOK ──────────────────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            var webhookExpanded by remember { mutableStateOf(false) }
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.animateContentSize()) {
+                    // Section header with expand/collapse
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { webhookExpanded = !webhookExpanded }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Cloud,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Webhook",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                if (settings.webhookEnabled) "Sending to ${settings.webhookUrl.ifBlank { "no URL" }}"
+                                else "Disabled",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                        IconButton(onClick = { webhookExpanded = !webhookExpanded }) {
+                            Icon(
+                                if (webhookExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (webhookExpanded) "Collapse" else "Expand"
+                            )
+                        }
+                    }
+
+                    if (webhookExpanded) {
+                        @Suppress("DEPRECATION")
+                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // Enable switch
+                            SettingsSwitch(
+                                icon = Icons.Filled.PowerSettingsNew,
+                                title = "Enable Webhook",
+                                subtitle = "POST track data to an external URL",
+                                checked = settings.webhookEnabled,
+                                onCheckedChange = { viewModel.updateWebhookEnabled(it) }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // URL field
+                            var webhookUrlInput by remember(settings.webhookUrl) {
+                                mutableStateOf(settings.webhookUrl)
+                            }
+                            OutlinedTextField(
+                                value = webhookUrlInput,
+                                onValueChange = {
+                                    webhookUrlInput = it
+                                    viewModel.updateWebhookUrl(it)
+                                },
+                                label = { Text("Webhook URL") },
+                                placeholder = { Text("https://example.com/hook") },
+                                leadingIcon = { Icon(Icons.Filled.Link, contentDescription = null) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Unique key (read-only display + regenerate)
+                            OutlinedTextField(
+                                value = settings.webhookKey,
+                                onValueChange = {},
+                                label = { Text("Unique Key") },
+                                leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null) },
+                                readOnly = true,
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        viewModel.updateWebhookKey(
+                                            java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+                                        )
+                                    }) {
+                                        Icon(Icons.Filled.Refresh, contentDescription = "Regenerate key")
+                                    }
+                                }
+                            )
+                            Text(
+                                "Sent as X-Webhook-Key header for authentication",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Hook interval
+                            Text("Hook Interval", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Send data every ${formatInterval(settings.webhookIntervalMs)}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            val intervalOptions = listOf(5000L, 10000L, 30000L, 60000L)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                intervalOptions.forEach { interval ->
+                                    FilterChip(
+                                        selected = settings.webhookIntervalMs == interval,
+                                        onClick = { viewModel.updateWebhookIntervalMs(interval) },
+                                        label = { Text(formatInterval(interval), fontSize = 13.sp) }
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Payload preview
+                            Text("Payload Preview", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    """
+{
+  "key": "${settings.webhookKey}",
+  "timestamp": 1700000000000,
+  "lat": 40.7128,
+  "lng": -74.0060,
+  "alt": 10.0,
+  "speed_kmh": 5.2,
+  "bearing": 180.0,
+  "accuracy_m": 4.5,
+  "activity": "WALKING",
+  "heart_rate": 72,
+  "battery": 85
+}
+                                    """.trimIndent(),
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── DATA MANAGEMENT ─────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))

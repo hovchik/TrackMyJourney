@@ -1343,6 +1343,37 @@ fun SettingsScreen(
                                 modifier = Modifier.padding(start = 4.dp, top = 4.dp)
                             )
 
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Share tracking URL button
+                            val trackingUrl = remember(settings.webhookUrl, settings.webhookKey) {
+                                if (settings.webhookUrl.isNotBlank()) {
+                                    val encodedKey = java.net.URLEncoder.encode(settings.webhookKey, "UTF-8")
+                                    settings.webhookUrl.trimEnd('/') + "/api/hook?key=$encodedKey"
+                                } else ""
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "Track My Journey – Live Tracking URL")
+                                        putExtra(Intent.EXTRA_TEXT, trackingUrl)
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share tracking URL"))
+                                },
+                                enabled = settings.webhookUrl.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Share,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Share Tracking URL")
+                            }
+
                             Spacer(modifier = Modifier.height(16.dp))
 
                             // Hook interval

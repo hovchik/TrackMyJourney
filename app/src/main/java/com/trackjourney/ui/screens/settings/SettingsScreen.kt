@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,8 +35,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import com.trackjourney.data.bluetooth.WearableConnectionState
+import com.trackjourney.data.model.AiMode
+import com.trackjourney.data.model.ActivityConfig
 import com.trackjourney.data.model.CarProfile
 import com.trackjourney.data.model.ExportFormat
 import com.trackjourney.data.model.FuelType
@@ -61,6 +66,7 @@ fun SettingsScreen(
     val allCars by viewModel.allCars.collectAsState()
     var showAddCarDialog by remember { mutableStateOf(false) }
     var editingCar by remember { mutableStateOf<CarProfile?>(null) }
+    var showAddActivityDialog by remember { mutableStateOf(false) }
 
     // File picker for importing backup
     val importLauncher = rememberLauncherForActivityResult(
@@ -393,94 +399,139 @@ fun SettingsScreen(
         // ── USER PROFILE ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "User Profile",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
-
-        item {
+            var profileExpanded by remember { mutableStateOf(false) }
             Card(
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.animateContentSize()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // User Name
-                    var nameText by remember(settings.userName) { mutableStateOf(settings.userName) }
-                    OutlinedTextField(
-                        value = nameText,
-                        onValueChange = {
-                            nameText = it
-                            viewModel.updateUserName(it)
-                        },
-                        label = { Text("Name") },
-                        leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    // Weight
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Header row with expand/collapse
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { profileExpanded = !profileExpanded },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.MonitorWeight, contentDescription = null, modifier = Modifier.size(24.dp))
+                        Surface(
+                            color = Primary.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.Person,
+                                    contentDescription = null,
+                                    tint = Primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Weight", fontWeight = FontWeight.Medium)
                             Text(
-                                "${settings.userWeightKg.toInt()} kg",
-                                fontSize = 13.sp,
+                                "User Profile",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                buildString {
+                                    if (settings.userName.isNotEmpty()) append(settings.userName)
+                                    else append("Not set")
+                                    append("  \u2022  ${settings.userWeightKg.toInt()} kg  \u2022  ${settings.userHeightCm.toInt()} cm")
+                                },
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                    Slider(
-                        value = settings.userWeightKg,
-                        onValueChange = { viewModel.updateUserWeightKg(it) },
-                        valueRange = 30f..200f,
-                        steps = 169
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("30 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("200 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-
-                    // Height
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Height, contentDescription = null, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Height", fontWeight = FontWeight.Medium)
-                            Text(
-                                "${settings.userHeightCm.toInt()} cm",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        IconButton(onClick = { profileExpanded = !profileExpanded }) {
+                            Icon(
+                                if (profileExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (profileExpanded) "Collapse" else "Expand"
                             )
                         }
                     }
-                    Slider(
-                        value = settings.userHeightCm,
-                        onValueChange = { viewModel.updateUserHeightCm(it) },
-                        valueRange = 100f..220f,
-                        steps = 119
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("100 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("220 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    // Expandable content
+                    if (profileExpanded) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // User Name
+                            var nameText by remember(settings.userName) { mutableStateOf(settings.userName) }
+                            OutlinedTextField(
+                                value = nameText,
+                                onValueChange = {
+                                    nameText = it
+                                    viewModel.updateUserName(it)
+                                },
+                                label = { Text("Name") },
+                                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            // Weight
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.MonitorWeight, contentDescription = null, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Weight", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "${settings.userWeightKg.toInt()} kg",
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Slider(
+                                value = settings.userWeightKg,
+                                onValueChange = { viewModel.updateUserWeightKg(it) },
+                                valueRange = 30f..200f,
+                                steps = 169
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("30 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("200 kg", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+
+                            // Height
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Height, contentDescription = null, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Height", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "${settings.userHeightCm.toInt()} cm",
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Slider(
+                                value = settings.userHeightCm,
+                                onValueChange = { viewModel.updateUserHeightCm(it) },
+                                valueRange = 100f..220f,
+                                steps = 119
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("100 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("220 cm", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
             }
@@ -600,6 +651,216 @@ fun SettingsScreen(
                                 onClick = { viewModel.updateCurrency(symbol) },
                                 label = { Text(symbol, fontSize = 14.sp) }
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── ACTIVITY TYPES (collapsible) ─────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            var activitySectionExpanded by remember { mutableStateOf(false) }
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.animateContentSize()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Section header with expand/collapse
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { activitySectionExpanded = !activitySectionExpanded },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Primary.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.DirectionsRun,
+                                    contentDescription = null,
+                                    tint = Primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Activity Types",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            val activeCount = settings.activityConfigs.count { it.isActive }
+                            Text(
+                                "$activeCount of ${settings.activityConfigs.size} active",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { activitySectionExpanded = !activitySectionExpanded }) {
+                            Icon(
+                                if (activitySectionExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (activitySectionExpanded) "Collapse" else "Expand"
+                            )
+                        }
+                    }
+
+                    if (activitySectionExpanded) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        settings.activityConfigs.forEachIndexed { _, cfg ->
+                            var expanded by remember { mutableStateOf(false) }
+                            var editMinText by remember(cfg.minSpeedKmh) {
+                                mutableStateOf(cfg.minSpeedKmh.toInt().toString())
+                            }
+                            var editMaxText by remember(cfg.maxSpeedKmh) {
+                                mutableStateOf(cfg.maxSpeedKmh.toInt().toString())
+                            }
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 3.dp)
+                                    .animateContentSize()
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            activityIconForSettings(cfg.iconName),
+                                            contentDescription = null,
+                                            tint = Color(cfg.colorHex),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { expanded = !expanded }
+                                        ) {
+                                            Text(cfg.displayName, fontWeight = FontWeight.Medium)
+                                            Text(
+                                                "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { expanded = !expanded },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                                contentDescription = if (expanded) "Collapse" else "Edit speed range",
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Switch(
+                                            checked = cfg.isActive,
+                                            onCheckedChange = { active ->
+                                                viewModel.toggleActivityConfig(cfg.activityType, active)
+                                            }
+                                        )
+                                    }
+
+                                    // Expandable speed range editor with text fields
+                                    if (expanded) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedTextField(
+                                                value = editMinText,
+                                                onValueChange = { value ->
+                                                    editMinText = value.filter { it.isDigit() }
+                                                },
+                                                label = { Text("Min km/h") },
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                keyboardActions = KeyboardActions(onDone = {
+                                                    val min = editMinText.toFloatOrNull() ?: cfg.minSpeedKmh
+                                                    val max = editMaxText.toFloatOrNull() ?: cfg.maxSpeedKmh
+                                                    if (min < max) {
+                                                        viewModel.updateActivitySpeedRange(cfg.activityType, min, max)
+                                                    }
+                                                }),
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(10.dp),
+                                                textStyle = TextStyle(
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(cfg.colorHex)
+                                                )
+                                            )
+                                            Text(
+                                                "\u2192",
+                                                fontSize = 16.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            OutlinedTextField(
+                                                value = editMaxText,
+                                                onValueChange = { value ->
+                                                    editMaxText = value.filter { it.isDigit() }
+                                                },
+                                                label = { Text("Max km/h") },
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                keyboardActions = KeyboardActions(onDone = {
+                                                    val min = editMinText.toFloatOrNull() ?: cfg.minSpeedKmh
+                                                    val max = editMaxText.toFloatOrNull() ?: cfg.maxSpeedKmh
+                                                    if (min < max) {
+                                                        viewModel.updateActivitySpeedRange(cfg.activityType, min, max)
+                                                    }
+                                                }),
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(10.dp),
+                                                textStyle = TextStyle(
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(cfg.colorHex)
+                                                )
+                                            )
+                                            FilledIconButton(
+                                                onClick = {
+                                                    val min = editMinText.toFloatOrNull() ?: cfg.minSpeedKmh
+                                                    val max = editMaxText.toFloatOrNull() ?: cfg.maxSpeedKmh
+                                                    if (min < max) {
+                                                        viewModel.updateActivitySpeedRange(cfg.activityType, min, max)
+                                                    }
+                                                },
+                                                modifier = Modifier.size(40.dp),
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = IconButtonDefaults.filledIconButtonColors(
+                                                    containerColor = Color(cfg.colorHex).copy(alpha = 0.15f),
+                                                    contentColor = Color(cfg.colorHex)
+                                                )
+                                            ) {
+                                                Icon(Icons.Filled.Check, contentDescription = "Apply", modifier = Modifier.size(20.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { showAddActivityDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Add Activity Type")
                         }
                     }
                 }
@@ -765,24 +1026,156 @@ fun SettingsScreen(
         // ── AI SETTINGS ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "AI & Detection",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-        }
+            var aiSectionExpanded by remember { mutableStateOf(false) }
+            val localModelReachable by viewModel.localModelReachable.collectAsState()
+            val localModelChecking by viewModel.localModelChecking.collectAsState()
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.animateContentSize()) {
+                    // Section header with expand/collapse
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { aiSectionExpanded = !aiSectionExpanded }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "AI & Detection",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "Engine: ${settings.aiMode.label}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { aiSectionExpanded = !aiSectionExpanded }) {
+                            Icon(
+                                if (aiSectionExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (aiSectionExpanded) "Collapse" else "Expand"
+                            )
+                        }
+                    }
 
-        item {
-            SettingsCard {
-                SettingsSwitch(
-                    icon = Icons.Filled.AutoAwesome,
-                    title = "Auto Activity Detection",
-                    subtitle = "Classify walking, driving, flying in real-time",
-                    checked = settings.autoDetectActivity,
-                    onCheckedChange = { viewModel.updateAutoDetect(it) }
-                )
+                    if (aiSectionExpanded) {
+                        @Suppress("DEPRECATION")
+                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // Auto detection switch
+                            SettingsSwitch(
+                                icon = Icons.Filled.Sensors,
+                                title = "Auto Activity Detection",
+                                subtitle = "Classify walking, driving, flying in real-time",
+                                checked = settings.autoDetectActivity,
+                                onCheckedChange = { viewModel.updateAutoDetect(it) }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "AI Engine",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Choose how activities are classified during tracking",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            AiMode.entries.forEach { mode ->
+                                val icon = when (mode) {
+                                    AiMode.RULE_BASED -> Icons.Filled.Speed
+                                    AiMode.TFLITE_MODEL -> Icons.Filled.Psychology
+                                    AiMode.LOCAL_MODEL -> Icons.Filled.PhoneAndroid
+                                    AiMode.OFF -> Icons.Filled.PowerSettingsNew
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.updateAiMode(mode) }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = settings.aiMode == mode,
+                                        onClick = { viewModel.updateAiMode(mode) }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(mode.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                        Text(
+                                            mode.description,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        // Reachability status for Local Model
+                                        if (mode == AiMode.LOCAL_MODEL) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (localModelChecking) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(12.dp),
+                                                        strokeWidth = 1.5.dp
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        "Checking availability\u2026",
+                                                        fontSize = 11.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        if (localModelReachable) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(14.dp),
+                                                        tint = if (localModelReachable) Accent else Error
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        if (localModelReachable) "Model available on device" else "Model not available",
+                                                        fontSize = 11.sp,
+                                                        color = if (localModelReachable) Accent else Error
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Recheck button for local model
+                            if (settings.aiMode == AiMode.LOCAL_MODEL) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = { viewModel.checkLocalModelReachability() },
+                                    enabled = !localModelChecking,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Re-check local model", fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -840,6 +1233,180 @@ fun SettingsScreen(
             }
         }
 
+        // ── WEBHOOK ──────────────────────────────────────
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            var webhookExpanded by remember { mutableStateOf(false) }
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.animateContentSize()) {
+                    // Section header with expand/collapse
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { webhookExpanded = !webhookExpanded }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Cloud,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Webhook",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                if (settings.webhookEnabled) "Sending to ${settings.webhookUrl.ifBlank { "no URL" }}"
+                                else "Disabled",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                        IconButton(onClick = { webhookExpanded = !webhookExpanded }) {
+                            Icon(
+                                if (webhookExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (webhookExpanded) "Collapse" else "Expand"
+                            )
+                        }
+                    }
+
+                    if (webhookExpanded) {
+                        @Suppress("DEPRECATION")
+                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // Enable switch
+                            SettingsSwitch(
+                                icon = Icons.Filled.PowerSettingsNew,
+                                title = "Enable Webhook",
+                                subtitle = "POST track data to an external URL",
+                                checked = settings.webhookEnabled,
+                                onCheckedChange = { viewModel.updateWebhookEnabled(it) }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // URL field
+                            var webhookUrlInput by remember(settings.webhookUrl) {
+                                mutableStateOf(settings.webhookUrl)
+                            }
+                            OutlinedTextField(
+                                value = webhookUrlInput,
+                                onValueChange = {
+                                    webhookUrlInput = it
+                                    viewModel.updateWebhookUrl(it)
+                                },
+                                label = { Text("Webhook URL") },
+                                placeholder = { Text("https://example.com/hook") },
+                                leadingIcon = { Icon(Icons.Filled.Link, contentDescription = null) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Unique key (read-only display + regenerate)
+                            OutlinedTextField(
+                                value = settings.webhookKey,
+                                onValueChange = {},
+                                label = { Text("Unique Key") },
+                                leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null) },
+                                readOnly = true,
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        viewModel.updateWebhookKey(
+                                            java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+                                        )
+                                    }) {
+                                        Icon(Icons.Filled.Refresh, contentDescription = "Regenerate key")
+                                    }
+                                }
+                            )
+                            Text(
+                                "Sent as X-Webhook-Key header for authentication",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Hook interval
+                            Text("Hook Interval", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Send data every ${formatInterval(settings.webhookIntervalMs)}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            val intervalOptions = listOf(5000L, 10000L, 30000L, 60000L)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                intervalOptions.forEach { interval ->
+                                    FilterChip(
+                                        selected = settings.webhookIntervalMs == interval,
+                                        onClick = { viewModel.updateWebhookIntervalMs(interval) },
+                                        label = { Text(formatInterval(interval), fontSize = 13.sp) }
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Payload preview
+                            Text("Payload Preview", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    """
+{
+  "key": "${settings.webhookKey}",
+  "timestamp": 1700000000000,
+  "lat": 40.7128,
+  "lng": -74.0060,
+  "alt": 10.0,
+  "speed_kmh": 5.2,
+  "bearing": 180.0,
+  "accuracy_m": 4.5,
+  "activity": "WALKING",
+  "heart_rate": 72,
+  "battery": 85
+}
+                                    """.trimIndent(),
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── DATA MANAGEMENT ─────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
@@ -885,10 +1452,11 @@ fun SettingsScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = Primary)
                         ) {
                             if (isExporting) {
-                                CircularProgressIndicator(
+                                Icon(
+                                    Icons.Filled.Sync,
+                                    contentDescription = null,
                                     modifier = Modifier.size(18.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
+                                    tint = Color.White
                                 )
                             } else {
                                 Icon(
@@ -914,9 +1482,10 @@ fun SettingsScreen(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             if (isImporting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp
+                                Icon(
+                                    Icons.Filled.Sync,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             } else {
                                 Icon(
@@ -991,6 +1560,17 @@ fun SettingsScreen(
             onSave = { updated ->
                 viewModel.updateCar(updated)
                 editingCar = null
+            }
+        )
+    }
+
+    // Add Activity Type Dialog
+    if (showAddActivityDialog) {
+        AddActivityDialog(
+            onDismiss = { showAddActivityDialog = false },
+            onSave = { config ->
+                viewModel.addActivityConfig(config)
+                showAddActivityDialog = false
             }
         )
     }
@@ -1576,4 +2156,125 @@ private fun formatInterval(ms: Long): String = when {
     ms < 1000 -> "${ms}ms"
     ms < 60_000 -> "${ms / 1000}s"
     else -> "${ms / 60_000}min ${(ms % 60_000) / 1000}s"
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ACTIVITY TYPE HELPERS
+// ═══════════════════════════════════════════════════════════
+
+private val activityIcons = listOf(
+    "DirectionsWalk" to Icons.Filled.DirectionsWalk,
+    "DirectionsRun" to Icons.Filled.DirectionsRun,
+    "DirectionsBike" to Icons.Filled.DirectionsBike,
+    "DirectionsCar" to Icons.Filled.DirectionsCar,
+    "Flight" to Icons.Filled.Flight,
+    "Terrain" to Icons.Filled.Terrain,
+    "PauseCircle" to Icons.Filled.PauseCircle,
+    "Pool" to Icons.Filled.Pool,
+    "FitnessCenter" to Icons.Filled.FitnessCenter,
+    "Snowboarding" to Icons.Filled.Snowboarding,
+    "Skateboarding" to Icons.Filled.Skateboarding,
+    "Sailing" to Icons.Filled.Sailing,
+)
+
+private fun activityIconForSettings(name: String): ImageVector =
+    activityIcons.firstOrNull { it.first == name }?.second ?: Icons.Filled.Circle
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddActivityDialog(
+    onDismiss: () -> Unit,
+    onSave: (ActivityConfig) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var selectedIcon by remember { mutableStateOf("Terrain") }
+    var minSpeed by remember { mutableStateOf("") }
+    var maxSpeed by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Activity Type", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Text("Icon", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    activityIcons.forEach { (iconName, icon) ->
+                        FilterChip(
+                            selected = selectedIcon == iconName,
+                            onClick = { selectedIcon = iconName },
+                            label = {
+                                Icon(icon, contentDescription = iconName, modifier = Modifier.size(18.dp))
+                            }
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = minSpeed,
+                        onValueChange = { minSpeed = it },
+                        label = { Text("Min km/h") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = maxSpeed,
+                        onValueChange = { maxSpeed = it },
+                        label = { Text("Max km/h") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val min = minSpeed.toFloatOrNull() ?: 0f
+                    val max = maxSpeed.toFloatOrNull() ?: 0f
+                    if (name.isNotBlank() && max > min) {
+                        onSave(
+                            ActivityConfig(
+                                activityType = name.uppercase().replace(" ", "_"),
+                                displayName = name,
+                                iconName = selectedIcon,
+                                minSpeedKmh = min,
+                                maxSpeedKmh = max,
+                                colorHex = 0xFF4CAF50,
+                                metValue = 3.0,
+                                isActive = true
+                            )
+                        )
+                    }
+                },
+                enabled = name.isNotBlank() &&
+                        (minSpeed.toFloatOrNull() ?: -1f) >= 0f &&
+                        (maxSpeed.toFloatOrNull() ?: 0f) > (minSpeed.toFloatOrNull() ?: 0f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Add")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+        shape = RoundedCornerShape(20.dp)
+    )
 }

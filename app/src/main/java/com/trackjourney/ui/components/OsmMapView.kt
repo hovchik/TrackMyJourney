@@ -31,6 +31,7 @@ fun OsmMapView(
     currentLatitude: Double? = null,
     currentLongitude: Double? = null,
     centerOnUser: Boolean = true,
+    isPlayback: Boolean = false,
     zoomLevel: Double = 16.0,
     showActivityColors: Boolean = true,
     showSpeedColors: Boolean = false,
@@ -112,7 +113,12 @@ fun OsmMapView(
     // or on first draw; otherwise just update the end marker position
     LaunchedEffect(trackPoints.size) {
         val pointCount = trackPoints.size
-        val needsFullRedraw = pointCount < lastDrawnPointCount || lastDrawnPointCount == 0
+        // During playback, point count decrease is expected (progressive draw) — don't treat as full redraw
+        val needsFullRedraw = if (isPlayback) {
+            lastDrawnPointCount == 0
+        } else {
+            pointCount < lastDrawnPointCount || lastDrawnPointCount == 0
+        }
 
         if (trackPoints.isNotEmpty()) {
             if (needsFullRedraw) {
@@ -212,10 +218,16 @@ fun OsmMapView(
                     mapView.controller.setZoom(zoomLevel)
                     mapView.controller.animateTo(GeoPoint(point.latitude, point.longitude))
                 }
-            } else if (centerOnUser) {
-                // During live tracking, follow the latest point
+            } else if (centerOnUser && trackPoints.isNotEmpty()) {
+                // During live tracking or playback, follow the latest point
                 val lastPoint = trackPoints.last()
-                mapView.controller.animateTo(GeoPoint(lastPoint.latitude, lastPoint.longitude))
+                val geoPoint = GeoPoint(lastPoint.latitude, lastPoint.longitude)
+                if (isPlayback) {
+                    // Instant centering during playback to avoid lag
+                    mapView.controller.setCenter(geoPoint)
+                } else {
+                    mapView.controller.animateTo(geoPoint)
+                }
             }
         } else if (currentLatitude != null && currentLongitude != null) {
             mapView.overlays.clear()
@@ -336,6 +348,7 @@ private fun activityColor(activity: ActivityType): Color = when (activity) {
     ActivityType.DRIVING    -> Driving
     ActivityType.FLYING     -> Flying
     ActivityType.STATIONARY -> Stationary
+    ActivityType.HIKING     -> Hiking
     ActivityType.UNKNOWN    -> Color(0xFF757575)
 }
 

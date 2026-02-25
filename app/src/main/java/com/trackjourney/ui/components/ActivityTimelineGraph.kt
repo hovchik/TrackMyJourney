@@ -33,6 +33,7 @@ import kotlin.math.sin
  *   ooooo      cycling  (circles)
  *   ·····      stationary (dotted)
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ActivityTimelineGraph(
     points: List<TrackPoint>,
@@ -96,6 +97,7 @@ fun ActivityTimelineGraph(
                     ActivityType.RUNNING    -> drawWavyLine(startX, endX, lineY, color, strokeWidth, wavelength = 12f, amplitude = 6f)
                     ActivityType.CYCLING    -> drawCircleLine(startX, endX, lineY, color, strokeWidth)
                     ActivityType.STATIONARY -> drawDottedLine(startX, endX, lineY, color, strokeWidth)
+                    ActivityType.HIKING     -> drawDashedLine(startX, endX, lineY, color, strokeWidth)
                     ActivityType.UNKNOWN    -> drawDottedLine(startX, endX, lineY, Color.Gray, strokeWidth)
                 }
 
@@ -172,11 +174,11 @@ fun ActivityTimelineGraph(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Compact legend row
-        Row(
+        // Compact legend row (FlowRow wraps to next line when space runs out)
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             val usedActivities = segments.map { it.activity }.distinct()
             usedActivities.forEach { activity ->
@@ -191,11 +193,11 @@ private fun LegendItem(activity: ActivityType) {
     val color = activityToColor(activity)
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(end = 4.dp)
+        modifier = Modifier.padding(vertical = 2.dp)
     ) {
-        Canvas(modifier = Modifier.size(width = 20.dp, height = 12.dp)) {
+        Canvas(modifier = Modifier.size(width = 24.dp, height = 14.dp)) {
             val y = size.height / 2f
-            val sw = 2.5f
+            val sw = 2.8f
             when (activity) {
                 ActivityType.WALKING    -> drawDashedLine(0f, size.width, y, color, sw)
                 ActivityType.DRIVING    -> drawDotSolidLine(0f, size.width, y, color, sw)
@@ -203,13 +205,14 @@ private fun LegendItem(activity: ActivityType) {
                 ActivityType.RUNNING    -> drawWavyLine(0f, size.width, y, color, sw, 6f, 3f)
                 ActivityType.CYCLING    -> drawCircleLine(0f, size.width, y, color, sw)
                 ActivityType.STATIONARY -> drawDottedLine(0f, size.width, y, color, sw)
+                ActivityType.HIKING     -> drawDashedLine(0f, size.width, y, color, sw)
                 ActivityType.UNKNOWN    -> drawDottedLine(0f, size.width, y, Color.Gray, sw)
             }
         }
-        Spacer(modifier = Modifier.width(3.dp))
+        Spacer(modifier = Modifier.width(4.dp))
         Text(
             activity.name.lowercase().replaceFirstChar { it.uppercase() },
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             color = color,
             fontWeight = FontWeight.Medium
         )
@@ -355,5 +358,6 @@ private fun activityToColor(type: ActivityType): Color = when (type) {
     ActivityType.DRIVING    -> Driving
     ActivityType.FLYING     -> Flying
     ActivityType.STATIONARY -> Stationary
+    ActivityType.HIKING     -> Hiking
     ActivityType.UNKNOWN    -> Color.Gray
 }

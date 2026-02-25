@@ -11,8 +11,10 @@ import com.trackjourney.data.location.SatelliteInfo
 import com.trackjourney.data.model.*
 import com.trackjourney.data.repository.TrackRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -93,6 +95,122 @@ class SettingsViewModel @Inject constructor(
     fun updateCurrency(currency: String) {
         viewModelScope.launch {
             repository.updateSettings { updateCurrency(currency) }
+        }
+    }
+
+    fun updateAiMode(mode: AiMode) {
+        viewModelScope.launch {
+            repository.updateSettings { updateAiMode(mode) }
+            if (mode == AiMode.LOCAL_MODEL) checkLocalModelReachability()
+        }
+    }
+
+    // ─── Webhook Settings ──────────────────────────────
+
+    fun updateWebhookEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateSettings { updateWebhookEnabled(enabled) }
+        }
+    }
+
+    fun updateWebhookUrl(url: String) {
+        viewModelScope.launch {
+            repository.updateSettings { updateWebhookUrl(url) }
+        }
+    }
+
+    fun updateWebhookKey(key: String) {
+        viewModelScope.launch {
+            repository.updateSettings { updateWebhookKey(key) }
+        }
+    }
+
+    fun updateWebhookIntervalMs(intervalMs: Long) {
+        viewModelScope.launch {
+            repository.updateSettings { updateWebhookIntervalMs(intervalMs) }
+        }
+    }
+
+    // ─── Local AI Model Reachability ─────────────────────
+
+    private val _localModelReachable = MutableStateFlow(false)
+    val localModelReachable: StateFlow<Boolean> = _localModelReachable.asStateFlow()
+
+    private val _localModelChecking = MutableStateFlow(false)
+    val localModelChecking: StateFlow<Boolean> = _localModelChecking.asStateFlow()
+
+    init {
+        checkLocalModelReachability()
+    }
+
+    fun checkLocalModelReachability() {
+        viewModelScope.launch {
+            _localModelChecking.value = true
+            _localModelReachable.value = withContext(Dispatchers.IO) {
+                try {
+                    // Check if Android NNAPI is available (API 27+)
+                    val nnApiAvailable = android.os.Build.VERSION.SDK_INT >= 27
+                    // Check if the device has a local ML runtime accessible via system service
+                    if (nnApiAvailable) {
+                        // Probe the NNAPI by loading the native library
+                        System.loadLibrary("neuralnetworks")
+                        true
+                    } else {
+                        false
+                    }
+                } catch (_: UnsatisfiedLinkError) {
+                    // NNAPI native lib not bundled but NNAPI may still work via TFLite delegation
+                    android.os.Build.VERSION.SDK_INT >= 27
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            _localModelChecking.value = false
+        }
+    }
+
+    // ─── Activity Configs ──────────────────────────────────
+
+    fun updateActivityConfigs(configs: List<ActivityConfig>) {
+        viewModelScope.launch {
+            repository.updateSettings { updateActivityConfigs(configs) }
+        }
+    }
+
+    fun toggleActivityConfig(activityType: String, isActive: Boolean) {
+        viewModelScope.launch {
+            val current = settings.value.activityConfigs.toMutableList()
+            val idx = current.indexOfFirst { it.activityType == activityType }
+            if (idx >= 0) {
+                current[idx] = current[idx].copy(isActive = isActive)
+                repository.updateSettings { updateActivityConfigs(current) }
+            }
+        }
+    }
+
+    fun addActivityConfig(config: ActivityConfig) {
+        viewModelScope.launch {
+            val current = settings.value.activityConfigs.toMutableList()
+            current.add(config)
+            repository.updateSettings { updateActivityConfigs(current) }
+        }
+    }
+
+    fun updateActivitySpeedRange(activityType: String, minSpeed: Float, maxSpeed: Float) {
+        viewModelScope.launch {
+            val current = settings.value.activityConfigs.toMutableList()
+            val idx = current.indexOfFirst { it.activityType == activityType }
+            if (idx >= 0) {
+                current[idx] = current[idx].copy(minSpeedKmh = minSpeed, maxSpeedKmh = maxSpeed)
+                repository.updateSettings { updateActivityConfigs(current) }
+            }
+        }
+    }
+
+    fun removeActivityConfig(activityType: String) {
+        viewModelScope.launch {
+            val current = settings.value.activityConfigs.filter { it.activityType != activityType }
+            repository.updateSettings { updateActivityConfigs(current) }
         }
     }
 

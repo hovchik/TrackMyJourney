@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -12,6 +14,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class SettingsDataStore(
     private val context: Context
 ) {
+    private val gson = Gson()
+
     companion object {
         val RECORD_INTERVAL_MS = longPreferencesKey("record_interval_ms")
         val MIN_DISTANCE_METERS = floatPreferencesKey("min_distance_meters")
@@ -24,6 +28,22 @@ class SettingsDataStore(
         val TRACKING_MODE = stringPreferencesKey("tracking_mode")
         val SELECTED_CAR_ID = stringPreferencesKey("selected_car_id")
         val CURRENCY = stringPreferencesKey("currency")
+        val ACTIVITY_CONFIGS = stringPreferencesKey("activity_configs")
+        val AI_MODE = stringPreferencesKey("ai_mode")
+        val WEBHOOK_ENABLED = booleanPreferencesKey("webhook_enabled")
+        val WEBHOOK_URL = stringPreferencesKey("webhook_url")
+        val WEBHOOK_KEY = stringPreferencesKey("webhook_key")
+        val WEBHOOK_INTERVAL_MS = longPreferencesKey("webhook_interval_ms")
+    }
+
+    private fun parseActivityConfigs(json: String?): List<ActivityConfig> {
+        if (json.isNullOrBlank()) return ActivityConfig.defaults()
+        return try {
+            val type = object : TypeToken<List<ActivityConfig>>() {}.type
+            gson.fromJson(json, type)
+        } catch (_: Exception) {
+            ActivityConfig.defaults()
+        }
     }
 
     val settings: Flow<TrackingSettings> = context.dataStore.data.map { prefs ->
@@ -44,7 +64,15 @@ class SettingsDataStore(
                 TrackingMode.valueOf(prefs[TRACKING_MODE] ?: "HIGH_ACCURACY")
             } catch (e: Exception) { TrackingMode.HIGH_ACCURACY },
             selectedCarId = prefs[SELECTED_CAR_ID],
-            currency = prefs[CURRENCY] ?: "$"
+            currency = prefs[CURRENCY] ?: "$",
+            activityConfigs = parseActivityConfigs(prefs[ACTIVITY_CONFIGS]),
+            aiMode = try {
+                AiMode.valueOf(prefs[AI_MODE] ?: "RULE_BASED")
+            } catch (e: Exception) { AiMode.RULE_BASED },
+            webhookEnabled = prefs[WEBHOOK_ENABLED] ?: false,
+            webhookUrl = prefs[WEBHOOK_URL] ?: "",
+            webhookKey = prefs[WEBHOOK_KEY] ?: java.util.UUID.randomUUID().toString().replace("-", "").take(16),
+            webhookIntervalMs = prefs[WEBHOOK_INTERVAL_MS] ?: 10000L
         )
     }
 
@@ -98,6 +126,30 @@ class SettingsDataStore(
         }
     }
 
+    suspend fun updateActivityConfigs(configs: List<ActivityConfig>) {
+        context.dataStore.edit { it[ACTIVITY_CONFIGS] = gson.toJson(configs) }
+    }
+
+    suspend fun updateAiMode(mode: AiMode) {
+        context.dataStore.edit { it[AI_MODE] = mode.name }
+    }
+
+    suspend fun updateWebhookEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[WEBHOOK_ENABLED] = enabled }
+    }
+
+    suspend fun updateWebhookUrl(url: String) {
+        context.dataStore.edit { it[WEBHOOK_URL] = url }
+    }
+
+    suspend fun updateWebhookKey(key: String) {
+        context.dataStore.edit { it[WEBHOOK_KEY] = key }
+    }
+
+    suspend fun updateWebhookIntervalMs(intervalMs: Long) {
+        context.dataStore.edit { it[WEBHOOK_INTERVAL_MS] = intervalMs }
+    }
+
     suspend fun updateAll(settings: TrackingSettings) {
         context.dataStore.edit { prefs ->
             prefs[RECORD_INTERVAL_MS] = settings.recordIntervalMs
@@ -115,6 +167,12 @@ class SettingsDataStore(
                 prefs.remove(SELECTED_CAR_ID)
             }
             prefs[CURRENCY] = settings.currency
+            prefs[ACTIVITY_CONFIGS] = gson.toJson(settings.activityConfigs)
+            prefs[AI_MODE] = settings.aiMode.name
+            prefs[WEBHOOK_ENABLED] = settings.webhookEnabled
+            prefs[WEBHOOK_URL] = settings.webhookUrl
+            prefs[WEBHOOK_KEY] = settings.webhookKey
+            prefs[WEBHOOK_INTERVAL_MS] = settings.webhookIntervalMs
         }
     }
 }

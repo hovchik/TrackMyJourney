@@ -139,28 +139,35 @@ class TrackRepository(
      *
      * Formula: Calories = MET * weightKg * durationHours
      *
-     * MET values by activity (from Compendium of Physical Activities):
-     *   WALKING    = 3.5  (moderate pace ~5 km/h)
-     *   RUNNING    = 8.0  (jogging ~8-10 km/h)
-     *   CYCLING    = 6.0  (moderate cycling ~16-19 km/h)
-     *   DRIVING    = 1.3  (sitting in vehicle)
-     *   FLYING     = 1.0  (seated, minimal activity)
-     *   STATIONARY = 1.0  (resting / standing)
+     * Driving returns 0 — no meaningful calorie burn while seated in a vehicle.
      */
     fun calculateCalories(
         activityType: ActivityType,
         durationMs: Long,
-        weightKg: Float
+        weightKg: Float,
+        activityConfigs: List<ActivityConfig>? = null
     ): Double {
-        val met = when (activityType) {
-            ActivityType.WALKING    -> 3.5
-            ActivityType.RUNNING    -> 8.0
-            ActivityType.CYCLING    -> 6.0
-            ActivityType.DRIVING    -> 1.3
-            ActivityType.FLYING     -> 1.0
-            ActivityType.STATIONARY -> 1.0
-            ActivityType.UNKNOWN    -> 2.0
+        if (activityType == ActivityType.DRIVING) return 0.0
+
+        // If configs are provided and this activity type is disabled, skip calorie calculation
+        if (!activityConfigs.isNullOrEmpty()) {
+            val cfg = activityConfigs.firstOrNull { it.activityType == activityType.name }
+            if (cfg != null && !cfg.isActive) return 0.0
         }
+
+        val met = activityConfigs
+            ?.firstOrNull { it.activityType == activityType.name && it.isActive }
+            ?.metValue
+            ?: when (activityType) {
+                ActivityType.WALKING    -> 3.5
+                ActivityType.RUNNING    -> 8.0
+                ActivityType.CYCLING    -> 6.0
+                ActivityType.DRIVING    -> 0.0
+                ActivityType.FLYING     -> 1.0
+                ActivityType.STATIONARY -> 1.0
+                ActivityType.HIKING     -> 4.5
+                ActivityType.UNKNOWN    -> 2.0
+            }
         val durationHours = durationMs / 3_600_000.0
         return met * weightKg * durationHours
     }
@@ -335,7 +342,7 @@ class TrackRepository(
         // Calculate calories based on activity, duration, and user weight
         val durationMs = points.last().timestamp - points.first().timestamp
         val currentSettings = settingsDataStore.settings.first()
-        val calories = calculateCalories(dominant, durationMs, currentSettings.userWeightKg)
+        val calories = calculateCalories(dominant, durationMs, currentSettings.userWeightKg, currentSettings.activityConfigs)
 
         // Calculate ride cost based on distance and selected car profile
         val selectedCar = currentSettings.selectedCarId?.let { carProfileDao.getCarById(it) }
@@ -957,7 +964,7 @@ class TrackRepository(
 
     suspend fun exportAllData(): File? = withContext(Dispatchers.IO) {
         try {
-            val allTracksWithPoints = trackDao.getAllTracksWithPoints().first()
+            val allTracksWithPoints = trackDao.getAllTracksWithPointsSync()
 
             val trackExports = allTracksWithPoints.map { twp ->
                 val analysis = aiAnalysisDao.getLatestAnalysis(twp.track.id)
@@ -977,7 +984,8 @@ class TrackRepository(
                         endPlaceName = track.endPlaceName,
                         caloriesBurned = track.caloriesBurned,
                         batteryStart = track.batteryStart,
-                        batteryEnd = track.batteryEnd
+                        batteryEnd = track.batteryEnd,
+                        rideCost = track.rideCost
                     ),
                     points = twp.points.map { pt ->
                         TrackPointExport(

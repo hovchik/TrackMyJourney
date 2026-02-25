@@ -88,6 +88,10 @@ interface TrackDao {
     @Query("SELECT * FROM tracks ORDER BY start_time DESC")
     fun getAllTracksWithPoints(): Flow<List<TrackWithPoints>>
 
+    @Transaction
+    @Query("SELECT * FROM tracks ORDER BY start_time DESC")
+    suspend fun getAllTracksWithPointsSync(): List<TrackWithPoints>
+
     @Query("""
         SELECT * FROM tracks 
         WHERE activity_type = :activityType 

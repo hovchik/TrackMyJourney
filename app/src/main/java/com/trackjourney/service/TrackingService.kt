@@ -84,7 +84,7 @@ class TrackingService : Service() {
     private var isPaused = false
     private var pointCount = 0
     private var batteryAtStart: Int? = null
-    private var lastWebhookSendTime = 0L
+    @Volatile private var latestWebhookPayload: WebhookLocationPayload? = null
 
     /** Stops tracking when the device location toggle is switched off. */
     private val locationProviderReceiver = object : BroadcastReceiver() {
@@ -212,8 +212,14 @@ class TrackingService : Service() {
         }
     }
 
-    private suspend fun trackWithSettings(trackId: String, settings: TrackingSettings) {
+    private suspend fun trackWithSettings(trackId: String, settings: TrackingSettings) = coroutineScope {
         var lastNotificationTime = 0L
+
+        // Launch an independent webhook ticker that sends at a fixed cadence,
+        // regardless of how often GPS delivers fixes.
+        if (settings.webhookEnabled && settings.webhookUrl.isNotBlank()) {
+            launch { runWebhookTicker(settings) }
+        }
 
         when (settings.trackingMode) {
             TrackingMode.HIGH_ACCURACY -> {
@@ -293,33 +299,24 @@ class TrackingService : Service() {
             pointCount++
         }
 
-        // Send webhook if enabled and interval has elapsed
+        // Build the latest webhook payload so the independent ticker always
+        // has fresh data to send, regardless of GPS update cadence.
         if (settings.webhookEnabled && settings.webhookUrl.isNotBlank()) {
-            val now = System.currentTimeMillis()
-            if (now - lastWebhookSendTime >= settings.webhookIntervalMs) {
-                lastWebhookSendTime = now
-                val speedKmh = LocationTracker.msToKmh(location.speed)
-                val activity = ActivityType.fromSpeed(speedKmh, settings.activityConfigs)
-                val payload = WebhookLocationPayload(
-                    key = settings.webhookKey,
-                    timestamp = location.time / 1000,
-                    lat = location.latitude,
-                    lng = location.longitude,
-                    alt = if (location.hasAltitude()) location.altitude else null,
-                    speedKmh = speedKmh,
-                    bearing = if (location.hasBearing()) location.bearing else null,
-                    accuracyM = if (location.hasAccuracy()) location.accuracy else null,
-                    activity = activity.name.lowercase(),
-                    heartRate = wearableReading?.heartRate,
-                    battery = getBatteryLevel()
-                )
-                serviceScope.launch {
-                    val sent = webhookSender.send(settings.webhookUrl, settings.webhookKey, payload)
-                    if (!sent) {
-                        Log.w(TAG, "Webhook delivery failed — ${webhookSender.pendingCount} queued for retry")
-                    }
-                }
-            }
+            val speedKmh = LocationTracker.msToKmh(location.speed)
+            val activity = ActivityType.fromSpeed(speedKmh, settings.activityConfigs)
+            latestWebhookPayload = WebhookLocationPayload(
+                key = settings.webhookKey,
+                timestamp = location.time / 1000,
+                lat = location.latitude,
+                lng = location.longitude,
+                alt = if (location.hasAltitude()) location.altitude else null,
+                speedKmh = speedKmh,
+                bearing = if (location.hasBearing()) location.bearing else null,
+                accuracyM = if (location.hasAccuracy()) location.accuracy else null,
+                activity = activity.name.lowercase(),
+                heartRate = wearableReading?.heartRate,
+                battery = getBatteryLevel()
+            )
         }
 
         // Throttle notification updates to at most once per 2 seconds
@@ -340,6 +337,25 @@ class TrackingService : Service() {
             return now
         }
         return lastNotificationTime
+    }
+
+    /**
+     * Independent ticker that sends the latest cached payload at a fixed
+     * cadence.  Runs as a sibling coroutine inside [trackWithSettings]'s
+     * [coroutineScope], so it is automatically cancelled when settings
+     * change or tracking stops.
+     */
+    private suspend fun runWebhookTicker(settings: TrackingSettings) {
+        Log.i(TAG, "Webhook ticker started (interval=${settings.webhookIntervalMs}ms)")
+        while (true) {
+            delay(settings.webhookIntervalMs)
+            if (isPaused) continue
+            val payload = latestWebhookPayload ?: continue
+            val sent = webhookSender.send(settings.webhookUrl, settings.webhookKey, payload)
+            if (!sent) {
+                Log.w(TAG, "Webhook delivery failed — ${webhookSender.pendingCount} queued for retry")
+            }
+        }
     }
 
     private fun pauseTracking() {
@@ -369,6 +385,7 @@ class TrackingService : Service() {
             wearableScanJob?.cancel()
             wearableScanJob = null
             currentTrackId = null
+            latestWebhookPayload = null
             _isRunning.value = false
             locationTracker.stopTracking()
             satelliteTracker.stopMonitoring()

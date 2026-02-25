@@ -33,6 +33,7 @@ import kotlin.math.sin
  *   ooooo      cycling  (circles)
  *   ·····      stationary (dotted)
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ActivityTimelineGraph(
     points: List<TrackPoint>,

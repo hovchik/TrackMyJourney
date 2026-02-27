@@ -146,7 +146,8 @@ function addPointToLog(pt) {
     const log = $('.point-log');
     const entry = document.createElement('div');
     entry.className = 'log-entry';
-    const time = new Date(pt.timestamp).toLocaleTimeString();
+    const ts = pt.timestamp < 1e12 ? pt.timestamp * 1000 : pt.timestamp;
+    const time = new Date(ts).toLocaleTimeString();
     entry.innerHTML = `
         <span class="coords">${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}</span>
         ${pt.alt != null ? ` &middot; ${pt.alt.toFixed(0)}m` : ''}
@@ -300,7 +301,7 @@ function renderExplorerMap(points, colorBy = 'none') {
             HIKING: '#8BC34A', UNKNOWN: '#999'
         };
         for (let i = 1; i < points.length; i++) {
-            const color = actColors[points[i].activity] || '#999';
+            const color = actColors[(points[i].activity || '').toUpperCase()] || '#999';
             L.polyline([[points[i-1].lat, points[i-1].lng], [points[i].lat, points[i].lng]], {
                 color, weight: 3, opacity: .85
             }).addTo(explorerMap);
@@ -347,7 +348,8 @@ function renderExplorerPointList(points) {
     points.forEach((pt, i) => {
         const el = document.createElement('div');
         el.className = 'point-item';
-        const time = new Date(pt.timestamp).toLocaleTimeString();
+        const ts = pt.timestamp < 1e12 ? pt.timestamp * 1000 : pt.timestamp;
+        const time = new Date(ts).toLocaleTimeString();
         el.innerHTML = `
             <span class="pt-time">#${i + 1} ${time}</span><br>
             <span class="pt-coords">${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}</span>

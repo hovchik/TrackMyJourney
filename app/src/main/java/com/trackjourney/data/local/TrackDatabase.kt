@@ -9,8 +9,12 @@ import kotlinx.coroutines.flow.Flow
 // ─────────────────────────────────────────────────────────
 
 @Database(
-    entities = [TrackSession::class, TrackPoint::class, HealthData::class, AiAnalysis::class, CarProfile::class],
-    version = 7,
+    entities = [
+        TrackSession::class, TrackPoint::class, HealthData::class,
+        AiAnalysis::class, CarProfile::class,
+        Person::class, DiseaseGroup::class, Disease::class
+    ],
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -20,6 +24,9 @@ abstract class TrackDatabase : RoomDatabase() {
     abstract fun healthDataDao(): HealthDataDao
     abstract fun aiAnalysisDao(): AiAnalysisDao
     abstract fun carProfileDao(): CarProfileDao
+    abstract fun personDao(): PersonDao
+    abstract fun diseaseGroupDao(): DiseaseGroupDao
+    abstract fun diseaseDao(): DiseaseDao
 }
 
 // ─────────────────────────────────────────────────────────
@@ -47,6 +54,20 @@ class Converters {
     @TypeConverter
     fun toFuelType(value: String): FuelType =
         try { FuelType.valueOf(value) } catch (e: Exception) { FuelType.PETROL }
+
+    @TypeConverter
+    fun fromDiseaseSeverity(value: DiseaseSeverity): String = value.name
+
+    @TypeConverter
+    fun toDiseaseSeverity(value: String): DiseaseSeverity =
+        try { DiseaseSeverity.valueOf(value) } catch (e: Exception) { DiseaseSeverity.MILD }
+
+    @TypeConverter
+    fun fromDiseaseStatus(value: DiseaseStatus): String = value.name
+
+    @TypeConverter
+    fun toDiseaseStatus(value: String): DiseaseStatus =
+        try { DiseaseStatus.valueOf(value) } catch (e: Exception) { DiseaseStatus.ACTIVE }
 }
 
 // ─────────────────────────────────────────────────────────

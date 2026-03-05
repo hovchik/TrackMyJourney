@@ -10,6 +10,7 @@ import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
 import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.location.SmartIntervalManager
+import com.trackjourney.data.repository.DiseaseRepository
 import com.trackjourney.data.repository.TrackRepository
 import dagger.Module
 import dagger.Provides
@@ -39,6 +40,9 @@ object AppModule {
     @Provides fun provideHealthDataDao(db: TrackDatabase) = db.healthDataDao()
     @Provides fun provideAiAnalysisDao(db: TrackDatabase) = db.aiAnalysisDao()
     @Provides fun provideCarProfileDao(db: TrackDatabase) = db.carProfileDao()
+    @Provides fun providePersonDao(db: TrackDatabase) = db.personDao()
+    @Provides fun provideDiseaseGroupDao(db: TrackDatabase) = db.diseaseGroupDao()
+    @Provides fun provideDiseaseDao(db: TrackDatabase) = db.diseaseDao()
 
     @Provides
     @Singleton

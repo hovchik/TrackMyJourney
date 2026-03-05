@@ -39,6 +39,13 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Analytics
     )
 
+    data object Disease : Screen(
+        route = "disease",
+        title = "Health",
+        selectedIcon = Icons.Filled.Healing,
+        unselectedIcon = Icons.Outlined.Healing
+    )
+
     data object Settings : Screen(
         route = "settings",
         title = "Settings",
@@ -56,6 +63,6 @@ sealed class Screen(
     }
 
     companion object {
-        val bottomNavItems = listOf(Dashboard, Map, Tracks, Analysis, Settings)
+        val bottomNavItems = listOf(Dashboard, Map, Tracks, Disease, Settings)
     }
 }

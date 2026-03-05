@@ -34,6 +34,7 @@ import com.trackjourney.ui.screens.analysis.AnalysisScreen
 import com.trackjourney.ui.screens.dashboard.DashboardScreen
 import com.trackjourney.ui.screens.map.MapScreen
 import com.trackjourney.ui.screens.settings.SettingsScreen
+import com.trackjourney.ui.screens.disease.DiseaseScreen
 import com.trackjourney.ui.screens.tracks.TracksScreen
 import com.trackjourney.ui.theme.*
 import dagger.hilt.android.AndroidEntryPoint
@@ -146,6 +147,9 @@ fun TrackMyJourneyApp() {
                     MapScreen(
                         onBackFromTrack = { navController.popBackStack() }
                     )
+                }
+                composable(Screen.Disease.route) {
+                    DiseaseScreen()
                 }
                 composable(Screen.Analysis.route) {
                     AnalysisScreen()

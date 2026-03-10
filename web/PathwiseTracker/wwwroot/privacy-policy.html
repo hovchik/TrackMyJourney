@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - Pathwise Tracker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.7;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+        h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            color: #1a1a1a;
+        }
+        .last-updated {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 32px;
+        }
+        h2 {
+            font-size: 20px;
+            margin-top: 32px;
+            margin-bottom: 12px;
+            color: #1a1a1a;
+        }
+        p, li {
+            font-size: 15px;
+            margin-bottom: 12px;
+        }
+        ul {
+            padding-left: 24px;
+            margin-bottom: 16px;
+        }
+        li { margin-bottom: 6px; }
+        a { color: #1a73e8; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px 12px;
+            text-align: left;
+        }
+        th {
+            background: #f0f0f0;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <a href="/" class="back-link">&larr; Back to Pathwise Tracker</a>
+
+    <h1>Privacy Policy</h1>
+    <p class="last-updated">Last updated: March 10, 2026</p>
+
+    <p>This Privacy Policy describes how <strong>Pathwise Tracker</strong> ("the App", package name <strong>com.trackjourney</strong>) collects, uses, and protects your information. We are committed to safeguarding your privacy and ensuring transparency about our data practices.</p>
+
+    <h2>1. Information We Collect</h2>
+
+    <h3 style="font-size:17px; margin-top:20px; margin-bottom:8px;">1.1 Location Data</h3>
+    <p>When you start a tracking session, the App collects:</p>
+    <ul>
+        <li>GPS coordinates (latitude, longitude)</li>
+        <li>Altitude</li>
+        <li>Speed</li>
+        <li>Bearing (direction)</li>
+        <li>Location accuracy</li>
+        <li>Timestamps</li>
+    </ul>
+    <p>The App uses background location access (<code>ACCESS_BACKGROUND_LOCATION</code>) to continue tracking when the App is minimized or the screen is off. This is used <strong>only during active tracking sessions</strong> that you explicitly start.</p>
+
+    <h3 style="font-size:17px; margin-top:20px; margin-bottom:8px;">1.2 Health Data</h3>
+    <p>When a compatible Bluetooth LE smartwatch (Garmin or Samsung) is connected, the App collects:</p>
+    <ul>
+        <li>Heart rate (BPM)</li>
+        <li>Blood oxygen saturation (SpO2 %)</li>
+        <li>Device name and type</li>
+    </ul>
+    <p>Health data is collected <strong>only during active tracking sessions</strong> and only from devices you explicitly pair.</p>
+
+    <h3 style="font-size:17px; margin-top:20px; margin-bottom:8px;">1.3 Activity Data</h3>
+    <p>The App uses the <code>ACTIVITY_RECOGNITION</code> permission and on-device AI to detect your movement type (walking, running, cycling, driving, flying, or stationary). This classification is performed entirely on your device.</p>
+
+    <h3 style="font-size:17px; margin-top:20px; margin-bottom:8px;">1.4 Information We Do NOT Collect</h3>
+    <ul>
+        <li>We do not collect your name, email address, or account information</li>
+        <li>We do not collect device identifiers or advertising IDs</li>
+        <li>We do not use analytics or crash reporting SDKs</li>
+        <li>We do not track you outside of active recording sessions</li>
+    </ul>
+
+    <h2>2. How We Use Your Information</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Data Type</th>
+                <th>Purpose</th>
+                <th>Storage</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>GPS location</td>
+                <td>Display your route on the map, calculate distance and speed</td>
+                <td>Local device only</td>
+            </tr>
+            <tr>
+                <td>Health metrics</td>
+                <td>Display heart rate and SpO2 alongside your route, generate health insights</td>
+                <td>Local device only</td>
+            </tr>
+            <tr>
+                <td>Activity type</td>
+                <td>Automatically classify your movement and color-code route segments</td>
+                <td>Local device only</td>
+            </tr>
+            <tr>
+                <td>Session metadata</td>
+                <td>Organize and display your tracking history</td>
+                <td>Local device only</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>3. Data Storage and Security</h2>
+    <ul>
+        <li><strong>All data is stored locally</strong> on your device using an encrypted Room database.</li>
+        <li>Exported JSON files are saved to the App's private storage directory (<code>Android/data/com.trackjourney/files/tracks/</code>).</li>
+        <li>No data is uploaded to cloud servers or external databases by default.</li>
+    </ul>
+
+    <h2>4. Data Sharing</h2>
+    <p><strong>We do not share your data with any third parties.</strong></p>
+    <p>The only scenario in which your data leaves your device is if you voluntarily use the <strong>webhook live-tracking feature</strong>, which transmits location data in real time to a web server you specify. You control when this feature is active and what server receives the data.</p>
+
+    <h2>5. Third-Party Services</h2>
+    <p>The App uses the following third-party services that may process limited data:</p>
+    <ul>
+        <li><strong>OpenStreetMap tile servers:</strong> When you view the map, your device downloads map tiles based on the visible area. The tile server may log standard HTTP request data (IP address, requested tile coordinates). This is governed by the <a href="https://wiki.osmfoundation.org/wiki/Privacy_Policy" target="_blank" rel="noopener">OpenStreetMap Foundation Privacy Policy</a>.</li>
+        <li><strong>Google Play Services (Fused Location Provider):</strong> Used to obtain GPS coordinates. Subject to <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
+    </ul>
+
+    <h2>6. Data Retention</h2>
+    <p>Your tracking data is retained on your device until you choose to delete it. You can:</p>
+    <ul>
+        <li>Delete individual tracking sessions from within the App</li>
+        <li>Export your data before deletion</li>
+        <li>Uninstall the App to remove all stored data</li>
+    </ul>
+
+    <h2>7. Children's Privacy</h2>
+    <p>The App is not directed at children under the age of 13. We do not knowingly collect personal information from children under 13. If you are a parent or guardian and believe your child has provided data through the App, please contact us so we can assist.</p>
+
+    <h2>8. Your Rights</h2>
+    <p>Since all data is stored locally on your device, you have full control over it at all times. You can:</p>
+    <ul>
+        <li><strong>Access</strong> all your data through the App's track history and export features</li>
+        <li><strong>Export</strong> your data as JSON files</li>
+        <li><strong>Delete</strong> any or all tracking sessions</li>
+        <li><strong>Revoke permissions</strong> at any time via your device's Settings</li>
+    </ul>
+
+    <h2>9. Changes to This Policy</h2>
+    <p>We may update this Privacy Policy from time to time. Changes will be reflected by updating the "Last updated" date at the top of this page. Continued use of the App constitutes acceptance of the revised policy.</p>
+
+    <h2>10. Contact Us</h2>
+    <p>If you have any questions or concerns about this Privacy Policy, please contact us at:</p>
+    <p><strong>Email:</strong> support@pathwisetracker.com</p>
+</div>
+</body>
+</html>

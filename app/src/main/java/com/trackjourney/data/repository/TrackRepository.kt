@@ -92,10 +92,25 @@ class TrackRepository(
         trackDao.getTracksByActivity(type)
 
     suspend fun getStats(): TrackingStats {
+        val altitudes = trackPointDao.getAllAltitudes()
+        val elevationGain = if (altitudes.size >= 2) {
+            var gain = 0.0
+            for (i in 1 until altitudes.size) {
+                val diff = altitudes[i] - altitudes[i - 1]
+                if (diff > 0) gain += diff
+            }
+            gain
+        } else 0.0
+
         return TrackingStats(
             totalTracks = trackDao.getTrackCount(),
             totalDistanceKm = (trackDao.getTotalDistance() ?: 0.0) / 1000.0,
-            averageSpeedKmh = trackDao.getAverageSpeed() ?: 0.0
+            averageSpeedKmh = trackDao.getAverageSpeed() ?: 0.0,
+            maxSpeedKmh = trackDao.getMaxSpeed() ?: 0.0,
+            totalDurationMs = trackDao.getTotalDuration() ?: 0L,
+            totalCalories = trackDao.getTotalCalories() ?: 0.0,
+            totalElevationGain = elevationGain,
+            totalPoints = trackPointDao.getTotalPointCount()
         )
     }
 
@@ -242,12 +257,19 @@ class TrackRepository(
 
         // AI-based real-time activity detection using filtered speed + physical sensors
         val motionState = motionSensorManager.motionState.value
-        val activity = aiEngine.detectActivity(
+        val currentSettings = settingsDataStore.settings.first()
+        var activity = aiEngine.detectActivity(
             speedKmh = filteredSpeedKmh,
             altitude = if (location.hasAltitude()) location.altitude else null,
             previousAltitude = lastPoint?.altitude,
             motionState = motionState
         )
+
+        // If the detected activity type is disabled in the user's config,
+        // fall back to the speed-based classifier which respects isActive.
+        if (!ActivityType.isActive(activity, currentSettings.activityConfigs)) {
+            activity = ActivityType.fromSpeed(filteredSpeedKmh, currentSettings.activityConfigs)
+        }
 
         // If sensors say stationary but GPS reports movement, clamp speed to 0
         val effectiveSpeedKmh = if (activity == ActivityType.STATIONARY && filteredSpeedKmh > 0.5f) {
@@ -332,16 +354,17 @@ class TrackRepository(
 
         val avgHr = healthDataDao.getAverageHeartRate(trackId)
 
-        // Determine dominant activity from latest points
+        // Determine dominant activity from latest points, excluding disabled types
+        val currentSettings = settingsDataStore.settings.first()
         val recentActivities = points.takeLast(20).map { it.activityType }
         val dominant = recentActivities
+            .filter { ActivityType.isActive(it, currentSettings.activityConfigs) }
             .groupBy { it }
             .maxByOrNull { it.value.size }
             ?.key ?: ActivityType.UNKNOWN
 
         // Calculate calories based on activity, duration, and user weight
         val durationMs = points.last().timestamp - points.first().timestamp
-        val currentSettings = settingsDataStore.settings.first()
         val calories = calculateCalories(dominant, durationMs, currentSettings.userWeightKg, currentSettings.activityConfigs)
 
         // Calculate ride cost based on distance and selected car profile
@@ -440,6 +463,27 @@ class TrackRepository(
     suspend fun suggestBestTrips(): List<LocalAiEngine.TripSuggestion> {
         val tracks = trackDao.getAllTracksWithPoints().first()
         return aiEngine.suggestBestTrips(tracks)
+    }
+
+    suspend fun getActivityBreakdown(): List<ActivityBreakdown> {
+        val allTypes = trackDao.getAllActivityTypes().distinct()
+            .filter { it != ActivityType.UNKNOWN && it != ActivityType.STATIONARY }
+        return allTypes.map { activity ->
+            ActivityBreakdown(
+                activity = activity,
+                trackCount = trackDao.getTrackCountByActivity(activity),
+                totalDistanceKm = (trackDao.getTotalDistanceByActivity(activity) ?: 0.0) / 1000.0,
+                totalDurationMs = trackDao.getTotalDurationByActivity(activity) ?: 0L
+            )
+        }.filter { it.trackCount > 0 }.sortedByDescending { it.trackCount }
+    }
+
+    suspend fun getRecentAnalyses(limit: Int = 5): List<Pair<TrackSession, AiAnalysis>> {
+        val tracks = trackDao.getAllTracks().first().take(limit)
+        return tracks.mapNotNull { track ->
+            val analysis = aiAnalysisDao.getLatestAnalysis(track.id)
+            if (analysis != null) track to analysis else null
+        }
     }
 
     // ─── EXPORT ───────────────────────────────────────────
@@ -1177,7 +1221,19 @@ class TrackRepository(
 data class TrackingStats(
     val totalTracks: Int,
     val totalDistanceKm: Double,
-    val averageSpeedKmh: Double
+    val averageSpeedKmh: Double,
+    val maxSpeedKmh: Double = 0.0,
+    val totalDurationMs: Long = 0L,
+    val totalCalories: Double = 0.0,
+    val totalElevationGain: Double = 0.0,
+    val totalPoints: Int = 0
+)
+
+data class ActivityBreakdown(
+    val activity: ActivityType,
+    val trackCount: Int,
+    val totalDistanceKm: Double,
+    val totalDurationMs: Long
 )
 
 data class PeriodStats(

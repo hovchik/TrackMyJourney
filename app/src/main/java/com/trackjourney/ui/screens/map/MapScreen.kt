@@ -3,6 +3,7 @@ package com.trackjourney.ui.screens.map
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -62,6 +63,8 @@ fun MapScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val allTracks by viewModel.allTracks.collectAsState()
+    val subscriptionStatus by viewModel.subscriptionStatus.collectAsState()
+    val isPremium = subscriptionStatus.isActive
     var trackDropdownExpanded by remember { mutableStateOf(false) }
     var showExpandedTimeline by remember { mutableStateOf(false) }
     val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy  HH:mm", Locale.getDefault()) }
@@ -239,7 +242,9 @@ fun MapScreen(
                 isPlaying = isPlayingBack,
                 playbackIndex = playbackIndex,
                 playbackSpeed = playbackSpeed,
+                isPremium = isPremium,
                 onPlayPause = {
+                    if (!isPremium) return@FixedTimelinePanel
                     if (isPlayingBack) {
                         isPlayingBack = false
                     } else {
@@ -250,6 +255,7 @@ fun MapScreen(
                     }
                 },
                 onSpeedChange = {
+                    if (!isPremium) return@FixedTimelinePanel
                     playbackSpeed = when {
                         playbackSpeed < 1f -> 1f
                         playbackSpeed < 2f -> 2f
@@ -260,6 +266,7 @@ fun MapScreen(
                     }
                 },
                 onSeek = { index ->
+                    if (!isPremium) return@FixedTimelinePanel
                     playbackIndex = index
                     isPlayingBack = false
                 },
@@ -678,8 +685,9 @@ private fun ActivityLegend(
     modifier: Modifier = Modifier
 ) {
     val activeConfigs = configs.filter { it.isActive }
+    var expanded by remember { mutableStateOf(false) }
     Surface(
-        modifier = modifier,
+        modifier = modifier.clickable { expanded = !expanded },
         color = OverlayDark.copy(alpha = 0.88f),
         shape = RoundedCornerShape(14.dp),
         shadowElevation = 4.dp
@@ -688,37 +696,50 @@ private fun ActivityLegend(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                "ACTIVITIES",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = 0.5f),
-                letterSpacing = 1.sp
-            )
-            activeConfigs.forEach { cfg ->
-                val color = Color(cfg.colorHex)
-                val icon = activityIconFromName(cfg.iconName)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        tint = color,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        cfg.displayName,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = color
-                    )
-                    Text(
-                        "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
-                        fontSize = 9.sp,
-                        color = Color.White.copy(alpha = 0.5f)
-                    )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    "ACTIVITIES",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.5f),
+                    letterSpacing = 1.sp
+                )
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = Color.White.copy(alpha = 0.5f),
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+            if (expanded) {
+                activeConfigs.forEach { cfg ->
+                    val color = Color(cfg.colorHex)
+                    val icon = activityIconFromName(cfg.iconName)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            icon,
+                            contentDescription = null,
+                            tint = color,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            cfg.displayName,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = color
+                        )
+                        Text(
+                            "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.5f)
+                        )
+                    }
                 }
             }
         }
@@ -1539,6 +1560,7 @@ private fun FixedTimelinePanel(
     isPlaying: Boolean,
     playbackIndex: Int,
     playbackSpeed: Float,
+    isPremium: Boolean = true,
     onPlayPause: () -> Unit,
     onSpeedChange: () -> Unit,
     onSeek: (Int) -> Unit,
@@ -1641,13 +1663,15 @@ private fun FixedTimelinePanel(
                     modifier = Modifier.size(32.dp),
                     shape = CircleShape,
                     colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = Primary,
+                        containerColor = if (isPremium) Primary else Color.Gray,
                         contentColor = Color.White
                     )
                 ) {
                     Icon(
-                        if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        if (!isPremium) Icons.Filled.Lock
+                        else if (isPlaying) Icons.Filled.Pause
+                        else Icons.Filled.PlayArrow,
+                        contentDescription = if (!isPremium) "Premium" else if (isPlaying) "Pause" else "Play",
                         modifier = Modifier.size(18.dp)
                     )
                 }

@@ -43,12 +43,14 @@ import com.trackjourney.data.model.ActivityConfig
 import com.trackjourney.data.model.CarProfile
 import com.trackjourney.data.model.ExportFormat
 import com.trackjourney.data.model.FuelType
+import com.trackjourney.data.model.SubscriptionStatus
 import com.trackjourney.data.model.TrackingMode
 import com.trackjourney.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    onNavigateToSubscription: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -64,6 +66,8 @@ fun SettingsScreen(
     val isExporting by viewModel.isExporting.collectAsState()
     val isImporting by viewModel.isImporting.collectAsState()
     val allCars by viewModel.allCars.collectAsState()
+    val subscriptionStatus by viewModel.subscriptionStatus.collectAsState()
+    val isPremium = subscriptionStatus.isActive
     var showAddCarDialog by remember { mutableStateOf(false) }
     var editingCar by remember { mutableStateOf<CarProfile?>(null) }
     var showAddActivityDialog by remember { mutableStateOf(false) }
@@ -129,6 +133,63 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) }
             )
+        }
+
+        // ── SUBSCRIPTION BANNER ────────────────────────
+        if (!isPremium) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Primary.copy(alpha = 0.08f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToSubscription() }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Accent.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.WorkspacePremium,
+                                    contentDescription = null,
+                                    tint = Accent,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Upgrade to Premium",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = Primary
+                            )
+                            Text(
+                                "Unlock cars, webhooks, track playback & more",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = Primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
         }
 
         // ── PERMISSIONS ────────────────────────────────
@@ -553,15 +614,56 @@ fun SettingsScreen(
                         .padding(vertical = 8.dp)
                         .weight(1f)
                 )
-                TextButton(onClick = { showAddCarDialog = true }) {
-                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Car")
+                if (isPremium) {
+                    TextButton(onClick = { showAddCarDialog = true }) {
+                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add Car")
+                    }
+                } else {
+                    TextButton(onClick = onNavigateToSubscription) {
+                        Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(16.dp), tint = Accent)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Premium", color = Accent)
+                    }
                 }
             }
         }
 
-        if (allCars.isEmpty()) {
+        if (!isPremium) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    modifier = Modifier.clickable { onNavigateToSubscription() }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Filled.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = Accent.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Premium Feature",
+                            fontWeight = FontWeight.Medium,
+                            color = Accent
+                        )
+                        Text(
+                            "Upgrade to add cars and track ride costs",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+        } else if (allCars.isEmpty()) {
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
@@ -620,19 +722,35 @@ fun SettingsScreen(
         // ── CURRENCY ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Currency",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Currency",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(vertical = 8.dp)
+                        .weight(1f)
+                )
+                if (!isPremium) {
+                    Icon(
+                        Icons.Filled.Lock,
+                        contentDescription = "Premium",
+                        tint = Accent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
         }
 
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = if (!isPremium) Modifier.clickable { onNavigateToSubscription() } else Modifier
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -648,8 +766,12 @@ fun SettingsScreen(
                         listOf("$", "\u20AC", "\u00A3", "\u00A5", "\u20BD", "\u058F").forEach { symbol ->
                             FilterChip(
                                 selected = settings.currency == symbol,
-                                onClick = { viewModel.updateCurrency(symbol) },
-                                label = { Text(symbol, fontSize = 14.sp) }
+                                onClick = {
+                                    if (isPremium) viewModel.updateCurrency(symbol)
+                                    else onNavigateToSubscription()
+                                },
+                                label = { Text(symbol, fontSize = 14.sp) },
+                                enabled = isPremium
                             )
                         }
                     }
@@ -671,7 +793,10 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { activitySectionExpanded = !activitySectionExpanded },
+                            .clickable {
+                                if (isPremium) activitySectionExpanded = !activitySectionExpanded
+                                else onNavigateToSubscription()
+                            },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
@@ -703,7 +828,18 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        IconButton(onClick = { activitySectionExpanded = !activitySectionExpanded }) {
+                        if (!isPremium) {
+                            Icon(
+                                Icons.Filled.Lock,
+                                contentDescription = "Premium",
+                                tint = Accent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        IconButton(onClick = {
+                            if (isPremium) activitySectionExpanded = !activitySectionExpanded
+                            else onNavigateToSubscription()
+                        }) {
                             Icon(
                                 if (activitySectionExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                                 contentDescription = if (activitySectionExpanded) "Collapse" else "Expand"
@@ -711,7 +847,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    if (activitySectionExpanded) {
+                    if (activitySectionExpanded && isPremium) {
                         Spacer(modifier = Modifier.height(12.dp))
 
                         settings.activityConfigs.forEachIndexed { _, cfg ->
@@ -1246,7 +1382,10 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { webhookExpanded = !webhookExpanded }
+                            .clickable {
+                                if (isPremium) webhookExpanded = !webhookExpanded
+                                else onNavigateToSubscription()
+                            }
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1272,7 +1411,18 @@ fun SettingsScreen(
                                 maxLines = 1
                             )
                         }
-                        IconButton(onClick = { webhookExpanded = !webhookExpanded }) {
+                        if (!isPremium) {
+                            Icon(
+                                Icons.Filled.Lock,
+                                contentDescription = "Premium",
+                                tint = Accent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        IconButton(onClick = {
+                            if (isPremium) webhookExpanded = !webhookExpanded
+                            else onNavigateToSubscription()
+                        }) {
                             Icon(
                                 if (webhookExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                                 contentDescription = if (webhookExpanded) "Collapse" else "Expand"
@@ -1280,7 +1430,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    if (webhookExpanded) {
+                    if (webhookExpanded && isPremium) {
                         @Suppress("DEPRECATION")
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -1306,7 +1456,7 @@ fun SettingsScreen(
                                     viewModel.updateWebhookUrl(it)
                                 },
                                 label = { Text("Webhook URL") },
-                                placeholder = { Text("https://example.com/hook") },
+                                placeholder = { Text("https://pathwise.art") },
                                 leadingIcon = { Icon(Icons.Filled.Link, contentDescription = null) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
@@ -1342,6 +1492,37 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 4.dp, top = 4.dp)
                             )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Share tracking URL button
+                            val trackingUrl = remember(settings.webhookUrl, settings.webhookKey) {
+                                if (settings.webhookUrl.isNotBlank()) {
+                                    val encodedKey = java.net.URLEncoder.encode(settings.webhookKey, "UTF-8")
+                                    settings.webhookUrl.trimEnd('/') + "/api/hook?key=$encodedKey"
+                                } else ""
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "Track My Journey – Live Tracking URL")
+                                        putExtra(Intent.EXTRA_TEXT, trackingUrl)
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share tracking URL"))
+                                },
+                                enabled = settings.webhookUrl.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Share,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Share Tracking URL")
+                            }
 
                             Spacer(modifier = Modifier.height(16.dp))
 

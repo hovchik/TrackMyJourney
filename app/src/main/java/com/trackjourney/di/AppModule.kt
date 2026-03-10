@@ -3,6 +3,7 @@ package com.trackjourney.di
 import android.content.Context
 import androidx.room.Room
 import com.trackjourney.data.ai.LocalAiEngine
+import com.trackjourney.data.billing.BillingManager
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.*
 import com.trackjourney.data.location.BatteryMonitor
@@ -11,6 +12,7 @@ import com.trackjourney.data.location.LocationTracker
 import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.location.SmartIntervalManager
 import com.trackjourney.data.repository.TrackRepository
+import com.trackjourney.data.webhook.WebhookSender
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -71,6 +73,14 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSmartIntervalManager(batteryMonitor: BatteryMonitor) = SmartIntervalManager(batteryMonitor)
+
+    @Provides
+    @Singleton
+    fun provideWebhookSender(@ApplicationContext context: Context) = WebhookSender(context)
+
+    @Provides
+    @Singleton
+    fun provideBillingManager(@ApplicationContext context: Context) = BillingManager(context)
 
     @Provides
     @Singleton

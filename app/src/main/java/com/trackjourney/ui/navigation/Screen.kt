@@ -55,6 +55,13 @@ sealed class Screen(
         fun createRoute(trackId: String) = "track_detail/$trackId"
     }
 
+    data object Subscription : Screen(
+        route = "subscription",
+        title = "Premium",
+        selectedIcon = Icons.Filled.WorkspacePremium,
+        unselectedIcon = Icons.Outlined.WorkspacePremium
+    )
+
     companion object {
         val bottomNavItems = listOf(Dashboard, Map, Tracks, Analysis, Settings)
     }

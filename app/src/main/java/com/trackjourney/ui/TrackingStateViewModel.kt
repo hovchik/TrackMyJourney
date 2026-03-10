@@ -3,8 +3,10 @@ package com.trackjourney.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.data.location.SatelliteInfo
 import com.trackjourney.data.model.ActivityType
+import com.trackjourney.data.model.SubscriptionStatus
 import com.trackjourney.data.repository.TrackRepository
 import com.trackjourney.service.TrackingService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,11 +30,15 @@ data class TrackingBarState(
 @HiltViewModel
 class TrackingStateViewModel @Inject constructor(
     private val app: Application,
-    private val repository: TrackRepository
+    private val repository: TrackRepository,
+    private val settingsDataStore: SettingsDataStore
 ) : AndroidViewModel(app) {
 
     private val _state = MutableStateFlow(TrackingBarState())
     val state: StateFlow<TrackingBarState> = _state.asStateFlow()
+
+    val subscriptionStatus: StateFlow<SubscriptionStatus> = settingsDataStore.subscriptionStatus
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SubscriptionStatus())
 
     private var pointsJob: Job? = null
     private var satelliteJob: Job? = null

@@ -279,7 +279,7 @@ enum class ActivityType {
                     }
                 }
             }
-            return when {
+            val fallback = when {
                 speedKmh < 0.5f    -> STATIONARY
                 speedKmh < 7f      -> WALKING
                 speedKmh < 15f     -> RUNNING
@@ -287,6 +287,20 @@ enum class ActivityType {
                 speedKmh < 200f    -> DRIVING
                 else                -> FLYING
             }
+            // If configs exist and the fallback type is disabled, return UNKNOWN
+            // so disabled activities never appear anywhere in the app.
+            if (!configs.isNullOrEmpty()) {
+                val isDisabled = configs.any { it.activityType == fallback.name && !it.isActive }
+                if (isDisabled) return UNKNOWN
+            }
+            return fallback
+        }
+
+        /** Returns true when [type] is enabled (or has no config entry at all). */
+        fun isActive(type: ActivityType, configs: List<ActivityConfig>?): Boolean {
+            if (configs.isNullOrEmpty()) return true
+            val cfg = configs.firstOrNull { it.activityType == type.name } ?: return true
+            return cfg.isActive
         }
     }
 }
@@ -409,6 +423,24 @@ data class FullDatabaseExport(
 )
 
 // ─────────────────────────────────────────────────────────
+//  WEBHOOK LOCATION PAYLOAD
+// ─────────────────────────────────────────────────────────
+
+data class WebhookLocationPayload(
+    @SerializedName("key") val key: String,
+    @SerializedName("timestamp") val timestamp: Long,
+    @SerializedName("lat") val lat: Double,
+    @SerializedName("lng") val lng: Double,
+    @SerializedName("alt") val alt: Double?,
+    @SerializedName("speed_kmh") val speedKmh: Float,
+    @SerializedName("bearing") val bearing: Float?,
+    @SerializedName("accuracy_m") val accuracyM: Float?,
+    @SerializedName("activity") val activity: String,
+    @SerializedName("heart_rate") val heartRate: Int?,
+    @SerializedName("battery") val battery: Int?
+)
+
+// ─────────────────────────────────────────────────────────
 //  RELATION HELPERS
 // ─────────────────────────────────────────────────────────
 
@@ -439,7 +471,7 @@ data class TrackingSettings(
     val activityConfigs: List<ActivityConfig> = ActivityConfig.defaults(),
     val aiMode: AiMode = AiMode.RULE_BASED,
     val webhookEnabled: Boolean = false,
-    val webhookUrl: String = "",
+    val webhookUrl: String = "https://pathwise.art",
     val webhookKey: String = UUID.randomUUID().toString().replace("-", "").take(16),
     val webhookIntervalMs: Long = 10000L          // 10 seconds default
 )
@@ -463,4 +495,87 @@ enum class FuelType(val label: String) {
     PETROL("Petrol"),
     DIESEL("Diesel"),
     LPG("LPG")
+}
+
+// ─────────────────────────────────────────────────────────
+//  SUBSCRIPTION PLANS
+// ─────────────────────────────────────────────────────────
+
+enum class SubscriptionPlan(
+    val productId: String,
+    val label: String,
+    val price: String,
+    val periodLabel: String,
+    val monthlyEquivalent: String,
+    val savings: String
+) {
+    MONTHLY(
+        productId = "sub_monthly",
+        label = "1 Month",
+        price = "$2.99",
+        periodLabel = "/month",
+        monthlyEquivalent = "$2.99/mo",
+        savings = ""
+    ),
+    SEMI_ANNUAL(
+        productId = "sub_semi_annual",
+        label = "6 Months",
+        price = "$14.99",
+        periodLabel = "/6 months",
+        monthlyEquivalent = "$2.50/mo",
+        savings = "Save 16%"
+    ),
+    ANNUAL(
+        productId = "sub_annual",
+        label = "1 Year",
+        price = "$30.00",
+        periodLabel = "/year",
+        monthlyEquivalent = "$2.50/mo",
+        savings = "Save 16%"
+    ),
+    LIFETIME(
+        productId = "sub_lifetime",
+        label = "Lifetime",
+        price = "$55.00",
+        periodLabel = "one-time",
+        monthlyEquivalent = "Pay once",
+        savings = "Best value"
+    );
+
+    companion object {
+        fun fromProductId(productId: String): SubscriptionPlan? =
+            entries.firstOrNull { it.productId == productId }
+
+        val allProductIds: List<String> = entries.map { it.productId }
+    }
+}
+
+data class SubscriptionStatus(
+    val isSubscribed: Boolean = false,
+    val plan: SubscriptionPlan? = null,
+    val expiryTime: Long = 0L,
+    val purchaseToken: String = "",
+    val freeTrialStartTime: Long = 0L
+) {
+    companion object {
+        const val FREE_TRIAL_DURATION_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
+    }
+
+    val isTrialActive: Boolean
+        get() = freeTrialStartTime > 0L &&
+                System.currentTimeMillis() < freeTrialStartTime + FREE_TRIAL_DURATION_MS
+
+    val trialDaysRemaining: Int
+        get() {
+            if (freeTrialStartTime <= 0L) return 7
+            val remaining = (freeTrialStartTime + FREE_TRIAL_DURATION_MS - System.currentTimeMillis())
+            return (remaining / (24 * 60 * 60 * 1000)).toInt().coerceAtLeast(0)
+        }
+
+    val hasUsedTrial: Boolean
+        get() = freeTrialStartTime > 0L
+
+    val isActive: Boolean
+        get() = isTrialActive ||
+                (isSubscribed && (plan == SubscriptionPlan.LIFETIME || expiryTime > System.currentTimeMillis()))
 }

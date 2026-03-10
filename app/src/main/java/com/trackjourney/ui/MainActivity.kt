@@ -61,8 +61,6 @@ fun TrackMyJourneyApp() {
 
     val trackingViewModel: TrackingStateViewModel = hiltViewModel()
     val trackingState by trackingViewModel.state.collectAsState()
-    val subscriptionStatus by trackingViewModel.subscriptionStatus.collectAsState()
-    val isPremium = subscriptionStatus.isActive
 
     var pendingTrackingStart by remember { mutableStateOf(false) }
 
@@ -109,13 +107,8 @@ fun TrackMyJourneyApp() {
             // Global tracking toggle bar — visible on all pages
             TrackingToggleBar(
                 state = trackingState,
-                isPremium = isPremium,
                 onToggle = { enabled ->
                     if (enabled) {
-                        if (!isPremium) {
-                            navController.navigate(Screen.Subscription.route)
-                            return@TrackingToggleBar
-                        }
                         pendingTrackingStart = true
                         permissionLauncher.launch(
                             arrayOf(
@@ -178,7 +171,6 @@ fun TrackMyJourneyApp() {
 @Composable
 private fun TrackingToggleBar(
     state: TrackingBarState,
-    isPremium: Boolean = true,
     onToggle: (Boolean) -> Unit
 ) {
     val (activityIcon, activityColor, activityLabel) = remember(state.activityType) {
@@ -239,17 +231,17 @@ private fun TrackingToggleBar(
                     }
                 } else {
                     Icon(
-                        if (!isPremium) Icons.Filled.Lock else Icons.Filled.LocationOff,
+                        Icons.Filled.LocationOff,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = if (!isPremium) Accent else MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        if (!isPremium) "Location Tracking (Premium)" else "Location Tracking",
+                        "Location Tracking",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
-                        color = if (!isPremium) Accent else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 

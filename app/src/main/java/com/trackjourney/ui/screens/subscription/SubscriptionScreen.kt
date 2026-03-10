@@ -71,12 +71,13 @@ fun SubscriptionScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Active subscription badge
+            // Active subscription / trial badge
             if (subscriptionStatus.isActive) {
+                val isTrial = subscriptionStatus.isTrialActive && !subscriptionStatus.isSubscribed
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = PrimaryLight.copy(alpha = 0.12f)
+                        containerColor = if (isTrial) Accent.copy(alpha = 0.12f) else PrimaryLight.copy(alpha = 0.12f)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -87,21 +88,22 @@ fun SubscriptionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Filled.CheckCircle,
+                            if (isTrial) Icons.Filled.Timer else Icons.Filled.CheckCircle,
                             contentDescription = null,
-                            tint = PrimaryLight,
+                            tint = if (isTrial) Accent else PrimaryLight,
                             modifier = Modifier.size(28.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                "Premium Active",
+                                if (isTrial) "Free Trial Active" else "Premium Active",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
-                                color = PrimaryLight
+                                color = if (isTrial) Accent else PrimaryLight
                             )
                             Text(
-                                "Plan: ${subscriptionStatus.plan?.label ?: "Unknown"}",
+                                if (isTrial) "${subscriptionStatus.trialDaysRemaining} days remaining"
+                                else "Plan: ${subscriptionStatus.plan?.label ?: "Unknown"}",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -155,8 +157,8 @@ fun SubscriptionScreen(
             )
             PremiumFeatureItem(
                 icon = Icons.Filled.PlayCircle,
-                title = "Tracking",
-                description = "Start GPS tracking sessions with full functionality"
+                title = "Track Playback",
+                description = "Replay and animate saved GPS tracks on the map"
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -181,6 +183,43 @@ fun SubscriptionScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Free trial button
+            if (!subscriptionStatus.hasUsedTrial && !subscriptionStatus.isActive) {
+                OutlinedButton(
+                    onClick = {
+                        viewModel.startFreeTrial()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(2.dp, Accent)
+                ) {
+                    Icon(
+                        Icons.Filled.Timer,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = Accent
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Start 7-Day Free Trial",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Accent
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "No payment required. Full access for 7 days.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             // Subscribe button
             Button(

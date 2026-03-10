@@ -554,8 +554,28 @@ data class SubscriptionStatus(
     val isSubscribed: Boolean = false,
     val plan: SubscriptionPlan? = null,
     val expiryTime: Long = 0L,
-    val purchaseToken: String = ""
+    val purchaseToken: String = "",
+    val freeTrialStartTime: Long = 0L
 ) {
+    companion object {
+        const val FREE_TRIAL_DURATION_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
+    }
+
+    val isTrialActive: Boolean
+        get() = freeTrialStartTime > 0L &&
+                System.currentTimeMillis() < freeTrialStartTime + FREE_TRIAL_DURATION_MS
+
+    val trialDaysRemaining: Int
+        get() {
+            if (freeTrialStartTime <= 0L) return 7
+            val remaining = (freeTrialStartTime + FREE_TRIAL_DURATION_MS - System.currentTimeMillis())
+            return (remaining / (24 * 60 * 60 * 1000)).toInt().coerceAtLeast(0)
+        }
+
+    val hasUsedTrial: Boolean
+        get() = freeTrialStartTime > 0L
+
     val isActive: Boolean
-        get() = isSubscribed && (plan == SubscriptionPlan.LIFETIME || expiryTime > System.currentTimeMillis())
+        get() = isTrialActive ||
+                (isSubscribed && (plan == SubscriptionPlan.LIFETIME || expiryTime > System.currentTimeMillis()))
 }

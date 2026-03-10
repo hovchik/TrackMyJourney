@@ -38,6 +38,7 @@ class SettingsDataStore(
         val SUBSCRIPTION_PLAN = stringPreferencesKey("subscription_plan")
         val SUBSCRIPTION_EXPIRY = longPreferencesKey("subscription_expiry")
         val SUBSCRIPTION_TOKEN = stringPreferencesKey("subscription_token")
+        val FREE_TRIAL_START = longPreferencesKey("free_trial_start")
     }
 
     private fun parseActivityConfigs(json: String?): List<ActivityConfig> {
@@ -163,7 +164,8 @@ class SettingsDataStore(
                 prefs[SUBSCRIPTION_PLAN]?.let { SubscriptionPlan.valueOf(it) }
             } catch (_: Exception) { null },
             expiryTime = prefs[SUBSCRIPTION_EXPIRY] ?: 0L,
-            purchaseToken = prefs[SUBSCRIPTION_TOKEN] ?: ""
+            purchaseToken = prefs[SUBSCRIPTION_TOKEN] ?: "",
+            freeTrialStartTime = prefs[FREE_TRIAL_START] ?: 0L
         )
     }
 
@@ -177,6 +179,15 @@ class SettingsDataStore(
             }
             prefs[SUBSCRIPTION_EXPIRY] = status.expiryTime
             prefs[SUBSCRIPTION_TOKEN] = status.purchaseToken
+            prefs[FREE_TRIAL_START] = status.freeTrialStartTime
+        }
+    }
+
+    suspend fun startFreeTrial() {
+        context.dataStore.edit { prefs ->
+            if ((prefs[FREE_TRIAL_START] ?: 0L) == 0L) {
+                prefs[FREE_TRIAL_START] = System.currentTimeMillis()
+            }
         }
     }
 

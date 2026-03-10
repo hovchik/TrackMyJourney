@@ -45,6 +45,12 @@ class SubscriptionViewModel @Inject constructor(
         billingManager.launchPurchaseFlow(activity, plan)
     }
 
+    fun startFreeTrial() {
+        viewModelScope.launch {
+            settingsDataStore.startFreeTrial()
+        }
+    }
+
     fun restorePurchases() {
         billingManager.queryExistingPurchases()
     }

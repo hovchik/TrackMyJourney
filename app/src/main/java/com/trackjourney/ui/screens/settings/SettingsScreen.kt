@@ -176,7 +176,7 @@ fun SettingsScreen(
                                 color = Primary
                             )
                             Text(
-                                "Unlock cars, webhooks, tracking & more",
+                                "Unlock cars, webhooks, track playback & more",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

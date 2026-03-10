@@ -125,6 +125,31 @@ interface TrackDao {
 
     @Query("SELECT SUM(calories_burned) FROM tracks WHERE start_time >= :since AND calories_burned > 0")
     suspend fun getTotalCaloriesSince(since: Long): Double?
+
+    // ── All-time aggregate queries ──
+
+    @Query("SELECT MAX(max_speed_kmh) FROM tracks")
+    suspend fun getMaxSpeed(): Double?
+
+    @Query("SELECT SUM(COALESCE(end_time, start_time) - start_time) FROM tracks WHERE end_time IS NOT NULL")
+    suspend fun getTotalDuration(): Long?
+
+    @Query("SELECT SUM(calories_burned) FROM tracks WHERE calories_burned > 0")
+    suspend fun getTotalCalories(): Double?
+
+    // ── Activity breakdown ──
+
+    @Query("SELECT activity_type FROM tracks WHERE is_active = 0")
+    suspend fun getAllActivityTypes(): List<ActivityType>
+
+    @Query("SELECT COUNT(*) FROM tracks WHERE activity_type = :activityType AND is_active = 0")
+    suspend fun getTrackCountByActivity(activityType: ActivityType): Int
+
+    @Query("SELECT SUM(distance_meters) FROM tracks WHERE activity_type = :activityType AND is_active = 0")
+    suspend fun getTotalDistanceByActivity(activityType: ActivityType): Double?
+
+    @Query("SELECT SUM(COALESCE(end_time, start_time) - start_time) FROM tracks WHERE activity_type = :activityType AND is_active = 0 AND end_time IS NOT NULL")
+    suspend fun getTotalDurationByActivity(activityType: ActivityType): Long?
 }
 
 // ─────────────────────────────────────────────────────────
@@ -160,6 +185,12 @@ interface TrackPointDao {
 
     @Query("DELETE FROM track_points WHERE track_id = :trackId")
     suspend fun deletePointsForTrack(trackId: String)
+
+    @Query("SELECT altitude FROM track_points WHERE altitude IS NOT NULL ORDER BY timestamp ASC")
+    suspend fun getAllAltitudes(): List<Double>
+
+    @Query("SELECT COUNT(*) FROM track_points")
+    suspend fun getTotalPointCount(): Int
 }
 
 // ─────────────────────────────────────────────────────────

@@ -3,7 +3,9 @@ package com.trackjourney.ui.screens.analysis
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.ai.LocalAiEngine
+import com.trackjourney.data.model.AiAnalysis
 import com.trackjourney.data.model.TrackSession
+import com.trackjourney.data.repository.ActivityBreakdown
 import com.trackjourney.data.repository.TrackRepository
 import com.trackjourney.data.repository.TrackingStats
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,6 +17,8 @@ data class AnalysisUiState(
     val stats: TrackingStats = TrackingStats(0, 0.0, 0.0),
     val suggestions: List<LocalAiEngine.TripSuggestion> = emptyList(),
     val recentTracks: List<TrackSession> = emptyList(),
+    val activityBreakdown: List<ActivityBreakdown> = emptyList(),
+    val recentAnalyses: List<Pair<TrackSession, AiAnalysis>> = emptyList(),
     val isLoading: Boolean = false
 )
 
@@ -31,23 +35,25 @@ class AnalysisViewModel @Inject constructor(
     }
 
     fun loadData() {
-        // Force a re-emission by triggering the flow observation
         observeData()
     }
 
     private fun observeData() {
-        // Reactively re-compute stats and suggestions whenever tracks change
         viewModelScope.launch {
             repository.getAllTracks().collect { tracks ->
                 _uiState.update { it.copy(isLoading = true, recentTracks = tracks.take(5)) }
 
                 val stats = repository.getStats()
                 val suggestions = repository.suggestBestTrips()
+                val breakdown = repository.getActivityBreakdown()
+                val recentAnalyses = repository.getRecentAnalyses(5)
 
                 _uiState.update {
                     it.copy(
                         stats = stats,
                         suggestions = suggestions,
+                        activityBreakdown = breakdown,
+                        recentAnalyses = recentAnalyses,
                         isLoading = false
                     )
                 }

@@ -34,6 +34,10 @@ class SettingsDataStore(
         val WEBHOOK_URL = stringPreferencesKey("webhook_url")
         val WEBHOOK_KEY = stringPreferencesKey("webhook_key")
         val WEBHOOK_INTERVAL_MS = longPreferencesKey("webhook_interval_ms")
+        val SUBSCRIPTION_ACTIVE = booleanPreferencesKey("subscription_active")
+        val SUBSCRIPTION_PLAN = stringPreferencesKey("subscription_plan")
+        val SUBSCRIPTION_EXPIRY = longPreferencesKey("subscription_expiry")
+        val SUBSCRIPTION_TOKEN = stringPreferencesKey("subscription_token")
     }
 
     private fun parseActivityConfigs(json: String?): List<ActivityConfig> {
@@ -148,6 +152,32 @@ class SettingsDataStore(
 
     suspend fun updateWebhookIntervalMs(intervalMs: Long) {
         context.dataStore.edit { it[WEBHOOK_INTERVAL_MS] = intervalMs }
+    }
+
+    // ─── Subscription ──────────────────────────────────
+
+    val subscriptionStatus: Flow<SubscriptionStatus> = context.dataStore.data.map { prefs ->
+        SubscriptionStatus(
+            isSubscribed = prefs[SUBSCRIPTION_ACTIVE] ?: false,
+            plan = try {
+                prefs[SUBSCRIPTION_PLAN]?.let { SubscriptionPlan.valueOf(it) }
+            } catch (_: Exception) { null },
+            expiryTime = prefs[SUBSCRIPTION_EXPIRY] ?: 0L,
+            purchaseToken = prefs[SUBSCRIPTION_TOKEN] ?: ""
+        )
+    }
+
+    suspend fun updateSubscriptionStatus(status: SubscriptionStatus) {
+        context.dataStore.edit { prefs ->
+            prefs[SUBSCRIPTION_ACTIVE] = status.isSubscribed
+            if (status.plan != null) {
+                prefs[SUBSCRIPTION_PLAN] = status.plan.name
+            } else {
+                prefs.remove(SUBSCRIPTION_PLAN)
+            }
+            prefs[SUBSCRIPTION_EXPIRY] = status.expiryTime
+            prefs[SUBSCRIPTION_TOKEN] = status.purchaseToken
+        }
     }
 
     suspend fun updateAll(settings: TrackingSettings) {

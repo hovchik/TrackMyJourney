@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.bluetooth.WearableReading
+import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.location.SatelliteInfo
 import com.trackjourney.data.model.*
@@ -20,11 +21,15 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: TrackRepository,
-    private val wearableManager: WearableManager
+    private val wearableManager: WearableManager,
+    private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
     val settings: StateFlow<TrackingSettings> = repository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TrackingSettings())
+
+    val subscriptionStatus: StateFlow<SubscriptionStatus> = settingsDataStore.subscriptionStatus
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SubscriptionStatus())
 
     val satelliteInfo: StateFlow<SatelliteInfo> = repository.satelliteInfo
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SatelliteInfo())

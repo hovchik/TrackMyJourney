@@ -3,6 +3,7 @@ package com.trackjourney.di
 import android.content.Context
 import androidx.room.Room
 import com.trackjourney.data.ai.LocalAiEngine
+import com.trackjourney.data.billing.BillingManager
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.*
 import com.trackjourney.data.location.BatteryMonitor
@@ -76,6 +77,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideWebhookSender(@ApplicationContext context: Context) = WebhookSender(context)
+
+    @Provides
+    @Singleton
+    fun provideBillingManager(@ApplicationContext context: Context) = BillingManager(context)
 
     @Provides
     @Singleton

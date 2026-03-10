@@ -496,3 +496,66 @@ enum class FuelType(val label: String) {
     DIESEL("Diesel"),
     LPG("LPG")
 }
+
+// ─────────────────────────────────────────────────────────
+//  SUBSCRIPTION PLANS
+// ─────────────────────────────────────────────────────────
+
+enum class SubscriptionPlan(
+    val productId: String,
+    val label: String,
+    val price: String,
+    val periodLabel: String,
+    val monthlyEquivalent: String,
+    val savings: String
+) {
+    MONTHLY(
+        productId = "sub_monthly",
+        label = "1 Month",
+        price = "$2.99",
+        periodLabel = "/month",
+        monthlyEquivalent = "$2.99/mo",
+        savings = ""
+    ),
+    SEMI_ANNUAL(
+        productId = "sub_semi_annual",
+        label = "6 Months",
+        price = "$14.99",
+        periodLabel = "/6 months",
+        monthlyEquivalent = "$2.50/mo",
+        savings = "Save 16%"
+    ),
+    ANNUAL(
+        productId = "sub_annual",
+        label = "1 Year",
+        price = "$30.00",
+        periodLabel = "/year",
+        monthlyEquivalent = "$2.50/mo",
+        savings = "Save 16%"
+    ),
+    LIFETIME(
+        productId = "sub_lifetime",
+        label = "Lifetime",
+        price = "$55.00",
+        periodLabel = "one-time",
+        monthlyEquivalent = "Pay once",
+        savings = "Best value"
+    );
+
+    companion object {
+        fun fromProductId(productId: String): SubscriptionPlan? =
+            entries.firstOrNull { it.productId == productId }
+
+        val allProductIds: List<String> = entries.map { it.productId }
+    }
+}
+
+data class SubscriptionStatus(
+    val isSubscribed: Boolean = false,
+    val plan: SubscriptionPlan? = null,
+    val expiryTime: Long = 0L,
+    val purchaseToken: String = ""
+) {
+    val isActive: Boolean
+        get() = isSubscribed && (plan == SubscriptionPlan.LIFETIME || expiryTime > System.currentTimeMillis())
+}

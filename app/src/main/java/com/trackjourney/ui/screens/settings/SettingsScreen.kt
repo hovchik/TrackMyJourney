@@ -1696,7 +1696,7 @@ fun SettingsScreen(
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("TrackMyJourney", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("Pathwise", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Text("Version 1.0.0", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(

@@ -3,6 +3,7 @@ package com.trackjourney.ui.screens.map
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -678,8 +679,9 @@ private fun ActivityLegend(
     modifier: Modifier = Modifier
 ) {
     val activeConfigs = configs.filter { it.isActive }
+    var expanded by remember { mutableStateOf(false) }
     Surface(
-        modifier = modifier,
+        modifier = modifier.clickable { expanded = !expanded },
         color = OverlayDark.copy(alpha = 0.88f),
         shape = RoundedCornerShape(14.dp),
         shadowElevation = 4.dp
@@ -688,37 +690,50 @@ private fun ActivityLegend(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                "ACTIVITIES",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = 0.5f),
-                letterSpacing = 1.sp
-            )
-            activeConfigs.forEach { cfg ->
-                val color = Color(cfg.colorHex)
-                val icon = activityIconFromName(cfg.iconName)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        tint = color,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        cfg.displayName,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = color
-                    )
-                    Text(
-                        "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
-                        fontSize = 9.sp,
-                        color = Color.White.copy(alpha = 0.5f)
-                    )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    "ACTIVITIES",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.5f),
+                    letterSpacing = 1.sp
+                )
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = Color.White.copy(alpha = 0.5f),
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+            if (expanded) {
+                activeConfigs.forEach { cfg ->
+                    val color = Color(cfg.colorHex)
+                    val icon = activityIconFromName(cfg.iconName)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            icon,
+                            contentDescription = null,
+                            tint = color,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            cfg.displayName,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = color
+                        )
+                        Text(
+                            "${cfg.minSpeedKmh.toInt()}-${cfg.maxSpeedKmh.toInt()} km/h",
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.5f)
+                        )
+                    }
                 }
             }
         }

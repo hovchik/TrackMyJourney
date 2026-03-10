@@ -155,6 +155,11 @@ class TrackingService : Service() {
                 currentTrackId = track.id
                 pointCount = 0
 
+                // Regenerate webhook key for each new tracking session
+                val newKey = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+                settingsDataStore.updateWebhookKey(newKey)
+                Log.i(TAG, "Webhook key regenerated for new session")
+
                 // Log battery level at start
                 batteryAtStart = getBatteryLevel()
                 batteryAtStart?.let { battery ->

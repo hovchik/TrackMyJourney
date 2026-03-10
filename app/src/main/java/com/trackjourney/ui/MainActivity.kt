@@ -34,6 +34,7 @@ import com.trackjourney.ui.screens.analysis.AnalysisScreen
 import com.trackjourney.ui.screens.dashboard.DashboardScreen
 import com.trackjourney.ui.screens.map.MapScreen
 import com.trackjourney.ui.screens.settings.SettingsScreen
+import com.trackjourney.ui.screens.subscription.SubscriptionScreen
 import com.trackjourney.ui.screens.tracks.TracksScreen
 import com.trackjourney.ui.theme.*
 import dagger.hilt.android.AndroidEntryPoint
@@ -151,7 +152,16 @@ fun TrackMyJourneyApp() {
                     AnalysisScreen()
                 }
                 composable(Screen.Settings.route) {
-                    SettingsScreen()
+                    SettingsScreen(
+                        onNavigateToSubscription = {
+                            navController.navigate(Screen.Subscription.route)
+                        }
+                    )
+                }
+                composable(Screen.Subscription.route) {
+                    SubscriptionScreen(
+                        onBack = { navController.popBackStack() }
+                    )
                 }
             }
         }

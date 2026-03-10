@@ -63,6 +63,8 @@ fun MapScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val allTracks by viewModel.allTracks.collectAsState()
+    val subscriptionStatus by viewModel.subscriptionStatus.collectAsState()
+    val isPremium = subscriptionStatus.isActive
     var trackDropdownExpanded by remember { mutableStateOf(false) }
     var showExpandedTimeline by remember { mutableStateOf(false) }
     val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy  HH:mm", Locale.getDefault()) }
@@ -240,7 +242,9 @@ fun MapScreen(
                 isPlaying = isPlayingBack,
                 playbackIndex = playbackIndex,
                 playbackSpeed = playbackSpeed,
+                isPremium = isPremium,
                 onPlayPause = {
+                    if (!isPremium) return@FixedTimelinePanel
                     if (isPlayingBack) {
                         isPlayingBack = false
                     } else {
@@ -251,6 +255,7 @@ fun MapScreen(
                     }
                 },
                 onSpeedChange = {
+                    if (!isPremium) return@FixedTimelinePanel
                     playbackSpeed = when {
                         playbackSpeed < 1f -> 1f
                         playbackSpeed < 2f -> 2f
@@ -261,6 +266,7 @@ fun MapScreen(
                     }
                 },
                 onSeek = { index ->
+                    if (!isPremium) return@FixedTimelinePanel
                     playbackIndex = index
                     isPlayingBack = false
                 },
@@ -1554,6 +1560,7 @@ private fun FixedTimelinePanel(
     isPlaying: Boolean,
     playbackIndex: Int,
     playbackSpeed: Float,
+    isPremium: Boolean = true,
     onPlayPause: () -> Unit,
     onSpeedChange: () -> Unit,
     onSeek: (Int) -> Unit,
@@ -1656,13 +1663,15 @@ private fun FixedTimelinePanel(
                     modifier = Modifier.size(32.dp),
                     shape = CircleShape,
                     colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = Primary,
+                        containerColor = if (isPremium) Primary else Color.Gray,
                         contentColor = Color.White
                     )
                 ) {
                     Icon(
-                        if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        if (!isPremium) Icons.Filled.Lock
+                        else if (isPlaying) Icons.Filled.Pause
+                        else Icons.Filled.PlayArrow,
+                        contentDescription = if (!isPremium) "Premium" else if (isPlaying) "Pause" else "Play",
                         modifier = Modifier.size(18.dp)
                     )
                 }

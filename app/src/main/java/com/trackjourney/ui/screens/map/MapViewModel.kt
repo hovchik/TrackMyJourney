@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.bluetooth.WearableReading
+import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.data.location.SatelliteInfo
 import com.trackjourney.data.model.*
 import com.trackjourney.data.repository.TrackRepository
@@ -68,11 +69,15 @@ class MapViewModel @Inject constructor(
     private val app: Application,
     private val repository: TrackRepository,
     private val wearableManager: WearableManager,
+    private val settingsDataStore: SettingsDataStore,
     private val savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(app) {
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
+
+    val subscriptionStatus: StateFlow<SubscriptionStatus> = settingsDataStore.subscriptionStatus
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SubscriptionStatus())
 
     val allTracks: StateFlow<List<TrackSession>> = repository.getAllTracks()
         .map { tracks -> tracks.filter { !it.isActive && it.endTime != null } }

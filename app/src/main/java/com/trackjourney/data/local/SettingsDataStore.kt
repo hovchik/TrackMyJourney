@@ -75,7 +75,7 @@ class SettingsDataStore(
                 AiMode.valueOf(prefs[AI_MODE] ?: "RULE_BASED")
             } catch (e: Exception) { AiMode.RULE_BASED },
             webhookEnabled = prefs[WEBHOOK_ENABLED] ?: false,
-            webhookUrl = prefs[WEBHOOK_URL] ?: "",
+            webhookUrl = prefs[WEBHOOK_URL] ?: "https://pathwise.art",
             webhookKey = prefs[WEBHOOK_KEY] ?: java.util.UUID.randomUUID().toString().replace("-", "").take(16),
             webhookIntervalMs = prefs[WEBHOOK_INTERVAL_MS] ?: 10000L
         )

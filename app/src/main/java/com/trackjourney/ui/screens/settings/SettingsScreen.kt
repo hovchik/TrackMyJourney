@@ -1456,7 +1456,7 @@ fun SettingsScreen(
                                     viewModel.updateWebhookUrl(it)
                                 },
                                 label = { Text("Webhook URL") },
-                                placeholder = { Text("https://example.com/hook") },
+                                placeholder = { Text("https://pathwise.art") },
                                 leadingIcon = { Icon(Icons.Filled.Link, contentDescription = null) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),

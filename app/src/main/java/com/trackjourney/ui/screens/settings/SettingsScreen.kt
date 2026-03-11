@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -135,9 +136,93 @@ fun SettingsScreen(
             )
         }
 
-        // ── SUBSCRIPTION BANNER ────────────────────────
-        if (!isPremium) {
-            item {
+        // ── SUBSCRIPTION BANNER / PLAN INFO ──────────────
+        item {
+            if (isPremium) {
+                // Show current subscription plan details
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Primary.copy(alpha = 0.06f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Accent.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.WorkspacePremium,
+                                        contentDescription = null,
+                                        tint = Accent,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    if (subscriptionStatus.isTrialActive) "Free Trial" else "Premium",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = Primary
+                                )
+                                if (subscriptionStatus.isTrialActive) {
+                                    Text(
+                                        "${subscriptionStatus.trialDaysRemaining} days remaining",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    subscriptionStatus.plan?.let { plan ->
+                                        Text(
+                                            "${plan.label} \u2022 ${plan.price}${plan.periodLabel}",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                            Surface(
+                                color = Color(0xFF2E7D32).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    "Active",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF2E7D32),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        if (subscriptionStatus.isTrialActive && !subscriptionStatus.isSubscribed) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Surface(
+                                color = Primary.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onNavigateToSubscription() }
+                            ) {
+                                Text(
+                                    "Subscribe to keep Premium after trial ends",
+                                    fontSize = 13.sp,
+                                    color = Primary,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
@@ -192,18 +277,36 @@ fun SettingsScreen(
             }
         }
 
-        // ── PERMISSIONS ────────────────────────────────
+        // ── PERMISSIONS (collapsible) ────────────────────
         item {
-            Text(
-                "Permissions",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
+            var permissionsExpanded by remember { mutableStateOf(false) }
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { permissionsExpanded = !permissionsExpanded }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Permissions",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        if (permissionsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (permissionsExpanded) "Collapse" else "Expand",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                AnimatedVisibility(visible = permissionsExpanded) {
+                    PermissionsSection()
+                }
+            }
         }
-
-        item { PermissionsSection() }
 
         // ── GPS STATUS ────────────────────────────────
         item {
@@ -1693,17 +1796,45 @@ fun SettingsScreen(
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("TrackMyJourney", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("Version 1.0.0", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    val versionName = remember {
+                        try {
+                            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+                        } catch (_: Exception) { "1.0.0" }
+                    }
+                    val versionCode = remember {
+                        try {
+                            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pInfo.longVersionCode else @Suppress("DEPRECATION") pInfo.versionCode.toLong()
+                        } catch (_: Exception) { 1L }
+                    }
+                    Text("Pathwise", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "GPS tracking with OpenStreetMap and on-device AI analysis. Maximum precision satellite positioning. All data stored locally.",
+                        "Version $versionName ($versionCode)",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Pathwise is a privacy-first journey tracker that uses high-precision GPS " +
+                            "positioning with OpenStreetMap. It features on-device AI analysis for " +
+                            "smart trip insights, automatic activity detection, and vehicle tracking " +
+                            "with fuel cost estimation. All your data is stored locally on your " +
+                            "device — nothing is sent to external servers.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 18.sp
+                        lineHeight = 19.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "\u00a9 ${java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)} Pathwise. All rights reserved.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 }
             }

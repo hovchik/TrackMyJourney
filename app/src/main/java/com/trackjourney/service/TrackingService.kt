@@ -445,7 +445,7 @@ class TrackingService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("TrackMyJourney")
+            .setContentTitle("Pathwise")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_tracking)
             .setContentIntent(pendingIntent)

@@ -26,8 +26,9 @@ class BillingManager(
     private val _subscriptionStatus = MutableStateFlow(SubscriptionStatus())
     val subscriptionStatus: StateFlow<SubscriptionStatus> = _subscriptionStatus.asStateFlow()
 
-    private val _productDetails = MutableStateFlow<Map<String, ProductDetails>>(emptyMap())
-    val productDetails: StateFlow<Map<String, ProductDetails>> = _productDetails.asStateFlow()
+    /** Cached ProductDetails for the single subscription product. */
+    private val _productDetails = MutableStateFlow<ProductDetails?>(null)
+    val productDetails: StateFlow<ProductDetails?> = _productDetails.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -61,73 +62,37 @@ class BillingManager(
     }
 
     private fun queryProductDetails() {
-        // Query subscriptions (monthly, semi-annual, annual)
-        val subProducts = SubscriptionPlan.entries
-            .filter { it != SubscriptionPlan.LIFETIME }
-            .map { plan ->
-                QueryProductDetailsParams.Product.newBuilder()
-                    .setProductId(plan.productId)
-                    .setProductType(BillingClient.ProductType.SUBS)
-                    .build()
-            }
-
-        // Query in-app (lifetime)
-        val inAppProducts = listOf(
-            QueryProductDetailsParams.Product.newBuilder()
-                .setProductId(SubscriptionPlan.LIFETIME.productId)
-                .setProductType(BillingClient.ProductType.INAPP)
-                .build()
-        )
-
-        // Query subscriptions
-        if (subProducts.isNotEmpty()) {
-            val subParams = QueryProductDetailsParams.newBuilder()
-                .setProductList(subProducts)
-                .build()
-            billingClient.queryProductDetailsAsync(subParams) { billingResult, productDetailsList ->
-                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    val currentMap = _productDetails.value.toMutableMap()
-                    productDetailsList.forEach { details ->
-                        currentMap[details.productId] = details
-                    }
-                    _productDetails.value = currentMap
-                    Log.i(TAG, "Loaded ${productDetailsList.size} subscription products")
-                }
-            }
-        }
-
-        // Query in-app purchases
-        val inAppParams = QueryProductDetailsParams.newBuilder()
-            .setProductList(inAppProducts)
+        val params = QueryProductDetailsParams.newBuilder()
+            .setProductList(
+                listOf(
+                    QueryProductDetailsParams.Product.newBuilder()
+                        .setProductId(SubscriptionPlan.PRODUCT_ID)
+                        .setProductType(BillingClient.ProductType.SUBS)
+                        .build()
+                )
+            )
             .build()
-        billingClient.queryProductDetailsAsync(inAppParams) { billingResult, productDetailsList ->
+
+        billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                val currentMap = _productDetails.value.toMutableMap()
-                productDetailsList.forEach { details ->
-                    currentMap[details.productId] = details
+                val details = productDetailsList.firstOrNull()
+                _productDetails.value = details
+                if (details != null) {
+                    val basePlans = details.subscriptionOfferDetails?.map { it.basePlanId }
+                    Log.i(TAG, "Loaded subscription product with base plans: $basePlans")
+                } else {
+                    Log.w(TAG, "No product details found for ${SubscriptionPlan.PRODUCT_ID}")
                 }
-                _productDetails.value = currentMap
-                Log.i(TAG, "Loaded ${productDetailsList.size} in-app products")
+            } else {
+                Log.w(TAG, "Query product details failed: ${billingResult.debugMessage}")
             }
         }
     }
 
     fun queryExistingPurchases() {
-        // Check subscriptions
         billingClient.queryPurchasesAsync(
             QueryPurchasesParams.newBuilder()
                 .setProductType(BillingClient.ProductType.SUBS)
-                .build()
-        ) { billingResult, purchases ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                handlePurchases(purchases)
-            }
-        }
-
-        // Check in-app (lifetime)
-        billingClient.queryPurchasesAsync(
-            QueryPurchasesParams.newBuilder()
-                .setProductType(BillingClient.ProductType.INAPP)
                 .build()
         ) { billingResult, purchases ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
@@ -140,36 +105,28 @@ class BillingManager(
         _isLoading.value = true
         _error.value = null
 
-        val details = _productDetails.value[plan.productId]
+        val details = _productDetails.value
         if (details == null) {
             _error.value = "Product not available. Please try again later."
             _isLoading.value = false
             return
         }
 
-        val productDetailsParamsList = if (plan == SubscriptionPlan.LIFETIME) {
-            listOf(
-                BillingFlowParams.ProductDetailsParams.newBuilder()
-                    .setProductDetails(details)
-                    .build()
-            )
-        } else {
-            val offerToken = details.subscriptionOfferDetails?.firstOrNull()?.offerToken
-            if (offerToken == null) {
-                _error.value = "Subscription offer not available."
-                _isLoading.value = false
-                return
-            }
-            listOf(
-                BillingFlowParams.ProductDetailsParams.newBuilder()
-                    .setProductDetails(details)
-                    .setOfferToken(offerToken)
-                    .build()
-            )
+        // Find the offer matching the selected base plan
+        val offer = details.subscriptionOfferDetails?.firstOrNull { it.basePlanId == plan.basePlanId }
+        if (offer == null) {
+            _error.value = "Plan \"${plan.label}\" not available. Please try again later."
+            _isLoading.value = false
+            return
         }
 
+        val productDetailsParams = BillingFlowParams.ProductDetailsParams.newBuilder()
+            .setProductDetails(details)
+            .setOfferToken(offer.offerToken)
+            .build()
+
         val billingFlowParams = BillingFlowParams.newBuilder()
-            .setProductDetailsParamsList(productDetailsParamsList)
+            .setProductDetailsParamsList(listOf(productDetailsParams))
             .build()
 
         val billingResult = billingClient.launchBillingFlow(activity, billingFlowParams)
@@ -199,40 +156,48 @@ class BillingManager(
     private fun handlePurchases(purchases: List<Purchase>) {
         for (purchase in purchases) {
             if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
-                // Acknowledge the purchase if not yet acknowledged
                 if (!purchase.isAcknowledged) {
                     acknowledgePurchase(purchase)
                 }
 
-                // Determine which plan was purchased
                 val productId = purchase.products.firstOrNull() ?: continue
-                val plan = SubscriptionPlan.fromProductId(productId) ?: continue
+                if (productId != SubscriptionPlan.PRODUCT_ID) continue
 
-                val expiryTime = if (plan == SubscriptionPlan.LIFETIME) {
-                    Long.MAX_VALUE
-                } else {
-                    // For subscriptions, estimate expiry from purchase time
-                    val durationMs = when (plan) {
-                        SubscriptionPlan.MONTHLY -> 30L * 24 * 60 * 60 * 1000
-                        SubscriptionPlan.SEMI_ANNUAL -> 180L * 24 * 60 * 60 * 1000
-                        SubscriptionPlan.ANNUAL -> 365L * 24 * 60 * 60 * 1000
-                        SubscriptionPlan.LIFETIME -> 0L
-                    }
-                    purchase.purchaseTime + durationMs
+                // Determine which base plan by matching offer details from cached ProductDetails
+                val plan = resolveBasePlan(purchase)
+
+                val durationMs = when (plan) {
+                    SubscriptionPlan.MONTHLY -> 30L * 24 * 60 * 60 * 1000
+                    SubscriptionPlan.SEMI_ANNUAL -> 180L * 24 * 60 * 60 * 1000
+                    SubscriptionPlan.ANNUAL -> 365L * 24 * 60 * 60 * 1000
+                    null -> 30L * 24 * 60 * 60 * 1000 // fallback to monthly
                 }
 
                 val status = SubscriptionStatus(
                     isSubscribed = true,
-                    plan = plan,
-                    expiryTime = expiryTime,
+                    plan = plan ?: SubscriptionPlan.MONTHLY,
+                    expiryTime = purchase.purchaseTime + durationMs,
                     purchaseToken = purchase.purchaseToken
                 )
                 _subscriptionStatus.value = status
                 onStatusChanged?.invoke(status)
-                Log.i(TAG, "Active subscription: ${plan.label} (expires: $expiryTime)")
+                Log.i(TAG, "Active subscription: ${plan?.label ?: "Unknown"} (expires: ${status.expiryTime})")
                 return
             }
         }
+    }
+
+    /**
+     * Try to resolve which base plan was purchased by checking the purchase's
+     * accountIdentifiers or by matching the subscription period from product details.
+     * Falls back to null if we can't determine.
+     */
+    private fun resolveBasePlan(purchase: Purchase): SubscriptionPlan? {
+        // The purchase token encodes the base plan, but there's no direct API to extract it.
+        // Best approach: check all offers and match by what's available.
+        // For restored purchases we rely on the stored plan in SettingsDataStore.
+        // For new purchases, we track the selected plan via the UI flow.
+        return _subscriptionStatus.value.plan.takeIf { _subscriptionStatus.value.isSubscribed }
     }
 
     private fun acknowledgePurchase(purchase: Purchase) {

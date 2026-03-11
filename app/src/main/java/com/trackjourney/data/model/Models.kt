@@ -502,7 +502,7 @@ enum class FuelType(val label: String) {
 // ─────────────────────────────────────────────────────────
 
 enum class SubscriptionPlan(
-    val productId: String,
+    val basePlanId: String,
     val label: String,
     val price: String,
     val periodLabel: String,
@@ -510,7 +510,7 @@ enum class SubscriptionPlan(
     val savings: String
 ) {
     MONTHLY(
-        productId = "sub_monthly",
+        basePlanId = "sub-monthly",
         label = "1 Month",
         price = "$2.99",
         periodLabel = "/month",
@@ -518,7 +518,7 @@ enum class SubscriptionPlan(
         savings = ""
     ),
     SEMI_ANNUAL(
-        productId = "sub_semi_annual",
+        basePlanId = "sub-semi-annual",
         label = "6 Months",
         price = "$14.99",
         periodLabel = "/6 months",
@@ -526,27 +526,19 @@ enum class SubscriptionPlan(
         savings = "Save 16%"
     ),
     ANNUAL(
-        productId = "sub_annual",
+        basePlanId = "sub-annual",
         label = "1 Year",
         price = "$30.00",
         periodLabel = "/year",
         monthlyEquivalent = "$2.50/mo",
         savings = "Save 16%"
-    ),
-    LIFETIME(
-        productId = "sub_lifetime",
-        label = "Lifetime",
-        price = "$55.00",
-        periodLabel = "one-time",
-        monthlyEquivalent = "Pay once",
-        savings = "Best value"
     );
 
     companion object {
-        fun fromProductId(productId: String): SubscriptionPlan? =
-            entries.firstOrNull { it.productId == productId }
+        const val PRODUCT_ID = "sub_monthly"
 
-        val allProductIds: List<String> = entries.map { it.productId }
+        fun fromBasePlanId(basePlanId: String): SubscriptionPlan? =
+            entries.firstOrNull { it.basePlanId == basePlanId }
     }
 }
 
@@ -577,5 +569,5 @@ data class SubscriptionStatus(
 
     val isActive: Boolean
         get() = isTrialActive ||
-                (isSubscribed && (plan == SubscriptionPlan.LIFETIME || expiryTime > System.currentTimeMillis()))
+                (isSubscribed && expiryTime > System.currentTimeMillis())
 }

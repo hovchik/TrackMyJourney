@@ -38,7 +38,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import com.trackjourney.BuildConfig
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.AiMode
 import com.trackjourney.data.model.ActivityConfig
@@ -1802,10 +1801,21 @@ fun SettingsScreen(
                         .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    val versionName = remember {
+                        try {
+                            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+                        } catch (_: Exception) { "1.0.0" }
+                    }
+                    val versionCode = remember {
+                        try {
+                            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pInfo.longVersionCode else @Suppress("DEPRECATION") pInfo.versionCode.toLong()
+                        } catch (_: Exception) { 1L }
+                    }
                     Text("Pathwise", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                        "Version $versionName ($versionCode)",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

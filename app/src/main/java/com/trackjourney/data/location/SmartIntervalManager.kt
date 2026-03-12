@@ -82,7 +82,11 @@ class SmartIntervalManager(
                         currentSpeedKmh > STATIONARY_SPEED -> INTERVAL_WALKING
                         else -> {
                             // GPS says stationary — consult physical sensors
-                            if (motion.gpsNeeded) {
+                            if (motion.vehicleMotionDetected) {
+                                // Vehicle starting to move — use walking interval for
+                                // responsive speed pickup before GPS reports > 1 km/h
+                                INTERVAL_WALKING
+                            } else if (motion.gpsNeeded) {
                                 // Sensors detect real motion (or lingering after motion)
                                 INTERVAL_STATIONARY
                             } else {

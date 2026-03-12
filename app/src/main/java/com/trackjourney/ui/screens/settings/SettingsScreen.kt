@@ -491,6 +491,33 @@ fun SettingsScreen(
                                     )
                                 }
                             }
+                            // Vehicle motion badge
+                            if (motionState.vehicleMotionDetected) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Driving.copy(alpha = 0.15f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.DirectionsCar,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = Driving
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "VEHICLE",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Driving
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -944,6 +971,125 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = Running
+                            )
+                        }
+                    }
+                }
+
+                // SpO2 (full width, only if available)
+                if (reading.spO2 != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Secondary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.Air,
+                                        contentDescription = null,
+                                        tint = Secondary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Blood Oxygen (SpO2)",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                @Suppress("KotlinConstantConditions")
+                                Text(
+                                    when {
+                                        reading.spO2!! >= 95 -> "Normal"
+                                        reading.spO2!! >= 90 -> "Low — monitor"
+                                        else -> "Very low — seek attention"
+                                    },
+                                    fontSize = 11.sp,
+                                    color = when {
+                                        reading.spO2!! >= 95 -> PrimaryLight
+                                        reading.spO2!! >= 90 -> Accent
+                                        else -> Error
+                                    }
+                                )
+                            }
+                            Text(
+                                "${reading.spO2}%",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = if (reading.spO2!! >= 95) Secondary else Error
+                            )
+                        }
+                    }
+                }
+
+                // Temperature (full width, only if available)
+                if (reading.temperatureC != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Accent.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.Thermostat,
+                                        contentDescription = null,
+                                        tint = Accent,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Body Temperature",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                @Suppress("KotlinConstantConditions")
+                                Text(
+                                    when {
+                                        reading.temperatureC!! < 36.1f -> "Below normal"
+                                        reading.temperatureC!! <= 37.2f -> "Normal"
+                                        reading.temperatureC!! <= 38.0f -> "Slightly elevated"
+                                        else -> "Fever"
+                                    },
+                                    fontSize = 11.sp,
+                                    color = when {
+                                        reading.temperatureC!! <= 37.2f -> PrimaryLight
+                                        reading.temperatureC!! <= 38.0f -> Accent
+                                        else -> Error
+                                    }
+                                )
+                            }
+                            Text(
+                                String.format("%.1f°C", reading.temperatureC),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Accent
                             )
                         }
                     }

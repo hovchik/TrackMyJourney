@@ -64,6 +64,16 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         private const val GPS_NEEDED_CONFIDENCE = 0.35f
         private const val GPS_LINGER_MS = 8000L
 
+        // ── Vehicle motion detection ──
+        // When accelerometer shows sustained activity but NO steps are detected,
+        // the user is likely in a vehicle.  A vehicle starting, accelerating, or
+        // turning produces accelerometer readings well above the walking threshold
+        // but no step events.  We use a separate, higher accel threshold plus a
+        // "no recent steps" condition to flag vehicle motion and force GPS on.
+        private const val VEHICLE_ACCEL_THRESHOLD = 0.6f   // m/s² average (lower than walking peak but sustained)
+        private const val VEHICLE_ACCEL_VOTE_MIN = 0.5f    // ≥50% of samples must exceed threshold
+        private const val NO_STEP_WINDOW_MS = 10_000L      // no steps in 10s → not on foot
+
         // ── Magnetometer low-pass ──
         private const val MAG_ALPHA = 0.15f
 
@@ -135,7 +145,9 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         val headingDeg: Float = 0f,
         val displacementMeters: Double = 0.0,
         val gpsNeeded: Boolean = false,
-        val stepPermissionGranted: Boolean = false
+        val stepPermissionGranted: Boolean = false,
+        /** True when accelerometer detects sustained motion without steps (likely vehicle). */
+        val vehicleMotionDetected: Boolean = false
     )
 
     /**
@@ -388,6 +400,7 @@ class MotionSensorManager(context: Context) : SensorEventListener {
 
         var accelMotionVotes = 0
         var gyroMotionVotes = 0
+        var vehicleAccelVotes = 0
         var accelSum = 0f
         var gyroSum = 0f
 
@@ -395,6 +408,7 @@ class MotionSensorManager(context: Context) : SensorEventListener {
             accelSum += accelSamples[i]
             gyroSum += gyroSamples[i]
             if (accelSamples[i] > ACCEL_MOTION_THRESHOLD) accelMotionVotes++
+            if (accelSamples[i] > VEHICLE_ACCEL_THRESHOLD) vehicleAccelVotes++
             if (gyroSamples[i] > GYRO_MOTION_THRESHOLD) gyroMotionVotes++
         }
 
@@ -403,24 +417,40 @@ class MotionSensorManager(context: Context) : SensorEventListener {
 
         val accelVoteRatio = accelMotionVotes.toFloat() / count
         val gyroVoteRatio = gyroMotionVotes.toFloat() / count
+        val vehicleVoteRatio = vehicleAccelVotes.toFloat() / count
 
         val now = System.currentTimeMillis()
         val recentStep = hasStepPermission && (now - lastStepTimestamp) < STEP_COOLDOWN_MS
+
+        // ── Vehicle motion detection ──
+        // Sustained accelerometer activity with NO recent steps strongly suggests
+        // the device is in a moving vehicle (car, bus, train).  In this case we
+        // must activate GPS even though the step-heavy fusion score is low.
+        val noRecentSteps = !recentStep && (lastStepTimestamp == 0L || (now - lastStepTimestamp) > NO_STEP_WINDOW_MS)
+        val vehicleMotion = vehicleVoteRatio >= VEHICLE_ACCEL_VOTE_MIN && noRecentSteps
 
         val accelConfidence = (accelVoteRatio / MOTION_VOTE_THRESHOLD).coerceIn(0f, 1f)
         val gyroConfidence = (gyroVoteRatio / MOTION_VOTE_THRESHOLD).coerceIn(0f, 1f)
 
         val motionConfidence = if (hasStepPermission) {
-            val stepConfidence = if (recentStep) 1f else 0f
-            (accelConfidence * WEIGHT_ACCEL_WITH_STEPS +
-             stepConfidence * WEIGHT_STEPS +
-             gyroConfidence * WEIGHT_GYRO_WITH_STEPS)
+            if (vehicleMotion) {
+                // Vehicle mode: ignore step weight, redistribute to accel/gyro
+                // so that vehicle vibrations reliably cross the threshold
+                (accelConfidence * WEIGHT_ACCEL_NO_STEPS +
+                 gyroConfidence * WEIGHT_GYRO_NO_STEPS)
+            } else {
+                val stepConfidence = if (recentStep) 1f else 0f
+                (accelConfidence * WEIGHT_ACCEL_WITH_STEPS +
+                 stepConfidence * WEIGHT_STEPS +
+                 gyroConfidence * WEIGHT_GYRO_WITH_STEPS)
+            }
         } else {
             (accelConfidence * WEIGHT_ACCEL_NO_STEPS +
              gyroConfidence * WEIGHT_GYRO_NO_STEPS)
         }.coerceIn(0f, 1f)
 
-        val isMoving = motionConfidence > GPS_NEEDED_CONFIDENCE
+        // GPS is needed if fusion says moving OR vehicle motion is detected
+        val isMoving = motionConfidence > GPS_NEEDED_CONFIDENCE || vehicleMotion
 
         if (isMoving) {
             lastMotionTimestamp = now
@@ -439,7 +469,8 @@ class MotionSensorManager(context: Context) : SensorEventListener {
             headingDeg = currentHeadingDeg,
             displacementMeters = totalDisplacement,
             gpsNeeded = gpsNeeded,
-            stepPermissionGranted = hasStepPermission
+            stepPermissionGranted = hasStepPermission,
+            vehicleMotionDetected = vehicleMotion
         )
     }
 }

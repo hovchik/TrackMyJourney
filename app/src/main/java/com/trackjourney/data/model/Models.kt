@@ -331,6 +331,16 @@ data class ActivityConfig(
 enum class WearableType {
     GARMIN,
     SAMSUNG,
+    POLAR,
+    WAHOO,
+    SUUNTO,
+    FITBIT,
+    XIAOMI,
+    HUAWEI,
+    COROS,
+    WHOOP,
+    APPLE,
+    WEAR_OS,
     GENERIC_BLE,
     UNKNOWN
 }

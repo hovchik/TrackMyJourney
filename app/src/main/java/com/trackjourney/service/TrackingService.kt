@@ -335,6 +335,7 @@ class TrackingService : Service() {
         val now = System.currentTimeMillis()
         val timeSinceLastRecord = now - lastRecordedTime
         if (!motionState.isDeviceMoving
+            && !motionState.vehicleMotionDetected
             && motionState.motionConfidence < 0.2f
             && timeSinceLastRecord < stationaryMaxGapMs
             && lastRecordedTime > 0L

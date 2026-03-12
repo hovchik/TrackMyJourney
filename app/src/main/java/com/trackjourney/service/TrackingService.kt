@@ -143,8 +143,14 @@ class TrackingService : Service() {
         // Start satellite monitoring
         satelliteTracker.startMonitoring()
 
-        // Start physical motion sensor monitoring (accelerometer + gyroscope)
-        motionSensorManager.startMonitoring()
+        // Start physical motion sensor monitoring.
+        // Step counter/detector require ACTIVITY_RECOGNITION — check at runtime
+        // so the fusion algorithm excludes steps when the permission is denied.
+        val activityRecognitionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            checkSelfPermission(android.Manifest.permission.ACTIVITY_RECOGNITION) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else true // Not needed before Q
+        motionSensorManager.startMonitoring(activityRecognitionGranted)
 
         // Start battery monitoring (for AI battery saver charging detection)
         batteryMonitor.startMonitoring()

@@ -512,7 +512,10 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                "Accel 50%  •  Steps 30%  •  Gyro 20%",
+                                if (motionState.stepPermissionGranted)
+                                    "Accel 50%  •  Steps 30%  •  Gyro 20%"
+                                else
+                                    "Accel 70%  •  Gyro 30%  (steps: no permission)",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
@@ -563,13 +566,16 @@ fun SettingsScreen(
                 ) {
                     SensorCard(
                         modifier = Modifier.weight(1f),
-                        icon = Icons.Filled.DirectionsWalk,
+                        icon = if (motionState.stepPermissionGranted) Icons.Filled.DirectionsWalk
+                               else Icons.Filled.Lock,
                         title = "Step Counter",
-                        value = "${motionState.steps}",
-                        unit = "steps",
-                        subtitle = if (motionState.stepDetected) "stepping now" else "idle",
-                        isActive = motionState.stepDetected,
-                        activeColor = Walking
+                        value = if (motionState.stepPermissionGranted) "${motionState.steps}" else "--",
+                        unit = if (motionState.stepPermissionGranted) "steps" else "",
+                        subtitle = if (!motionState.stepPermissionGranted) "no permission"
+                                   else if (motionState.stepDetected) "stepping now"
+                                   else "idle",
+                        isActive = motionState.stepPermissionGranted && motionState.stepDetected,
+                        activeColor = if (motionState.stepPermissionGranted) Walking else Stationary
                     )
                     SensorCard(
                         modifier = Modifier.weight(1f),
@@ -617,14 +623,20 @@ fun SettingsScreen(
                                 fontSize = 14.sp
                             )
                             Text(
-                                "Estimated displacement between GPS fixes",
+                                if (motionState.stepPermissionGranted)
+                                    "Estimated displacement between GPS fixes"
+                                else
+                                    "Requires Activity Recognition permission",
                                 fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (motionState.stepPermissionGranted)
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                else Error
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
-                                if (motionState.displacementMeters < 1000) {
+                                if (!motionState.stepPermissionGranted) "--"
+                                else if (motionState.displacementMeters < 1000) {
                                     String.format(java.util.Locale.US, "%.1f m", motionState.displacementMeters)
                                 } else {
                                     String.format(java.util.Locale.US, "%.2f km", motionState.displacementMeters / 1000)

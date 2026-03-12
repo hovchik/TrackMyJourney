@@ -19,16 +19,20 @@ import kotlin.math.*
  * Sensors used:
  *  • Linear Accelerometer  – pure user-acceleration (gravity removed)
  *  • Gyroscope             – angular velocity
- *  • Step Detector          – individual step events
- *  • Step Counter           – cumulative step count (survives reboots)
+ *  • Step Detector          – individual step events  (requires ACTIVITY_RECOGNITION)
+ *  • Step Counter           – cumulative step count   (requires ACTIVITY_RECOGNITION)
  *  • Magnetometer           – ambient magnetic field → compass heading
+ *
+ * When [ACTIVITY_RECOGNITION] permission is not granted, step sensors are skipped
+ * and the fusion algorithm redistributes their weight to accelerometer and gyroscope.
  *
  * Outputs (via [motionState]):
  *  • isDeviceMoving / motionConfidence
- *  • step count since monitoring started
+ *  • step count since monitoring started (0 when permission denied)
  *  • magnetic heading (degrees, 0 = north, clockwise)
  *  • approximate displacement (meters) from dead reckoning (steps × stride × heading)
  *  • gpsNeeded – true when sensors indicate real locomotion that warrants a GPS fix
+ *  • stepPermissionGranted – whether step sensors are active
  */
 class MotionSensorManager(context: Context) : SensorEventListener {
 
@@ -42,19 +46,27 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         private const val MOTION_VOTE_THRESHOLD = 0.4f
         private const val STEP_COOLDOWN_MS = 5000L
 
+        // ── Fusion weights (with step permission) ──
+        private const val WEIGHT_ACCEL_WITH_STEPS = 0.50f
+        private const val WEIGHT_STEPS = 0.30f
+        private const val WEIGHT_GYRO_WITH_STEPS = 0.20f
+
+        // ── Fusion weights (without step permission) ──
+        // Steps weight is redistributed: accel gets +20%, gyro gets +10%
+        private const val WEIGHT_ACCEL_NO_STEPS = 0.70f
+        private const val WEIGHT_GYRO_NO_STEPS = 0.30f
+
         // ── Dead reckoning ──
-        private const val DEFAULT_STRIDE_METERS = 0.75f    // average adult walking stride
-        private const val RUNNING_STRIDE_METERS = 1.2f     // longer stride when running
-        private const val RUNNING_ACCEL_THRESHOLD = 1.8f   // m/s² – above this we assume running
+        private const val DEFAULT_STRIDE_METERS = 0.75f
+        private const val RUNNING_STRIDE_METERS = 1.2f
+        private const val RUNNING_ACCEL_THRESHOLD = 1.8f
 
         // ── GPS activation ──
-        // Confidence above which we tell the service to fire up GPS
         private const val GPS_NEEDED_CONFIDENCE = 0.35f
-        // After motion stops, keep GPS active for this long to capture the stop point
         private const val GPS_LINGER_MS = 8000L
 
         // ── Magnetometer low-pass ──
-        private const val MAG_ALPHA = 0.15f                // smoothing factor
+        private const val MAG_ALPHA = 0.15f
     }
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -76,7 +88,7 @@ class MotionSensorManager(context: Context) : SensorEventListener {
 
     // Step tracking
     private var lastStepTimestamp = 0L
-    private var stepCounterBaseline: Float? = null   // first value from TYPE_STEP_COUNTER
+    private var stepCounterBaseline: Float? = null
     private var totalSteps = 0L
 
     // Magnetometer / heading
@@ -87,14 +99,17 @@ class MotionSensorManager(context: Context) : SensorEventListener {
     private var currentHeadingDeg: Float = 0f
 
     // Dead reckoning
-    private var displacementX = 0.0   // meters east
-    private var displacementY = 0.0   // meters north
+    private var displacementX = 0.0
+    private var displacementY = 0.0
     private var totalDisplacement = 0.0
 
     // GPS activation linger
     private var lastMotionTimestamp = 0L
 
     private var isMonitoring = false
+
+    /** Whether ACTIVITY_RECOGNITION permission was granted for this monitoring session. */
+    private var hasStepPermission = false
 
     data class MotionState(
         /** True if sensors indicate the device is physically moving */
@@ -107,19 +122,30 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         val stepDetected: Boolean = false,
         /** Confidence 0..1 that the device is truly in motion */
         val motionConfidence: Float = 0f,
-        /** Total steps detected since monitoring started */
+        /** Total steps detected since monitoring started (0 when permission denied) */
         val steps: Long = 0,
         /** Compass heading in degrees (0 = magnetic north, clockwise) */
         val headingDeg: Float = 0f,
         /** Approximate displacement in meters from dead reckoning */
         val displacementMeters: Double = 0.0,
         /** True when real motion warrants activating GPS */
-        val gpsNeeded: Boolean = false
+        val gpsNeeded: Boolean = false,
+        /** Whether step counter/detector sensors are active (permission granted) */
+        val stepPermissionGranted: Boolean = false
     )
 
-    fun startMonitoring() {
+    /**
+     * Start monitoring device sensors.
+     *
+     * @param activityRecognitionGranted whether the ACTIVITY_RECOGNITION runtime
+     *        permission has been granted.  When false, step detector and step
+     *        counter sensors are not registered and their weight is redistributed
+     *        to accelerometer and gyroscope in the fusion algorithm.
+     */
+    fun startMonitoring(activityRecognitionGranted: Boolean = true) {
         if (isMonitoring) return
         isMonitoring = true
+        hasStepPermission = activityRecognitionGranted
 
         // Reset dead reckoning state
         stepCounterBaseline = null
@@ -131,6 +157,7 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         hasMagnetic = false
         currentHeadingDeg = 0f
         lastMotionTimestamp = 0L
+        lastStepTimestamp = 0L
 
         accelerometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
@@ -142,15 +169,20 @@ class MotionSensorManager(context: Context) : SensorEventListener {
             Log.i(TAG, "Gyroscope registered")
         } ?: Log.w(TAG, "No gyroscope available")
 
-        stepDetector?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-            Log.i(TAG, "Step detector registered")
-        } ?: Log.w(TAG, "No step detector available")
+        if (activityRecognitionGranted) {
+            stepDetector?.let {
+                sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+                Log.i(TAG, "Step detector registered")
+            } ?: Log.w(TAG, "No step detector available")
 
-        stepCounter?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-            Log.i(TAG, "Step counter registered")
-        } ?: Log.w(TAG, "No step counter available")
+            stepCounter?.let {
+                sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+                Log.i(TAG, "Step counter registered")
+            } ?: Log.w(TAG, "No step counter available")
+        } else {
+            Log.w(TAG, "ACTIVITY_RECOGNITION not granted — step sensors skipped, " +
+                    "fusion weights redistributed (accel=${WEIGHT_ACCEL_NO_STEPS}, gyro=${WEIGHT_GYRO_NO_STEPS})")
+        }
 
         magnetometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
@@ -169,6 +201,7 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         sensorManager.unregisterListener(this)
         samplesCollected = 0
         sampleIndex = 0
+        hasStepPermission = false
         _motionState.value = MotionState()
         Log.i(TAG, "Sensor monitoring stopped")
     }
@@ -219,7 +252,6 @@ class MotionSensorManager(context: Context) : SensorEventListener {
             }
 
             Sensor.TYPE_ACCELEROMETER -> {
-                // Low-pass filter for gravity vector (used with magnetometer for heading)
                 for (i in 0..2) {
                     gravityValues[i] = MAG_ALPHA * event.values[i] + (1 - MAG_ALPHA) * gravityValues[i]
                 }
@@ -259,7 +291,6 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         val orientation = FloatArray(3)
         SensorManager.getOrientation(rotationMatrix, orientation)
 
-        // orientation[0] = azimuth in radians (-π to π)
         val azimuthDeg = Math.toDegrees(orientation[0].toDouble()).toFloat()
         currentHeadingDeg = (azimuthDeg + 360f) % 360f
     }
@@ -267,7 +298,6 @@ class MotionSensorManager(context: Context) : SensorEventListener {
     // ── Dead reckoning on step ──
 
     private fun onStepDetected() {
-        // Estimate stride length based on acceleration magnitude
         val avgAccel = if (samplesCollected > 0) {
             val count = minOf(samplesCollected, SAMPLE_WINDOW)
             var sum = 0f
@@ -278,10 +308,9 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         val stride = if (avgAccel > RUNNING_ACCEL_THRESHOLD) RUNNING_STRIDE_METERS
                      else DEFAULT_STRIDE_METERS
 
-        // Project step along current heading
         val headingRad = Math.toRadians(currentHeadingDeg.toDouble())
-        displacementX += stride * sin(headingRad)   // east component
-        displacementY += stride * cos(headingRad)   // north component
+        displacementX += stride * sin(headingRad)
+        displacementY += stride * cos(headingRad)
         totalDisplacement = sqrt(displacementX * displacementX + displacementY * displacementY)
     }
 
@@ -310,25 +339,29 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         val gyroVoteRatio = gyroMotionVotes.toFloat() / count
 
         val now = System.currentTimeMillis()
-        val recentStep = (now - lastStepTimestamp) < STEP_COOLDOWN_MS
+        val recentStep = hasStepPermission && (now - lastStepTimestamp) < STEP_COOLDOWN_MS
 
-        // Weighted confidence: accel > step > gyro
         val accelConfidence = (accelVoteRatio / MOTION_VOTE_THRESHOLD).coerceIn(0f, 1f)
         val gyroConfidence = (gyroVoteRatio / MOTION_VOTE_THRESHOLD).coerceIn(0f, 1f)
-        val stepConfidence = if (recentStep) 1f else 0f
 
-        val motionConfidence = (accelConfidence * 0.50f + stepConfidence * 0.30f + gyroConfidence * 0.20f)
-            .coerceIn(0f, 1f)
+        // Dynamic fusion: include step weight only when permission is granted
+        val motionConfidence = if (hasStepPermission) {
+            val stepConfidence = if (recentStep) 1f else 0f
+            (accelConfidence * WEIGHT_ACCEL_WITH_STEPS +
+             stepConfidence * WEIGHT_STEPS +
+             gyroConfidence * WEIGHT_GYRO_WITH_STEPS)
+        } else {
+            // No step data — redistribute to accel (70%) and gyro (30%)
+            (accelConfidence * WEIGHT_ACCEL_NO_STEPS +
+             gyroConfidence * WEIGHT_GYRO_NO_STEPS)
+        }.coerceIn(0f, 1f)
 
         val isMoving = motionConfidence > GPS_NEEDED_CONFIDENCE
 
-        // Track when motion was last detected for GPS linger
         if (isMoving) {
             lastMotionTimestamp = now
         }
 
-        // GPS is needed while moving OR for a short linger window after stopping
-        // (so we capture the actual stop location)
         val gpsNeeded = isMoving ||
                 (lastMotionTimestamp > 0L && (now - lastMotionTimestamp) < GPS_LINGER_MS)
 
@@ -341,7 +374,8 @@ class MotionSensorManager(context: Context) : SensorEventListener {
             steps = totalSteps,
             headingDeg = currentHeadingDeg,
             displacementMeters = totalDisplacement,
-            gpsNeeded = gpsNeeded
+            gpsNeeded = gpsNeeded,
+            stepPermissionGranted = hasStepPermission
         )
     }
 }

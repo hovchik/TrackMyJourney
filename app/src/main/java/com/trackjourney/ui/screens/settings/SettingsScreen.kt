@@ -1772,43 +1772,6 @@ fun SettingsScreen(
             }
         }
 
-        // Min distance
-        item {
-            SettingsCard {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Straighten, contentDescription = null, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Minimum Distance", fontWeight = FontWeight.Medium)
-                            Text(
-                                "${settings.minDistanceMeters.toInt()} meters",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Slider(
-                        value = settings.minDistanceMeters,
-                        onValueChange = { viewModel.updateMinDistance(it) },
-                        valueRange = 1f..50f,
-                        steps = 48
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("1m", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("50m", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-
         // ── AI SETTINGS ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))

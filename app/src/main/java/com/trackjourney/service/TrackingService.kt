@@ -85,6 +85,10 @@ class TrackingService : Service() {
     private var pointCount = 0
     private var batteryAtStart: Int? = null
     @Volatile private var latestWebhookPayload: WebhookLocationPayload? = null
+    /** Timestamp of the last recorded GPS point (used for stationary skip logic). */
+    private var lastRecordedTime = 0L
+    /** Max time (ms) between recorded points even when stationary, to keep the track alive. */
+    private val stationaryMaxGapMs = 60_000L
 
     /** Stops tracking when the device location toggle is switched off. */
     private val locationProviderReceiver = object : BroadcastReceiver() {
@@ -139,8 +143,14 @@ class TrackingService : Service() {
         // Start satellite monitoring
         satelliteTracker.startMonitoring()
 
-        // Start physical motion sensor monitoring (accelerometer + gyroscope)
-        motionSensorManager.startMonitoring()
+        // Start physical motion sensor monitoring.
+        // Step counter/detector require ACTIVITY_RECOGNITION — check at runtime
+        // so the fusion algorithm excludes steps when the permission is denied.
+        val activityRecognitionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            checkSelfPermission(android.Manifest.permission.ACTIVITY_RECOGNITION) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else true // Not needed before Q
+        motionSensorManager.startMonitoring(activityRecognitionGranted)
 
         // Start battery monitoring (for AI battery saver charging detection)
         batteryMonitor.startMonitoring()
@@ -154,6 +164,7 @@ class TrackingService : Service() {
                 val track = repository.startNewTrack(trackName)
                 currentTrackId = track.id
                 pointCount = 0
+                lastRecordedTime = 0L
 
                 // Regenerate webhook key for each new tracking session
                 val newKey = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
@@ -255,12 +266,28 @@ class TrackingService : Service() {
 
             TrackingMode.AI_BATTERY_SAVER -> {
                 // Dynamic interval — re-evaluate after each location update.
-                // We use a MutableStateFlow to track the current interval
-                // and restart the location flow when it changes.
+                // When sensors detect no motion, GPS is suspended entirely.
+                // A coroutine watches the motion sensor and resumes GPS when
+                // the device starts moving again.
                 var currentInterval = smartIntervalManager.getInitialInterval(settings)
                 var lastSpeedKmh = 0f
 
                 while (true) {
+                    if (currentInterval == SmartIntervalManager.GPS_SUSPENDED) {
+                        // ── GPS suspended: wait for sensors to detect real motion ──
+                        Log.i(TAG, "GPS suspended — waiting for sensor motion")
+                        updateNotification("Stationary | GPS suspended | ${pointCount} pts")
+
+                        // Block until the motion sensor says GPS is needed again
+                        motionSensorManager.motionState
+                            .first { it.gpsNeeded }
+
+                        Log.i(TAG, "Sensor motion detected — resuming GPS")
+                        // Start with a responsive interval after wake-up
+                        currentInterval = smartIntervalManager.getInitialInterval(settings)
+                        continue
+                    }
+
                     var intervalChanged = false
 
                     locationTracker.locationUpdatesWithInterval(
@@ -273,7 +300,10 @@ class TrackingService : Service() {
                                 lastNotificationTime = it
                             }
 
-                            // Check if the interval should change
+                            // Reset dead reckoning after each GPS fix
+                            motionSensorManager.resetDisplacement()
+
+                            // Check if the interval should change (or GPS should suspend)
                             val newInterval = smartIntervalManager.computeInterval(settings, lastSpeedKmh)
                             if (newInterval != currentInterval) {
                                 currentInterval = newInterval
@@ -297,35 +327,42 @@ class TrackingService : Service() {
         settings: TrackingSettings,
         lastNotificationTime: Long
     ): Long {
+        // ── STATIONARY SKIP ──
+        // If the device sensors indicate the user is not moving, skip recording
+        // to save battery and storage. Still record at least once per minute
+        // so the track doesn't have large time gaps.
+        val motionState = motionSensorManager.motionState.value
+        val now = System.currentTimeMillis()
+        val timeSinceLastRecord = now - lastRecordedTime
+        if (!motionState.isDeviceMoving
+            && !motionState.vehicleMotionDetected
+            && motionState.motionConfidence < 0.2f
+            && timeSinceLastRecord < stationaryMaxGapMs
+            && lastRecordedTime > 0L
+        ) {
+            Log.d(TAG, "Skipping GPS point — device stationary (confidence=${motionState.motionConfidence})")
+            // Still update webhook payload with latest position even if not recording
+            if (settings.webhookEnabled && settings.webhookUrl.isNotBlank()) {
+                updateWebhookPayload(location, settings)
+            }
+            return lastNotificationTime
+        }
+
         val wearableReading = wearableManager.latestReading.value
 
         val point = repository.addTrackPoint(trackId, location, wearableReading)
         if (point != null) {
             pointCount++
+            lastRecordedTime = now
         }
 
         // Build the latest webhook payload so the independent ticker always
         // has fresh data to send, regardless of GPS update cadence.
         if (settings.webhookEnabled && settings.webhookUrl.isNotBlank()) {
-            val speedKmh = LocationTracker.msToKmh(location.speed)
-            val activity = ActivityType.fromSpeed(speedKmh, settings.activityConfigs)
-            latestWebhookPayload = WebhookLocationPayload(
-                key = settings.webhookKey,
-                timestamp = location.time / 1000,
-                lat = location.latitude,
-                lng = location.longitude,
-                alt = if (location.hasAltitude()) location.altitude else null,
-                speedKmh = speedKmh,
-                bearing = if (location.hasBearing()) location.bearing else null,
-                accuracyM = if (location.hasAccuracy()) location.accuracy else null,
-                activity = activity.name.lowercase(),
-                heartRate = wearableReading?.heartRate,
-                battery = getBatteryLevel()
-            )
+            updateWebhookPayload(location, settings, wearableReading?.heartRate)
         }
 
         // Throttle notification updates to at most once per 2 seconds
-        val now = System.currentTimeMillis()
         if (now - lastNotificationTime >= 2000L) {
             val satInfo = satelliteTracker.satelliteInfo.value
             val speedKmh = LocationTracker.msToKmh(location.speed)
@@ -342,6 +379,28 @@ class TrackingService : Service() {
             return now
         }
         return lastNotificationTime
+    }
+
+    private fun updateWebhookPayload(
+        location: android.location.Location,
+        settings: TrackingSettings,
+        heartRate: Int? = null
+    ) {
+        val speedKmh = LocationTracker.msToKmh(location.speed)
+        val activity = ActivityType.fromSpeed(speedKmh, settings.activityConfigs)
+        latestWebhookPayload = WebhookLocationPayload(
+            key = settings.webhookKey,
+            timestamp = location.time / 1000,
+            lat = location.latitude,
+            lng = location.longitude,
+            alt = if (location.hasAltitude()) location.altitude else null,
+            speedKmh = speedKmh,
+            bearing = if (location.hasBearing()) location.bearing else null,
+            accuracyM = if (location.hasAccuracy()) location.accuracy else null,
+            activity = activity.name.lowercase(),
+            heartRate = heartRate,
+            battery = getBatteryLevel()
+        )
     }
 
     /**

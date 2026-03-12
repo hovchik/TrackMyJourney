@@ -62,6 +62,13 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.WorkspacePremium
     )
 
+    data object Onboarding : Screen(
+        route = "onboarding",
+        title = "Welcome",
+        selectedIcon = Icons.Filled.Start,
+        unselectedIcon = Icons.Outlined.Start
+    )
+
     companion object {
         val bottomNavItems = listOf(Dashboard, Map, Tracks, Analysis, Settings)
     }

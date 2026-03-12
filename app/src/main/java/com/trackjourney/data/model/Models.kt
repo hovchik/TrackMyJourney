@@ -331,6 +331,16 @@ data class ActivityConfig(
 enum class WearableType {
     GARMIN,
     SAMSUNG,
+    POLAR,
+    WAHOO,
+    SUUNTO,
+    FITBIT,
+    XIAOMI,
+    HUAWEI,
+    COROS,
+    WHOOP,
+    APPLE,
+    WEAR_OS,
     GENERIC_BLE,
     UNKNOWN
 }
@@ -465,7 +475,7 @@ data class TrackingSettings(
     val userName: String = "",
     val userWeightKg: Float = 70f,                // default 70 kg
     val userHeightCm: Float = 170f,               // default 170 cm
-    val trackingMode: TrackingMode = TrackingMode.HIGH_ACCURACY,
+    val trackingMode: TrackingMode = TrackingMode.AI_BATTERY_SAVER,
     val selectedCarId: String? = null,             // ID of the active car profile
     val currency: String = "$",                    // currency symbol for ride cost
     val activityConfigs: List<ActivityConfig> = ActivityConfig.defaults(),

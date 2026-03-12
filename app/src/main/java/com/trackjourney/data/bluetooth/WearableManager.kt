@@ -40,6 +40,15 @@ object BleUuids {
     val MODEL_NUMBER: UUID             = UUID.fromString("00002a24-0000-1000-8000-00805f9b34fb")
     val FIRMWARE_REVISION: UUID        = UUID.fromString("00002a26-0000-1000-8000-00805f9b34fb")
 
+    // Pulse Oximeter Service (0x1822) — SpO2
+    val PLX_SERVICE: UUID              = UUID.fromString("00001822-0000-1000-8000-00805f9b34fb")
+    val PLX_CONTINUOUS: UUID           = UUID.fromString("00002a5f-0000-1000-8000-00805f9b34fb")
+    val PLX_SPOT_CHECK: UUID           = UUID.fromString("00002a5e-0000-1000-8000-00805f9b34fb")
+
+    // Health Thermometer Service (0x1809) — Body temperature
+    val HTS_SERVICE: UUID              = UUID.fromString("00001809-0000-1000-8000-00805f9b34fb")
+    val TEMPERATURE_MEASUREMENT: UUID  = UUID.fromString("00002a1c-0000-1000-8000-00805f9b34fb")
+
     // Client Characteristic Configuration Descriptor
     val CCCD: UUID                     = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 }
@@ -62,6 +71,8 @@ data class WearableReading(
     val sensorContact: Boolean? = null,           // wrist contact detected
     val batteryLevel: Int? = null,                // 0-100%
     val cadence: Int? = null,                     // steps/min or rpm
+    val spO2: Int? = null,                        // blood oxygen saturation 0-100%
+    val temperatureC: Float? = null,              // body temperature in °C
     val timestamp: Long = System.currentTimeMillis(),
     val deviceName: String = "",
     val deviceType: WearableType = WearableType.UNKNOWN,
@@ -144,9 +155,22 @@ class WearableManager(
 
         _connectionState.value = WearableConnectionState.Scanning
 
+        // Scan for any device advertising a standard fitness BLE service.
+        // Different brands advertise different services — Polar/Garmin/Wahoo
+        // typically advertise HR, while cycling sensors may only advertise CSC,
+        // and some wearables expose SpO2 (PLX) or RSC.
         val scanFilters = listOf(
             ScanFilter.Builder()
                 .setServiceUuid(ParcelUuid(BleUuids.HEART_RATE_SERVICE))
+                .build(),
+            ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(BleUuids.RSC_SERVICE))
+                .build(),
+            ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(BleUuids.CSC_SERVICE))
+                .build(),
+            ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(BleUuids.PLX_SERVICE))
                 .build()
         )
 
@@ -297,7 +321,22 @@ class WearableManager(
                 }
             }
 
-            // 5. Read Device Information (one-shot reads)
+            // 5. Subscribe to Pulse Oximeter (SpO2)
+            gatt.getService(BleUuids.PLX_SERVICE)?.let { service ->
+                // Prefer continuous measurement, fall back to spot-check
+                val char = service.getCharacteristic(BleUuids.PLX_CONTINUOUS)
+                    ?: service.getCharacteristic(BleUuids.PLX_SPOT_CHECK)
+                char?.let { enqueueGattOp { enableNotifications(gatt, it) } }
+            }
+
+            // 6. Subscribe to Health Thermometer
+            gatt.getService(BleUuids.HTS_SERVICE)?.let { service ->
+                service.getCharacteristic(BleUuids.TEMPERATURE_MEASUREMENT)?.let { char ->
+                    enqueueGattOp { enableNotifications(gatt, char) }
+                }
+            }
+
+            // 7. Read Device Information (one-shot reads)
             gatt.getService(BleUuids.DEVICE_INFO_SERVICE)?.let { service ->
                 service.getCharacteristic(BleUuids.MANUFACTURER_NAME)?.let { char ->
                     enqueueGattOp { gatt.readCharacteristic(char) }
@@ -384,6 +423,14 @@ class WearableManager(
                 // CSC cadence parsing handled via crank revolution data
                 val cadence = parseCyclingCadence(value)
                 if (cadence != null) updateReading(cadence = cadence)
+            }
+            BleUuids.PLX_CONTINUOUS, BleUuids.PLX_SPOT_CHECK -> {
+                val spo2 = parseSpO2(value)
+                if (spo2 != null) updateReading(spO2 = spo2)
+            }
+            BleUuids.TEMPERATURE_MEASUREMENT -> {
+                val tempC = parseTemperature(value)
+                if (tempC != null) updateReading(temperatureC = tempC)
             }
         }
     }
@@ -538,6 +585,8 @@ class WearableManager(
         sensorContact: Boolean? = null,
         batteryLevel: Int? = null,
         cadence: Int? = null,
+        spO2: Int? = null,
+        temperatureC: Float? = null,
         manufacturerName: String? = null,
         modelNumber: String? = null
     ) {
@@ -553,6 +602,8 @@ class WearableManager(
             sensorContact = sensorContact ?: current.sensorContact,
             batteryLevel = batteryLevel ?: current.batteryLevel,
             cadence = cadence ?: current.cadence,
+            spO2 = spO2 ?: current.spO2,
+            temperatureC = temperatureC ?: current.temperatureC,
             timestamp = System.currentTimeMillis(),
             manufacturerName = manufacturerName ?: current.manufacturerName,
             modelNumber = modelNumber ?: current.modelNumber
@@ -562,35 +613,147 @@ class WearableManager(
         _readings.tryEmit(updated)
     }
 
+    // ─── SpO2 PARSER ────────────────────────────────────
+
+    /**
+     * Parse PLX Continuous/Spot-Check Measurement.
+     * Byte 0: flags
+     * Bytes 1-2: SpO2 (SFLOAT — IEEE 11073 16-bit float)
+     *
+     * Returns integer SpO2 percentage (0-100), or null if invalid.
+     */
+    private fun parseSpO2(data: ByteArray): Int? {
+        if (data.size < 3) return null
+        // SFLOAT: lower 12 bits = mantissa, upper 4 bits = exponent
+        val raw = (data[1].toInt() and 0xFF) or ((data[2].toInt() and 0xFF) shl 8)
+        val mantissa = raw and 0x0FFF
+        val exponent = (raw shr 12) and 0x0F
+        // Simple conversion for typical SpO2 values (exponent usually 0 or -1)
+        val exp = if (exponent > 7) exponent - 16 else exponent  // signed 4-bit
+        val value = mantissa * Math.pow(10.0, exp.toDouble()).toFloat()
+        return if (value in 50f..100f) value.toInt() else null
+    }
+
+    // ─── TEMPERATURE PARSER ──────────────────────────────
+
+    /**
+     * Parse Health Thermometer Measurement (0x2A1C).
+     * Byte 0: flags (bit 0 = Fahrenheit if set, Celsius if clear)
+     * Bytes 1-4: temperature as IEEE 11073 FLOAT (32-bit)
+     *
+     * Returns temperature in °C.
+     */
+    private fun parseTemperature(data: ByteArray): Float? {
+        if (data.size < 5) return null
+        val flags = data[0].toInt() and 0xFF
+        // IEEE 11073 FLOAT: bytes 1-3 = 24-bit mantissa (signed), byte 4 = exponent (signed)
+        val mantissa = (data[1].toInt() and 0xFF) or
+                ((data[2].toInt() and 0xFF) shl 8) or
+                ((data[3].toInt() and 0xFF) shl 16)
+        // Sign-extend 24-bit mantissa
+        val signedMantissa = if (mantissa and 0x800000 != 0) mantissa or (0xFF shl 24) else mantissa
+        val exponent = data[4].toInt() // already signed byte
+        val tempValue = signedMantissa * Math.pow(10.0, exponent.toDouble()).toFloat()
+
+        // Convert Fahrenheit to Celsius if needed
+        val isFahrenheit = flags and 0x01 != 0
+        val tempC = if (isFahrenheit) (tempValue - 32f) * 5f / 9f else tempValue
+        return if (tempC in 20f..45f) tempC else null // sanity range for body temp
+    }
+
+    // ─── DEVICE DETECTION ────────────────────────────────
+
     /**
      * Detect wearable brand from BLE device name.
-     * Garmin Fenix variants: "fēnix", "fenix", "Fenix 7", "Garmin Fenix 7X", etc.
-     * Also supports Forerunner, Venu, Vivoactive, Instinct, Enduro, Epix, Lily, Vivomove.
+     *
+     * Supported devices:
+     * - **Garmin**: Fenix, Forerunner, Venu, Vivoactive, Instinct, Enduro, Epix, Lily, Descent, Tactix, Quatix, MARQ
+     * - **Samsung**: Galaxy Watch, Gear, SM-R models
+     * - **Polar**: H10, H9, OH1, Verity Sense, Vantage, Grit X, Pacer, Ignite, Unite
+     * - **Wahoo**: TICKR, KICKR, ELEMNT, RPM, SPEEDPLAY, POWRLINK, RIVAL
+     * - **Suunto**: Suunto 3/5/7/9, Race, Peak, Vertical, Ambit, Spartan, Movesense
+     * - **Fitbit**: Charge, Sense, Versa, Inspire, Luxe, Ionic
+     * - **Xiaomi/Amazfit**: Mi Band, Smart Band, Amazfit Bip, GTR, GTS, T-Rex, Band
+     * - **Huawei**: Huawei Watch, Band, GT series
+     * - **COROS**: Pace, Apex, Vertix, DURA, POD
+     * - **WHOOP**: WHOOP strap (BLE HR broadcast)
+     * - **Apple Watch**: Broadcasts HR during active workouts
+     * - **Wear OS**: Google Pixel Watch and other Wear OS devices
      */
     private fun detectWearableType(name: String): WearableType {
         val lower = name.lowercase()
         return when {
+            // Garmin
             lower.contains("garmin")
-                || lower.contains("fenix")
-                || lower.contains("fēnix")
-                || lower.contains("forerunner")
-                || lower.contains("venu")
-                || lower.contains("vivoactive")
-                || lower.contains("vivomove")
-                || lower.contains("vivosmart")
-                || lower.contains("instinct")
-                || lower.contains("enduro")
-                || lower.contains("epix")
-                || lower.contains("lily")
-                || lower.contains("descent")
-                || lower.contains("tactix")
-                || lower.contains("quatix")
-                || lower.contains("marq")         -> WearableType.GARMIN
-            lower.contains("galaxy")
-                || lower.contains("samsung")
-                || lower.contains("sm-r")
-                || lower.contains("gear")          -> WearableType.SAMSUNG
-            else                                    -> WearableType.GENERIC_BLE
+                || lower.contains("fenix") || lower.contains("fēnix")
+                || lower.contains("forerunner") || lower.contains("venu")
+                || lower.contains("vivoactive") || lower.contains("vivomove")
+                || lower.contains("vivosmart") || lower.contains("instinct")
+                || lower.contains("enduro") || lower.contains("epix")
+                || lower.contains("lily") || lower.contains("descent")
+                || lower.contains("tactix") || lower.contains("quatix")
+                || lower.contains("marq")                 -> WearableType.GARMIN
+
+            // Samsung
+            lower.contains("galaxy") || lower.contains("samsung")
+                || lower.contains("sm-r") || lower.contains("gear")
+                                                           -> WearableType.SAMSUNG
+
+            // Polar — HR straps (H10, H9, OH1, Verity Sense) and sport watches
+            lower.contains("polar")
+                || lower.startsWith("h10") || lower.startsWith("h9")
+                || lower.contains("oh1") || lower.contains("verity")
+                || lower.contains("vantage") || lower.contains("grit x")
+                || lower.contains("pacer") || lower.contains("ignite")
+                || lower.contains("unite")                -> WearableType.POLAR
+
+            // Wahoo — HR straps, bike sensors, GPS computers
+            lower.contains("wahoo") || lower.contains("tickr")
+                || lower.contains("kickr") || lower.contains("elemnt")
+                || lower.contains("rpm") || lower.contains("speedplay")
+                || lower.contains("powrlink") || lower.contains("rival")
+                                                           -> WearableType.WAHOO
+
+            // Suunto
+            lower.contains("suunto") || lower.contains("movesense")
+                || lower.contains("ambit") || lower.contains("spartan")
+                                                           -> WearableType.SUUNTO
+
+            // Fitbit
+            lower.contains("fitbit") || lower.contains("charge")
+                || lower.contains("sense") || lower.contains("versa")
+                || lower.contains("inspire") || lower.contains("luxe")
+                || lower.contains("ionic")                -> WearableType.FITBIT
+
+            // Xiaomi / Amazfit
+            lower.contains("xiaomi") || lower.contains("mi band")
+                || lower.contains("smart band") || lower.contains("amazfit")
+                || lower.contains("zepp")                 -> WearableType.XIAOMI
+
+            // Huawei
+            lower.contains("huawei") || lower.contains("honor band")
+                || lower.startsWith("hw-") || lower.contains("huawei band")
+                                                           -> WearableType.HUAWEI
+
+            // COROS
+            lower.contains("coros") || lower.contains("pace")
+                || lower.contains("apex") || lower.contains("vertix")
+                                                           -> WearableType.COROS
+
+            // WHOOP
+            lower.contains("whoop")                       -> WearableType.WHOOP
+
+            // Apple Watch (broadcasts HR when in Workout mode or Gym equipment mode)
+            lower.contains("apple watch") || lower.contains("apple")
+                                                           -> WearableType.APPLE
+
+            // Wear OS / Google Pixel Watch
+            lower.contains("pixel watch") || lower.contains("wear os")
+                || lower.contains("ticwatch") || lower.contains("fossil")
+                || lower.contains("mobvoi") || lower.contains("montblanc summit")
+                                                           -> WearableType.WEAR_OS
+
+            else                                           -> WearableType.GENERIC_BLE
         }
     }
 }

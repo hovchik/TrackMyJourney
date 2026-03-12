@@ -39,6 +39,7 @@ class SettingsDataStore(
         val SUBSCRIPTION_EXPIRY = longPreferencesKey("subscription_expiry")
         val SUBSCRIPTION_TOKEN = stringPreferencesKey("subscription_token")
         val FREE_TRIAL_START = longPreferencesKey("free_trial_start")
+        val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
     }
 
     private fun parseActivityConfigs(json: String?): List<ActivityConfig> {
@@ -189,6 +190,14 @@ class SettingsDataStore(
                 prefs[FREE_TRIAL_START] = System.currentTimeMillis()
             }
         }
+    }
+
+    val onboardingCompleted: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[ONBOARDING_COMPLETED] ?: false
+    }
+
+    suspend fun completeOnboarding() {
+        context.dataStore.edit { it[ONBOARDING_COMPLETED] = true }
     }
 
     suspend fun updateAll(settings: TrackingSettings) {

@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -28,39 +30,68 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.data.model.ActivityType
 import com.trackjourney.ui.navigation.Screen
 import com.trackjourney.ui.screens.analysis.AnalysisScreen
 import com.trackjourney.ui.screens.dashboard.DashboardScreen
 import com.trackjourney.ui.screens.map.MapScreen
+import com.trackjourney.ui.screens.onboarding.OnboardingScreen
 import com.trackjourney.ui.screens.settings.SettingsScreen
 import com.trackjourney.ui.screens.subscription.SubscriptionScreen
 import com.trackjourney.ui.screens.tracks.TracksScreen
 import com.trackjourney.ui.theme.*
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import java.util.Locale
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject lateinit var settingsDataStore: SettingsDataStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             TrackMyJourneyTheme {
-                TrackMyJourneyApp()
+                TrackMyJourneyApp(settingsDataStore)
             }
         }
     }
 }
 
 @Composable
-fun TrackMyJourneyApp() {
+fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val coroutineScope = rememberCoroutineScope()
 
     val trackingViewModel: TrackingStateViewModel = hiltViewModel()
     val trackingState by trackingViewModel.state.collectAsState()
+
+    // Onboarding state: default to true (completed) to avoid flashing the onboarding screen
+    // while DataStore loads, then update once the real value arrives.
+    var showOnboarding by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        settingsDataStore.onboardingCompleted.collect { completed ->
+            showOnboarding = !completed
+        }
+    }
+
+    // Show onboarding as a full-screen overlay — avoids NavHost startDestination issues
+    if (showOnboarding) {
+        OnboardingScreen(
+            onOnboardingComplete = {
+                coroutineScope.launch {
+                    settingsDataStore.completeOnboarding()
+                }
+                showOnboarding = false
+            }
+        )
+        return
+    }
 
     var pendingTrackingStart by remember { mutableStateOf(false) }
 
@@ -78,7 +109,8 @@ fun TrackMyJourneyApp() {
         bottomBar = {
             NavigationBar {
                 Screen.bottomNavItems.forEach { screen ->
-                    val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
+                    val selected =
+                        currentDestination?.hierarchy?.any { it.route == screen.route } == true
 
                     NavigationBarItem(
                         icon = {
@@ -87,7 +119,15 @@ fun TrackMyJourneyApp() {
                                 contentDescription = screen.title
                             )
                         },
-                        label = { Text(screen.title) },
+                        label = {
+                            Text(
+                                screen.title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        },
                         selected = selected,
                         onClick = {
                             navController.navigate(screen.route) {

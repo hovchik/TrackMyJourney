@@ -337,7 +337,6 @@ class TrackingService : Service() {
         }
 
         // Throttle notification updates to at most once per 2 seconds
-        val now = System.currentTimeMillis()
         if (now - lastNotificationTime >= 2000L) {
             val satInfo = satelliteTracker.satelliteInfo.value
             val speedKmh = LocationTracker.msToKmh(location.speed)

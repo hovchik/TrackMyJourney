@@ -128,7 +128,7 @@ fun SubscriptionScreen(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "Get the most out of TrackMyJourney",
+                "Get the most out of Pathwise",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

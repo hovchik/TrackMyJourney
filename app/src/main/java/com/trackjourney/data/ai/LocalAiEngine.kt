@@ -103,8 +103,14 @@ class LocalAiEngine(
     ): ActivityType {
         // ── Sensor-based GPS drift rejection ──
         // If physical sensors say "not moving" with high confidence,
-        // override GPS speed which is likely drift
-        if (motionState != null && !motionState.isDeviceMoving && motionState.motionConfidence < 0.2f) {
+        // override GPS speed which is likely drift.
+        // IMPORTANT: Skip this override when vehicle motion is detected (no steps
+        // in a car is normal) or when the device IS moving (sensors confirm motion).
+        if (motionState != null
+            && !motionState.isDeviceMoving
+            && !motionState.vehicleMotionDetected
+            && motionState.motionConfidence < 0.2f
+        ) {
             // Sensors are very confident the device is stationary.
             // GPS drift can report up to ~15 km/h phantom speed.
             // Only trust GPS over sensors for high speeds (vehicle/flying)
@@ -118,11 +124,23 @@ class LocalAiEngine(
         }
 
         // ── Sensor-assisted low-speed disambiguation ──
-        // GPS reports 1-7 km/h but could be drift or real walking.
-        // Use step detector as tie-breaker.
+        // GPS reports 0.5-7 km/h but could be drift or real walking.
+        // Use step detector as tie-breaker — but only when step permission is
+        // granted.  Without ACTIVITY_RECOGNITION, we cannot detect steps so we
+        // must trust the GPS speed + accelerometer confidence instead.
         if (motionState != null && speedKmh in STATIONARY_MAX..WALK_MAX) {
-            if (!motionState.stepDetected && motionState.motionConfidence < 0.35f) {
-                // No steps detected and low sensor motion → likely GPS drift
+            if (motionState.vehicleMotionDetected) {
+                // Vehicle is creeping forward (parking lot, traffic) — not stationary
+            } else if (motionState.isDeviceMoving) {
+                // Sensors confirm the device is physically moving — trust GPS speed
+            } else if (!motionState.stepPermissionGranted) {
+                // No step data available — only override if accel/gyro confidence
+                // is very low (stricter threshold to avoid false stationary)
+                if (motionState.motionConfidence < 0.15f) {
+                    return ActivityType.STATIONARY
+                }
+            } else if (!motionState.stepDetected && motionState.motionConfidence < 0.35f) {
+                // Steps available but none detected + low motion → GPS drift
                 return ActivityType.STATIONARY
             }
         }

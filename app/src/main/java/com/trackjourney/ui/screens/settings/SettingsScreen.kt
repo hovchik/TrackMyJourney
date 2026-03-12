@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +43,7 @@ import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.AiMode
 import com.trackjourney.data.model.ActivityConfig
 import com.trackjourney.data.model.CarProfile
+import com.trackjourney.data.model.CloudAiProvider
 import com.trackjourney.data.model.ExportFormat
 import com.trackjourney.data.model.FuelType
 import com.trackjourney.data.model.SubscriptionStatus
@@ -51,6 +54,7 @@ import com.trackjourney.ui.theme.*
 @Composable
 fun SettingsScreen(
     onNavigateToSubscription: () -> Unit = {},
+    onNavigateToAiEngine: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -71,6 +75,21 @@ fun SettingsScreen(
     var showAddCarDialog by remember { mutableStateOf(false) }
     var editingCar by remember { mutableStateOf<CarProfile?>(null) }
     var showAddActivityDialog by remember { mutableStateOf(false) }
+    val showCloudAiWizard by viewModel.showCloudAiWizard.collectAsState()
+
+    // Cloud AI setup wizard
+    if (showCloudAiWizard) {
+        CloudAiWizardDialog(
+            currentProvider = settings.cloudAiProvider,
+            currentApiKey = settings.cloudAiApiKey,
+            currentEndpoint = settings.cloudAiEndpoint,
+            currentModel = settings.cloudAiModel,
+            onDismiss = { viewModel.dismissCloudAiWizard() },
+            onSave = { provider, apiKey, endpoint, model ->
+                viewModel.saveCloudAiConfig(provider, apiKey, endpoint, model)
+            }
+        )
+    }
 
     // File picker for importing backup
     val importLauncher = rememberLauncherForActivityResult(
@@ -135,9 +154,93 @@ fun SettingsScreen(
             )
         }
 
-        // ── SUBSCRIPTION BANNER ────────────────────────
-        if (!isPremium) {
-            item {
+        // ── SUBSCRIPTION BANNER / PLAN INFO ──────────────
+        item {
+            if (isPremium) {
+                // Show current subscription plan details
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Primary.copy(alpha = 0.06f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Accent.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.WorkspacePremium,
+                                        contentDescription = null,
+                                        tint = Accent,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    if (subscriptionStatus.isTrialActive) "Free Trial" else "Premium",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = Primary
+                                )
+                                if (subscriptionStatus.isTrialActive) {
+                                    Text(
+                                        "${subscriptionStatus.trialDaysRemaining} days remaining",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    subscriptionStatus.plan?.let { plan ->
+                                        Text(
+                                            "${plan.label} \u2022 ${plan.price}${plan.periodLabel}",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                            Surface(
+                                color = Color(0xFF2E7D32).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    "Active",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF2E7D32),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        if (subscriptionStatus.isTrialActive && !subscriptionStatus.isSubscribed) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Surface(
+                                color = Primary.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onNavigateToSubscription() }
+                            ) {
+                                Text(
+                                    "Subscribe to keep Premium after trial ends",
+                                    fontSize = 13.sp,
+                                    color = Primary,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
@@ -192,18 +295,36 @@ fun SettingsScreen(
             }
         }
 
-        // ── PERMISSIONS ────────────────────────────────
+        // ── PERMISSIONS (collapsible) ────────────────────
         item {
-            Text(
-                "Permissions",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
+            var permissionsExpanded by remember { mutableStateOf(false) }
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { permissionsExpanded = !permissionsExpanded }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Permissions",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        if (permissionsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (permissionsExpanded) "Collapse" else "Expand",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                AnimatedVisibility(visible = permissionsExpanded) {
+                    PermissionsSection()
+                }
+            }
         }
-
-        item { PermissionsSection() }
 
         // ── GPS STATUS ────────────────────────────────
         item {
@@ -286,7 +407,7 @@ fun SettingsScreen(
             }
         }
 
-        // ── MOTION SENSOR STATUS ──────────────────────────
+        // ── MOTION SENSORS ───────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -298,11 +419,19 @@ fun SettingsScreen(
             )
         }
 
+        // ── Fusion summary card ──
         item {
             val hasSensorData = motionState.accelerationMagnitude > 0f || motionState.rotationRate > 0f
+            val confidencePct = (motionState.motionConfidence * 100).toInt()
+            val confidenceColor = when {
+                confidencePct > 70 -> PrimaryLight
+                confidencePct > 35 -> Accent
+                else -> Stationary
+            }
+
             Card(
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -312,55 +441,267 @@ fun SettingsScreen(
                         Surface(
                             color = if (hasSensorData) {
                                 if (motionState.isDeviceMoving) PrimaryLight.copy(alpha = 0.15f)
-                                else Secondary.copy(alpha = 0.15f)
+                                else Stationary.copy(alpha = 0.15f)
                             } else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    if (motionState.isDeviceMoving) Icons.Filled.DirectionsWalk else Icons.Filled.PauseCircle,
+                                    if (motionState.isDeviceMoving) Icons.Filled.DirectionsWalk
+                                    else if (hasSensorData) Icons.Filled.PauseCircle
+                                    else Icons.Filled.SensorsOff,
                                     contentDescription = null,
                                     tint = if (hasSensorData) {
-                                        if (motionState.isDeviceMoving) PrimaryLight else Secondary
+                                        if (motionState.isDeviceMoving) PrimaryLight else Stationary
                                     } else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 if (hasSensorData) {
-                                    if (motionState.isDeviceMoving) "Device Moving" else "Device Stationary"
+                                    if (motionState.isDeviceMoving) "Motion Detected" else "Stationary"
                                 } else "Sensors Inactive",
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
                             )
                             if (hasSensorData) {
                                 Text(
-                                    "Accel: ${String.format(java.util.Locale.US, "%.2f", motionState.accelerationMagnitude)} m/s\u00B2  |  Gyro: ${String.format(java.util.Locale.US, "%.2f", motionState.rotationRate)} rad/s",
+                                    "Fusion confidence: $confidencePct%",
                                     fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    "Confidence: ${(motionState.motionConfidence * 100).toInt()}%${if (motionState.stepDetected) "  |  Steps detected" else ""}",
-                                    fontSize = 12.sp,
-                                    color = if (motionState.isDeviceMoving) PrimaryLight else Secondary
+                                    color = confidenceColor,
+                                    fontWeight = FontWeight.Medium
                                 )
                             } else {
                                 Text(
-                                    "Start tracking to enable GPS drift filtering",
+                                    "Start tracking to see live sensor data",
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                        }
+                        if (hasSensorData) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (motionState.gpsNeeded) PrimaryLight.copy(alpha = 0.15f)
+                                    else Stationary.copy(alpha = 0.12f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (motionState.gpsNeeded) Icons.Filled.GpsFixed else Icons.Filled.GpsOff,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = if (motionState.gpsNeeded) PrimaryLight else Stationary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        if (motionState.gpsNeeded) "GPS ON" else "GPS OFF",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (motionState.gpsNeeded) PrimaryLight else Stationary
+                                    )
+                                }
+                            }
+                            // Vehicle motion badge
+                            if (motionState.vehicleMotionDetected) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Driving.copy(alpha = 0.15f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.DirectionsCar,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = Driving
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "VEHICLE",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Driving
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Fusion algorithm bar ──
+                    if (hasSensorData) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        // Confidence bar
+                        LinearProgressIndicator(
+                            progress = { motionState.motionConfidence },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp),
+                            color = confidenceColor,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                if (motionState.stepPermissionGranted)
+                                    "Steps 55%  •  Accel 25%  •  Gyro 20%"
+                                else
+                                    "Accel 70%  •  Gyro 30%  (steps: no permission)",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
                         }
                     }
                 }
             }
         }
 
-        // ── WEARABLE STATUS ──────────────────────────────
+        // ── Individual sensor cards (2-column grid) ──
+        item {
+            val hasSensorData = motionState.accelerationMagnitude > 0f || motionState.rotationRate > 0f
+
+            if (hasSensorData) {
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 1: Accelerometer + Gyroscope
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Vibration,
+                        title = "Accelerometer",
+                        value = String.format(java.util.Locale.US, "%.2f", motionState.accelerationMagnitude),
+                        unit = "m/s\u00B2",
+                        isActive = motionState.accelerationMagnitude > 0.4f,
+                        activeColor = Accent
+                    )
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.RotateRight,
+                        title = "Gyroscope",
+                        value = String.format(java.util.Locale.US, "%.3f", motionState.rotationRate),
+                        unit = "rad/s",
+                        isActive = motionState.rotationRate > 0.08f,
+                        activeColor = Secondary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 2: Step Counter + Magnetometer
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = if (motionState.stepPermissionGranted) Icons.Filled.DirectionsWalk
+                               else Icons.Filled.Lock,
+                        title = "Step Counter",
+                        value = if (motionState.stepPermissionGranted) "${motionState.steps}" else "--",
+                        unit = if (motionState.stepPermissionGranted) "steps" else "",
+                        subtitle = if (!motionState.stepPermissionGranted) "no permission"
+                                   else if (motionState.stepDetected) "stepping now"
+                                   else "idle",
+                        isActive = motionState.stepPermissionGranted && motionState.stepDetected,
+                        activeColor = if (motionState.stepPermissionGranted) Walking else Stationary
+                    )
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Explore,
+                        title = "Magnetometer",
+                        value = String.format(java.util.Locale.US, "%.0f", motionState.headingDeg),
+                        unit = "\u00B0 ${compassDirection(motionState.headingDeg)}",
+                        isActive = true,
+                        activeColor = Cycling
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 3: Dead Reckoning (full width)
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Driving.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.Timeline,
+                                    contentDescription = null,
+                                    tint = Driving,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Dead Reckoning",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                if (motionState.stepPermissionGranted)
+                                    "Estimated displacement between GPS fixes"
+                                else
+                                    "Requires Activity Recognition permission",
+                                fontSize = 11.sp,
+                                color = if (motionState.stepPermissionGranted)
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                else Error
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                if (!motionState.stepPermissionGranted) "--"
+                                else if (motionState.displacementMeters < 1000) {
+                                    String.format(java.util.Locale.US, "%.1f m", motionState.displacementMeters)
+                                } else {
+                                    String.format(java.util.Locale.US, "%.2f km", motionState.displacementMeters / 1000)
+                                },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Driving
+                            )
+                            Text(
+                                "heading ${String.format(java.util.Locale.US, "%.0f", motionState.headingDeg)}\u00B0",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── SMARTWATCH ───────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -372,88 +713,414 @@ fun SettingsScreen(
             )
         }
 
+        // Connection status card
         item {
+            val isConnected = wearableState is WearableConnectionState.Connected
+            val isScanning = wearableState is WearableConnectionState.Scanning
+            val isConnecting = wearableState is WearableConnectionState.Connecting
+
             Card(
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val isConnected = wearableState is WearableConnectionState.Connected
                         Surface(
-                            color = if (isConnected) PrimaryLight.copy(alpha = 0.15f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            color = when {
+                                isConnected -> PrimaryLight.copy(alpha = 0.15f)
+                                isScanning || isConnecting -> Accent.copy(alpha = 0.12f)
+                                wearableState is WearableConnectionState.Error -> Error.copy(alpha = 0.12f)
+                                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            },
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    Icons.Filled.Watch,
+                                    when {
+                                        isConnected -> Icons.Filled.Watch
+                                        isScanning -> Icons.Filled.BluetoothSearching
+                                        isConnecting -> Icons.Filled.BluetoothConnected
+                                        wearableState is WearableConnectionState.Error -> Icons.Filled.WatchOff
+                                        else -> Icons.Filled.Watch
+                                    },
                                     contentDescription = null,
-                                    tint = if (isConnected) PrimaryLight
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp)
+                                    tint = when {
+                                        isConnected -> PrimaryLight
+                                        isScanning || isConnecting -> Accent
+                                        wearableState is WearableConnectionState.Error -> Error
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Garmin / Samsung Watch", fontWeight = FontWeight.SemiBold)
+                        Column(modifier = Modifier.weight(1f)) {
                             when (val state = wearableState) {
                                 is WearableConnectionState.Connected -> {
-                                    Text(
-                                        "Connected: ${state.device.name}",
-                                        fontSize = 13.sp,
-                                        color = PrimaryLight
-                                    )
-                                    wearableReading?.let { reading ->
-                                        val details = buildString {
-                                            reading.heartRate?.let { append("HR: $it bpm") }
-                                            reading.batteryLevel?.let {
-                                                if (isNotEmpty()) append("  |  ")
-                                                append("Battery: $it%")
-                                            }
-                                            reading.cadence?.let {
-                                                if (isNotEmpty()) append("  |  ")
-                                                append("Cadence: $it")
-                                            }
-                                        }
-                                        if (details.isNotEmpty()) {
+                                    Text(state.device.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = PrimaryLight,
+                                            modifier = Modifier.size(8.dp)
+                                        ) {}
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Connected",
+                                            fontSize = 13.sp,
+                                            color = PrimaryLight,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        wearableReading?.manufacturerName?.let { mfr ->
                                             Text(
-                                                details,
-                                                fontSize = 12.sp,
+                                                "  •  $mfr",
+                                                fontSize = 13.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
+                                    wearableReading?.modelNumber?.let { model ->
+                                        Text(
+                                            model,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
-                                is WearableConnectionState.Scanning -> Text(
-                                    "Scanning for devices...",
-                                    fontSize = 13.sp,
-                                    color = Accent
-                                )
-                                is WearableConnectionState.Connecting -> Text(
-                                    "Connecting...",
-                                    fontSize = 13.sp,
-                                    color = Accent
-                                )
-                                is WearableConnectionState.Error -> Text(
-                                    state.message,
-                                    fontSize = 13.sp,
-                                    color = Error
-                                )
-                                is WearableConnectionState.Disconnected -> Text(
-                                    "Auto-connects when tracking starts",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                is WearableConnectionState.Scanning -> {
+                                    Text("Scanning...", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(
+                                        "Looking for BLE heart rate devices",
+                                        fontSize = 13.sp,
+                                        color = Accent
+                                    )
+                                }
+                                is WearableConnectionState.Connecting -> {
+                                    Text("Connecting...", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(
+                                        "Establishing BLE connection",
+                                        fontSize = 13.sp,
+                                        color = Accent
+                                    )
+                                }
+                                is WearableConnectionState.Error -> {
+                                    Text("Connection Error", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(state.message, fontSize = 13.sp, color = Error)
+                                }
+                                is WearableConnectionState.Disconnected -> {
+                                    Text("No Watch Connected", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(
+                                        "Auto-connects when tracking starts",
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
+                        }
+                        if (isScanning || isConnecting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = Accent
+                            )
                         }
                     }
                 }
+            }
+        }
+
+        // Live data cards (visible when connected)
+        item {
+            val isConnected = wearableState is WearableConnectionState.Connected
+            val reading = wearableReading
+
+            if (isConnected && reading != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 1: Heart Rate + Watch Battery
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.MonitorHeart,
+                        title = "Heart Rate",
+                        value = reading.heartRate?.toString() ?: "--",
+                        unit = if (reading.heartRate != null) "bpm" else "",
+                        subtitle = when {
+                            reading.sensorContact == false -> "no wrist contact"
+                            reading.heartRate != null && reading.heartRate > 0 -> when {
+                                reading.heartRate < 60 -> "resting"
+                                reading.heartRate < 100 -> "normal"
+                                reading.heartRate < 140 -> "elevated"
+                                reading.heartRate < 170 -> "high"
+                                else -> "max effort"
+                            }
+                            else -> "waiting for data"
+                        },
+                        isActive = reading.heartRate != null && reading.heartRate > 0,
+                        activeColor = Error
+                    )
+
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = when {
+                            (reading.batteryLevel ?: 0) > 80 -> Icons.Filled.BatteryFull
+                            (reading.batteryLevel ?: 0) > 30 -> Icons.Filled.Battery4Bar
+                            (reading.batteryLevel ?: 0) > 10 -> Icons.Filled.Battery2Bar
+                            else -> Icons.Filled.Battery0Bar
+                        },
+                        title = "Watch Battery",
+                        value = reading.batteryLevel?.toString() ?: "--",
+                        unit = if (reading.batteryLevel != null) "%" else "",
+                        subtitle = when {
+                            reading.batteryLevel == null -> "waiting for data"
+                            reading.batteryLevel > 80 -> "fully charged"
+                            reading.batteryLevel > 30 -> "good"
+                            reading.batteryLevel > 10 -> "low"
+                            else -> "critical"
+                        },
+                        isActive = reading.batteryLevel != null,
+                        activeColor = when {
+                            (reading.batteryLevel ?: 0) > 30 -> PrimaryLight
+                            (reading.batteryLevel ?: 0) > 10 -> Accent
+                            else -> Error
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 2: Cadence + RR Intervals
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Speed,
+                        title = "Cadence",
+                        value = reading.cadence?.toString() ?: "--",
+                        unit = if (reading.cadence != null) "rpm" else "",
+                        subtitle = when {
+                            reading.cadence == null -> "waiting for data"
+                            reading.cadence == 0 -> "stopped"
+                            reading.cadence < 100 -> "walking pace"
+                            reading.cadence < 180 -> "running pace"
+                            else -> "sprinting"
+                        },
+                        isActive = reading.cadence != null && reading.cadence > 0,
+                        activeColor = Cycling
+                    )
+
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Timeline,
+                        title = "RR Interval",
+                        value = if (reading.rrIntervals.isNotEmpty())
+                            reading.rrIntervals.last().toString()
+                        else "--",
+                        unit = if (reading.rrIntervals.isNotEmpty()) "ms" else "",
+                        subtitle = when {
+                            reading.rrIntervals.isEmpty() -> "waiting for data"
+                            reading.rrIntervals.size >= 2 -> {
+                                val diff = kotlin.math.abs(
+                                    reading.rrIntervals.last() -
+                                    reading.rrIntervals[reading.rrIntervals.size - 2]
+                                )
+                                "variability: ${diff}ms"
+                            }
+                            else -> "measuring..."
+                        },
+                        isActive = reading.rrIntervals.isNotEmpty(),
+                        activeColor = Driving
+                    )
+                }
+
+                // Energy Expended (full width, only if available)
+                if (reading.energyExpended != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Running.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.LocalFireDepartment,
+                                        contentDescription = null,
+                                        tint = Running,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Energy Expended",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    "Cumulative from heart rate sensor",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                "${reading.energyExpended} kJ",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Running
+                            )
+                        }
+                    }
+                }
+
+                // SpO2 (full width, only if available)
+                if (reading.spO2 != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Secondary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.Air,
+                                        contentDescription = null,
+                                        tint = Secondary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Blood Oxygen (SpO2)",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                @Suppress("KotlinConstantConditions")
+                                Text(
+                                    when {
+                                        reading.spO2!! >= 95 -> "Normal"
+                                        reading.spO2!! >= 90 -> "Low — monitor"
+                                        else -> "Very low — seek attention"
+                                    },
+                                    fontSize = 11.sp,
+                                    color = when {
+                                        reading.spO2!! >= 95 -> PrimaryLight
+                                        reading.spO2!! >= 90 -> Accent
+                                        else -> Error
+                                    }
+                                )
+                            }
+                            Text(
+                                "${reading.spO2}%",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = if (reading.spO2!! >= 95) Secondary else Error
+                            )
+                        }
+                    }
+                }
+
+                // Temperature (full width, only if available)
+                if (reading.temperatureC != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Accent.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.Thermostat,
+                                        contentDescription = null,
+                                        tint = Accent,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Body Temperature",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                @Suppress("KotlinConstantConditions")
+                                Text(
+                                    when {
+                                        reading.temperatureC!! < 36.1f -> "Below normal"
+                                        reading.temperatureC!! <= 37.2f -> "Normal"
+                                        reading.temperatureC!! <= 38.0f -> "Slightly elevated"
+                                        else -> "Fever"
+                                    },
+                                    fontSize = 11.sp,
+                                    color = when {
+                                        reading.temperatureC!! <= 37.2f -> PrimaryLight
+                                        reading.temperatureC!! <= 38.0f -> Accent
+                                        else -> Error
+                                    }
+                                )
+                            }
+                            Text(
+                                String.format("%.1f°C", reading.temperatureC),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Accent
+                            )
+                        }
+                    }
+                }
+
+                // Last updated timestamp
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "Last updated: ${formatWearableTimestamp(reading.timestamp)}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.End
+                )
             }
         }
 
@@ -1122,43 +1789,6 @@ fun SettingsScreen(
             }
         }
 
-        // Min distance
-        item {
-            SettingsCard {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Straighten, contentDescription = null, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Minimum Distance", fontWeight = FontWeight.Medium)
-                            Text(
-                                "${settings.minDistanceMeters.toInt()} meters",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Slider(
-                        value = settings.minDistanceMeters,
-                        onValueChange = { viewModel.updateMinDistance(it) },
-                        valueRange = 1f..50f,
-                        steps = 48
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("1m", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("50m", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-
         // ── AI SETTINGS ─────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
@@ -1238,28 +1868,60 @@ fun SettingsScreen(
                                     AiMode.RULE_BASED -> Icons.Filled.Speed
                                     AiMode.TFLITE_MODEL -> Icons.Filled.Psychology
                                     AiMode.LOCAL_MODEL -> Icons.Filled.PhoneAndroid
+                                    AiMode.CLOUD_AI -> Icons.Filled.Cloud
                                     AiMode.OFF -> Icons.Filled.PowerSettingsNew
                                 }
+                                val isLocalModelDisabled = mode == AiMode.LOCAL_MODEL &&
+                                    !localModelChecking && !localModelReachable
+                                val contentAlpha = if (isLocalModelDisabled) 0.38f else 1f
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { viewModel.updateAiMode(mode) }
+                                        .then(
+                                            if (isLocalModelDisabled) Modifier
+                                            else Modifier.clickable {
+                                                if (mode == AiMode.CLOUD_AI) {
+                                                    viewModel.openCloudAiWizard()
+                                                } else {
+                                                    viewModel.updateAiMode(mode)
+                                                }
+                                            }
+                                        )
                                         .padding(vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     RadioButton(
                                         selected = settings.aiMode == mode,
-                                        onClick = { viewModel.updateAiMode(mode) }
+                                        onClick = {
+                                            if (!isLocalModelDisabled) {
+                                                if (mode == AiMode.CLOUD_AI) {
+                                                    viewModel.openCloudAiWizard()
+                                                } else {
+                                                    viewModel.updateAiMode(mode)
+                                                }
+                                            }
+                                        },
+                                        enabled = !isLocalModelDisabled
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+                                    Icon(
+                                        icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+                                    )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(mode.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                        Text(
+                                            mode.label,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+                                        )
                                         Text(
                                             mode.description,
                                             fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
                                         )
                                         // Reachability status for Local Model
                                         if (mode == AiMode.LOCAL_MODEL) {
@@ -1285,11 +1947,29 @@ fun SettingsScreen(
                                                     )
                                                     Spacer(modifier = Modifier.width(6.dp))
                                                     Text(
-                                                        if (localModelReachable) "Model available on device" else "Model not available",
+                                                        if (localModelReachable) "Model available on device" else "Not available on this device",
                                                         fontSize = 11.sp,
                                                         color = if (localModelReachable) Accent else Error
                                                     )
                                                 }
+                                            }
+                                        }
+                                        // Cloud AI configured status
+                                        if (mode == AiMode.CLOUD_AI && settings.aiMode == AiMode.CLOUD_AI) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Filled.CheckCircle,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(14.dp),
+                                                    tint = Accent
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    "${settings.cloudAiProvider.label} \u2022 ${settings.cloudAiModel.ifBlank { "default" }}",
+                                                    fontSize = 11.sp,
+                                                    color = Accent
+                                                )
                                             }
                                         }
                                     }
@@ -1307,6 +1987,19 @@ fun SettingsScreen(
                                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Re-check local model", fontSize = 13.sp)
+                                }
+                            }
+
+                            // Configure button for Cloud AI
+                            if (settings.aiMode == AiMode.CLOUD_AI) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = { viewModel.openCloudAiWizard() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Configure Cloud AI", fontSize = 13.sp)
                                 }
                             }
                         }
@@ -1693,17 +2386,45 @@ fun SettingsScreen(
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("TrackMyJourney", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("Version 1.0.0", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    val versionName = remember {
+                        try {
+                            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+                        } catch (_: Exception) { "1.0.0" }
+                    }
+                    val versionCode = remember {
+                        try {
+                            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pInfo.longVersionCode else @Suppress("DEPRECATION") pInfo.versionCode.toLong()
+                        } catch (_: Exception) { 1L }
+                    }
+                    Text("Pathwise", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "GPS tracking with OpenStreetMap and on-device AI analysis. Maximum precision satellite positioning. All data stored locally.",
+                        "Version $versionName ($versionCode)",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Pathwise is a privacy-first journey tracker that uses high-precision GPS " +
+                            "positioning with OpenStreetMap. It features on-device AI analysis for " +
+                            "smart trip insights, automatic activity detection, and vehicle tracking " +
+                            "with fuel cost estimation. All your data is stored locally on your " +
+                            "device — nothing is sent to external servers.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 18.sp
+                        lineHeight = 19.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "\u00a9 ${java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)} Pathwise. All rights reserved.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 }
             }
@@ -2457,5 +3178,321 @@ private fun AddActivityDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
         shape = RoundedCornerShape(20.dp)
+    )
+}
+
+// ─── Sensor Cards ──────────────────────────────────────
+
+@Composable
+private fun SensorCard(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    title: String,
+    value: String,
+    unit: String,
+    subtitle: String? = null,
+    isActive: Boolean = false,
+    activeColor: Color = PrimaryLight
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = if (isActive) activeColor.copy(alpha = 0.12f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            icon,
+                            contentDescription = null,
+                            tint = if (isActive) activeColor
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    title,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Text(
+                    value,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isActive) activeColor
+                    else MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    unit,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    fontSize = 11.sp,
+                    color = if (isActive) activeColor.copy(alpha = 0.8f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
+private fun formatWearableTimestamp(timestamp: Long): String {
+    if (timestamp <= 0L) return "—"
+    val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+    return sdf.format(java.util.Date(timestamp))
+}
+
+private fun compassDirection(degrees: Float): String {
+    val normalized = ((degrees % 360f) + 360f) % 360f
+    return when {
+        normalized < 22.5f  -> "N"
+        normalized < 67.5f  -> "NE"
+        normalized < 112.5f -> "E"
+        normalized < 157.5f -> "SE"
+        normalized < 202.5f -> "S"
+        normalized < 247.5f -> "SW"
+        normalized < 292.5f -> "W"
+        normalized < 337.5f -> "NW"
+        else                -> "N"
+    }
+}
+
+// ── Cloud AI Setup Wizard ──────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CloudAiWizardDialog(
+    currentProvider: CloudAiProvider,
+    currentApiKey: String,
+    currentEndpoint: String,
+    currentModel: String,
+    onDismiss: () -> Unit,
+    onSave: (CloudAiProvider, String, String, String) -> Unit
+) {
+    var wizardStep by remember { mutableStateOf(0) }
+    var provider by remember { mutableStateOf(currentProvider) }
+    var apiKey by remember { mutableStateOf(currentApiKey) }
+    var endpoint by remember { mutableStateOf(currentEndpoint) }
+    var model by remember { mutableStateOf(currentModel) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Cloud,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    when (wizardStep) {
+                        0 -> "Choose Provider"
+                        1 -> "API Key"
+                        else -> "Model Settings"
+                    },
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        },
+        text = {
+            Column {
+                // Step indicator
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    repeat(3) { step ->
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .size(if (step == wizardStep) 10.dp else 8.dp)
+                                .then(
+                                    Modifier
+                                        .padding(0.dp) // placeholder for background
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (step <= wizardStep)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.outlineVariant,
+                                modifier = Modifier.size(if (step == wizardStep) 10.dp else 8.dp)
+                            ) {}
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                when (wizardStep) {
+                    // Step 1: Provider selection
+                    0 -> {
+                        Text(
+                            "Select your cloud AI provider",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        CloudAiProvider.entries.forEach { p ->
+                            val providerIcon = when (p) {
+                                CloudAiProvider.OPENAI -> Icons.Filled.AutoAwesome
+                                CloudAiProvider.ANTHROPIC -> Icons.Filled.Psychology
+                                CloudAiProvider.CUSTOM -> Icons.Filled.Dns
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { provider = p }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = provider == p,
+                                    onClick = { provider = p }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(providerIcon, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(p.label, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                    // Step 2: API Key
+                    1 -> {
+                        Text(
+                            "Enter your ${provider.label} API key",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = apiKey,
+                            onValueChange = { apiKey = it },
+                            label = { Text("API Key") },
+                            placeholder = { Text("sk-...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                        )
+                        if (provider == CloudAiProvider.CUSTOM) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = endpoint,
+                                onValueChange = { endpoint = it },
+                                label = { Text("Endpoint URL") },
+                                placeholder = { Text("https://api.example.com/v1") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                            )
+                        }
+                    }
+                    // Step 3: Model
+                    2 -> {
+                        Text(
+                            "Choose the model to use for activity analysis",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val suggestedModels = when (provider) {
+                            CloudAiProvider.OPENAI -> listOf("gpt-4o-mini", "gpt-4o")
+                            CloudAiProvider.ANTHROPIC -> listOf("claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250514")
+                            CloudAiProvider.CUSTOM -> emptyList()
+                        }
+                        if (suggestedModels.isNotEmpty()) {
+                            Text(
+                                "Suggested models",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                suggestedModels.forEach { suggested ->
+                                    FilterChip(
+                                        selected = model == suggested,
+                                        onClick = { model = suggested },
+                                        label = { Text(suggested, fontSize = 12.sp) }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                        OutlinedTextField(
+                            value = model,
+                            onValueChange = { model = it },
+                            label = { Text("Model name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (wizardStep < 2) {
+                Button(
+                    onClick = { wizardStep++ },
+                    enabled = when (wizardStep) {
+                        1 -> apiKey.isNotBlank()
+                        else -> true
+                    }
+                ) {
+                    Text("Next")
+                }
+            } else {
+                Button(
+                    onClick = {
+                        val resolvedEndpoint = when (provider) {
+                            CloudAiProvider.OPENAI -> endpoint.ifBlank { "https://api.openai.com/v1" }
+                            CloudAiProvider.ANTHROPIC -> endpoint.ifBlank { "https://api.anthropic.com" }
+                            CloudAiProvider.CUSTOM -> endpoint
+                        }
+                        onSave(provider, apiKey, resolvedEndpoint, model)
+                    },
+                    enabled = apiKey.isNotBlank() && model.isNotBlank()
+                ) {
+                    Text("Save")
+                }
+            }
+        },
+        dismissButton = {
+            if (wizardStep > 0) {
+                TextButton(onClick = { wizardStep-- }) {
+                    Text("Back")
+                }
+            } else {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        }
     )
 }

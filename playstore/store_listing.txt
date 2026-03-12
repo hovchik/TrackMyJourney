@@ -1,0 +1,42 @@
+SHORT DESCRIPTION (80 chars max):
+Track walks, runs, drives & flights with AI insights — all offline & private.
+
+────────────────────────────────────────────────────────────────────────────────
+
+FULL DESCRIPTION (4000 chars max):
+
+Pathwise is a GPS journey tracker that automatically detects your activity — walking, running, cycling, driving, hiking, or flying — and gives you AI-powered insights, all without ever sending your data off your phone.
+
+KEY FEATURES
+
+● Automatic Activity Detection
+Pathwise uses speed, altitude, and motion sensors to recognize what you're doing. No manual tagging required — just start tracking and go.
+
+● AI-Powered Insights
+Get trip summaries, performance analysis, health insights, and smart suggestions generated entirely on-device. See activity breakdowns, elevation gain, calorie estimates, and trends across all your journeys.
+
+● Real-Time GPS Tracking
+Watch your route unfold on a live map with speed, distance, elevation, and satellite accuracy displayed in real time.
+
+● Health & Wearable Integration
+Connect Bluetooth heart rate monitors and wearables to capture heart rate and cadence alongside your GPS data.
+
+● Detailed Trip History
+Browse every trip with full route playback, speed graphs, and per-track AI analysis including detected activity, confidence scores, and health insights.
+
+● Car Profiles & Ride Cost
+Add your vehicles with fuel type, consumption rate, and fuel price to automatically calculate the cost of each drive.
+
+● Calorie Tracking
+Pathwise estimates calories burned using MET values tailored to each activity type, factoring in your weight and trip duration.
+
+● Import & Export
+Import and export tracks in JSON, GPX, or CSV formats. Full database backup and restore is supported for easy device migration.
+
+● Complete Privacy
+All AI analysis and activity detection runs locally on your device. No accounts, no cloud, no data collection. Your journeys stay yours.
+
+● Premium Features
+Free users get unlimited tracking and AI insights. Subscribe to unlock track playback, advanced analytics, and more.
+
+Download Pathwise and start discovering the patterns in your everyday journeys.

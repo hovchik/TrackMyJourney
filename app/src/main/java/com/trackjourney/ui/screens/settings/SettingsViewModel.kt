@@ -110,6 +110,25 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ─── Cloud AI Configuration ─────────────────────────
+
+    private val _showCloudAiWizard = MutableStateFlow(false)
+    val showCloudAiWizard: StateFlow<Boolean> = _showCloudAiWizard.asStateFlow()
+
+    fun openCloudAiWizard() { _showCloudAiWizard.value = true }
+    fun dismissCloudAiWizard() { _showCloudAiWizard.value = false }
+
+    fun saveCloudAiConfig(provider: CloudAiProvider, apiKey: String, endpoint: String, model: String) {
+        viewModelScope.launch {
+            repository.updateSettings { updateCloudAiProvider(provider) }
+            repository.updateSettings { updateCloudAiApiKey(apiKey) }
+            repository.updateSettings { updateCloudAiEndpoint(endpoint) }
+            repository.updateSettings { updateCloudAiModel(model) }
+            repository.updateSettings { updateAiMode(AiMode.CLOUD_AI) }
+            _showCloudAiWizard.value = false
+        }
+    }
+
     // ─── Webhook Settings ──────────────────────────────
 
     fun updateWebhookEnabled(enabled: Boolean) {

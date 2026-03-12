@@ -42,6 +42,11 @@ class SubscriptionViewModel @Inject constructor(
     }
 
     fun purchase(activity: Activity, plan: SubscriptionPlan) {
+        // Pre-set the plan so handlePurchases can resolve the base plan
+        viewModelScope.launch {
+            val currentStatus = subscriptionStatus.value
+            billingManager.updateStatus(currentStatus.copy(plan = plan))
+        }
         billingManager.launchPurchaseFlow(activity, plan)
     }
 

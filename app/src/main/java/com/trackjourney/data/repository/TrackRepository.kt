@@ -271,13 +271,18 @@ class TrackRepository(
             activity = ActivityType.fromSpeed(filteredSpeedKmh, currentSettings.activityConfigs)
         }
 
-        // If sensors say stationary but GPS reports movement, clamp speed to 0
-        val effectiveSpeedKmh = if (activity == ActivityType.STATIONARY && filteredSpeedKmh > 0.5f) {
+        // If sensors say stationary but GPS reports movement, clamp speed to 0.
+        // Never clamp when sensors detect real motion (walking) or vehicle motion (driving).
+        val shouldClampSpeed = activity == ActivityType.STATIONARY
+                && filteredSpeedKmh > 0.5f
+                && !motionState.isDeviceMoving
+                && !motionState.vehicleMotionDetected
+        val effectiveSpeedKmh = if (shouldClampSpeed) {
             Log.d(TAG, "GPS drift filtered: filtered=${String.format("%.1f", filteredSpeedKmh)}km/h → 0 " +
                     "(sensors: moving=${motionState.isDeviceMoving}, conf=${motionState.motionConfidence})")
             0f
         } else filteredSpeedKmh
-        val effectiveSpeedMs = if (activity == ActivityType.STATIONARY && filteredSpeedKmh > 0.5f) 0f else filteredSpeedMs
+        val effectiveSpeedMs = if (shouldClampSpeed) 0f else filteredSpeedMs
 
         // Resolve place name for the first point of a track
         val isFirstPoint = lastPoint == null
@@ -587,7 +592,7 @@ class TrackRepository(
 
             val gpx = buildString {
                 appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
-                appendLine("""<gpx version="1.1" creator="TrackMyJourney"
+                appendLine("""<gpx version="1.1" creator="Pathwise"
   xmlns="http://www.topografix.com/GPX/1/1"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">""")

@@ -3,6 +3,9 @@ package com.trackjourney.di
 import android.content.Context
 import androidx.room.Room
 import com.trackjourney.data.ai.LocalAiEngine
+import com.trackjourney.data.ai.models.*
+import com.trackjourney.data.ai.runtime.*
+import com.trackjourney.data.ai.provider.*
 import com.trackjourney.data.billing.BillingManager
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.local.*
@@ -41,10 +44,87 @@ object AppModule {
     @Provides fun provideHealthDataDao(db: TrackDatabase) = db.healthDataDao()
     @Provides fun provideAiAnalysisDao(db: TrackDatabase) = db.aiAnalysisDao()
     @Provides fun provideCarProfileDao(db: TrackDatabase) = db.carProfileDao()
+    @Provides fun provideLocalAiModelDao(db: TrackDatabase) = db.localAiModelDao()
 
     @Provides
     @Singleton
     fun provideSettingsDataStore(@ApplicationContext context: Context) = SettingsDataStore(context)
+
+    // ── AI Model Management ────────────────────────────────
+
+    @Provides
+    @Singleton
+    fun provideAiPreferences(@ApplicationContext context: Context) = AiPreferences(context)
+
+    @Provides
+    @Singleton
+    fun provideDeviceAiCapabilityDetector(@ApplicationContext context: Context) = DeviceAiCapabilityDetector(context)
+
+    @Provides
+    @Singleton
+    fun provideModelCompatibilityValidator(detector: DeviceAiCapabilityDetector) = ModelCompatibilityValidator(detector)
+
+    @Provides
+    @Singleton
+    fun provideLocalModelManager(dao: LocalAiModelDao, aiPreferences: AiPreferences) = LocalModelManager(dao, aiPreferences)
+
+    @Provides
+    @Singleton
+    fun provideModelInstaller(
+        @ApplicationContext context: Context,
+        localModelManager: LocalModelManager,
+        compatibilityValidator: ModelCompatibilityValidator
+    ) = ModelInstaller(context, localModelManager, compatibilityValidator)
+
+    // ── Runtime Adapters ───────────────────────────────────
+
+    @Provides
+    @Singleton
+    fun provideSystemAiRuntimeAdapter(@ApplicationContext context: Context) = SystemAiRuntimeAdapter(context)
+
+    @Provides
+    @Singleton
+    fun provideMediaPipeLlmRuntimeAdapter(@ApplicationContext context: Context) = MediaPipeLlmRuntimeAdapter(context)
+
+    @Provides
+    @Singleton
+    fun provideLiteRtRuntimeAdapter(@ApplicationContext context: Context) = LiteRtRuntimeAdapter(context)
+
+    // ── AI Providers ───────────────────────────────────────
+
+    @Provides
+    @Singleton
+    fun provideCloudProvider() = CloudProvider()
+
+    @Provides
+    @Singleton
+    fun provideSystemAiProvider(systemRuntime: SystemAiRuntimeAdapter) = SystemAiProvider(systemRuntime)
+
+    @Provides
+    @Singleton
+    fun provideCustomLocalModelProvider(
+        modelManager: LocalModelManager,
+        mediaPipeRuntime: MediaPipeLlmRuntimeAdapter,
+        liteRtRuntime: LiteRtRuntimeAdapter
+    ) = CustomLocalModelProvider(modelManager, mediaPipeRuntime, liteRtRuntime)
+
+    @Provides
+    @Singleton
+    fun provideAiProviderSelector(
+        aiPreferences: AiPreferences,
+        systemAiProvider: SystemAiProvider,
+        customLocalModelProvider: CustomLocalModelProvider,
+        cloudProvider: CloudProvider
+    ) = AiProviderSelector(aiPreferences, systemAiProvider, customLocalModelProvider, cloudProvider)
+
+    @Provides
+    @Singleton
+    fun provideLocalAiBenchmarkRunner(
+        @ApplicationContext context: Context,
+        modelManager: LocalModelManager,
+        mediaPipeRuntime: MediaPipeLlmRuntimeAdapter,
+        liteRtRuntime: LiteRtRuntimeAdapter
+    ) = LocalAiBenchmarkRunner(context, modelManager, mediaPipeRuntime, liteRtRuntime)
 
     @Provides
     @Singleton
@@ -72,7 +152,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideSmartIntervalManager(batteryMonitor: BatteryMonitor) = SmartIntervalManager(batteryMonitor)
+    fun provideSmartIntervalManager(
+        batteryMonitor: BatteryMonitor,
+        motionSensorManager: MotionSensorManager
+    ) = SmartIntervalManager(batteryMonitor, motionSensorManager)
 
     @Provides
     @Singleton

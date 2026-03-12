@@ -331,6 +331,16 @@ data class ActivityConfig(
 enum class WearableType {
     GARMIN,
     SAMSUNG,
+    POLAR,
+    WAHOO,
+    SUUNTO,
+    FITBIT,
+    XIAOMI,
+    HUAWEI,
+    COROS,
+    WHOOP,
+    APPLE,
+    WEAR_OS,
     GENERIC_BLE,
     UNKNOWN
 }
@@ -465,11 +475,15 @@ data class TrackingSettings(
     val userName: String = "",
     val userWeightKg: Float = 70f,                // default 70 kg
     val userHeightCm: Float = 170f,               // default 170 cm
-    val trackingMode: TrackingMode = TrackingMode.HIGH_ACCURACY,
+    val trackingMode: TrackingMode = TrackingMode.AI_BATTERY_SAVER,
     val selectedCarId: String? = null,             // ID of the active car profile
     val currency: String = "$",                    // currency symbol for ride cost
     val activityConfigs: List<ActivityConfig> = ActivityConfig.defaults(),
     val aiMode: AiMode = AiMode.RULE_BASED,
+    val cloudAiProvider: CloudAiProvider = CloudAiProvider.OPENAI,
+    val cloudAiApiKey: String = "",
+    val cloudAiEndpoint: String = "",
+    val cloudAiModel: String = "",
     val webhookEnabled: Boolean = false,
     val webhookUrl: String = "https://pathwise.art",
     val webhookKey: String = UUID.randomUUID().toString().replace("-", "").take(16),
@@ -488,7 +502,14 @@ enum class AiMode(val label: String, val description: String) {
     RULE_BASED("Rule-Based", "Fast classification from speed and sensor thresholds"),
     TFLITE_MODEL("TFLite Model", "On-device ML model for nuanced classification"),
     LOCAL_MODEL("Local AI Model", "Use phone\u2019s built-in AI model for on-device inference"),
+    CLOUD_AI("Cloud AI", "Use a cloud-hosted LLM for advanced activity analysis"),
     OFF("Off", "Disable automatic activity detection")
+}
+
+enum class CloudAiProvider(val label: String) {
+    OPENAI("OpenAI"),
+    ANTHROPIC("Anthropic"),
+    CUSTOM("Custom Endpoint")
 }
 
 enum class FuelType(val label: String) {
@@ -502,7 +523,7 @@ enum class FuelType(val label: String) {
 // ─────────────────────────────────────────────────────────
 
 enum class SubscriptionPlan(
-    val productId: String,
+    val basePlanId: String,
     val label: String,
     val price: String,
     val periodLabel: String,
@@ -510,7 +531,7 @@ enum class SubscriptionPlan(
     val savings: String
 ) {
     MONTHLY(
-        productId = "sub_monthly",
+        basePlanId = "sub-monthly",
         label = "1 Month",
         price = "$2.99",
         periodLabel = "/month",
@@ -518,7 +539,7 @@ enum class SubscriptionPlan(
         savings = ""
     ),
     SEMI_ANNUAL(
-        productId = "sub_semi_annual",
+        basePlanId = "sub-semi-annual",
         label = "6 Months",
         price = "$14.99",
         periodLabel = "/6 months",
@@ -526,27 +547,19 @@ enum class SubscriptionPlan(
         savings = "Save 16%"
     ),
     ANNUAL(
-        productId = "sub_annual",
+        basePlanId = "sub-annual",
         label = "1 Year",
         price = "$30.00",
         periodLabel = "/year",
         monthlyEquivalent = "$2.50/mo",
         savings = "Save 16%"
-    ),
-    LIFETIME(
-        productId = "sub_lifetime",
-        label = "Lifetime",
-        price = "$55.00",
-        periodLabel = "one-time",
-        monthlyEquivalent = "Pay once",
-        savings = "Best value"
     );
 
     companion object {
-        fun fromProductId(productId: String): SubscriptionPlan? =
-            entries.firstOrNull { it.productId == productId }
+        const val PRODUCT_ID = "sub_monthly"
 
-        val allProductIds: List<String> = entries.map { it.productId }
+        fun fromBasePlanId(basePlanId: String): SubscriptionPlan? =
+            entries.firstOrNull { it.basePlanId == basePlanId }
     }
 }
 
@@ -577,5 +590,5 @@ data class SubscriptionStatus(
 
     val isActive: Boolean
         get() = isTrialActive ||
-                (isSubscribed && (plan == SubscriptionPlan.LIFETIME || expiryTime > System.currentTimeMillis()))
+                (isSubscribed && expiryTime > System.currentTimeMillis())
 }

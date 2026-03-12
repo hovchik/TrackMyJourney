@@ -3,25 +3,27 @@ package com.trackjourney.data.location
 import android.util.Log
 import com.trackjourney.data.model.TrackingMode
 import com.trackjourney.data.model.TrackingSettings
-import kotlinx.coroutines.flow.StateFlow
 
 /**
  * AI-based GPS interval manager that dynamically adjusts the recording interval
- * based on tracking mode, charging state, and current speed.
+ * based on tracking mode, charging state, current speed, **and physical motion
+ * detected by the device sensors**.
  *
  * Modes:
  *  - HIGH_ACCURACY:      Uses the user's configured interval (1–30s), ignores AI.
  *  - ENERGY_EFFICIENCY:  Fixed 26s interval, balanced accuracy mode.
  *  - AI_BATTERY_SAVER:   Dynamic interval computed per-update:
- *      • Charging detected → 3s (maximum accuracy while plugged in)
- *      • Highway (>80 km/h) → 15s (predictable straight-line motion)
- *      • City driving (35–80 km/h) → 5s
- *      • Cycling (15–35 km/h) → 4s
- *      • Walking/running (<15 km/h) → 3s (need precision for turns)
- *      • Stationary (<1 km/h) → 10s (save battery, no useful data)
+ *      • Charging detected       → 3s   (maximum accuracy while plugged in)
+ *      • Highway (>80 km/h)      → 15s  (predictable straight-line motion)
+ *      • City driving (35–80)    → 5s
+ *      • Cycling (15–35)         → 4s
+ *      • Walking/running (<15)   → 3s   (need precision for turns)
+ *      • Stationary (<1) + no sensor motion → GPS suspended (returns [GPS_SUSPENDED])
+ *      • Stationary (<1) + sensor motion    → 10s (starting to move, keep checking)
  */
 class SmartIntervalManager(
-    private val batteryMonitor: BatteryMonitor
+    private val batteryMonitor: BatteryMonitor,
+    private val motionSensorManager: MotionSensorManager
 ) {
     companion object {
         private const val TAG = "SmartIntervalManager"
@@ -42,18 +44,25 @@ class SmartIntervalManager(
         private const val CITY_SPEED = 35f
         private const val CYCLING_SPEED = 15f
         private const val STATIONARY_SPEED = 1f
+
+        /**
+         * Sentinel value indicating GPS should be suspended entirely.
+         * The service checks for this and stops requesting location updates
+         * until the motion sensor signals movement again.
+         */
+        const val GPS_SUSPENDED = -1L
     }
 
     private var lastComputedInterval = 3000L
-    private var lastSpeedKmh = 0f
 
     /**
      * Compute the optimal GPS interval given current conditions.
      * Called after each location update to potentially adjust the next interval.
+     *
+     * @return interval in ms, or [GPS_SUSPENDED] when sensors show no motion
+     *         and GPS speed is also stationary.
      */
     fun computeInterval(settings: TrackingSettings, currentSpeedKmh: Float): Long {
-        lastSpeedKmh = currentSpeedKmh
-
         val interval = when (settings.trackingMode) {
             TrackingMode.HIGH_ACCURACY -> settings.recordIntervalMs
 
@@ -61,6 +70,8 @@ class SmartIntervalManager(
 
             TrackingMode.AI_BATTERY_SAVER -> {
                 val isCharging = batteryMonitor.batteryState.value.isCharging
+                val motion = motionSensorManager.motionState.value
+
                 if (isCharging) {
                     INTERVAL_CHARGING
                 } else {
@@ -69,16 +80,27 @@ class SmartIntervalManager(
                         currentSpeedKmh > CITY_SPEED -> INTERVAL_CITY
                         currentSpeedKmh > CYCLING_SPEED -> INTERVAL_CYCLING
                         currentSpeedKmh > STATIONARY_SPEED -> INTERVAL_WALKING
-                        else -> INTERVAL_STATIONARY
+                        else -> {
+                            // GPS says stationary — consult physical sensors
+                            if (motion.gpsNeeded) {
+                                // Sensors detect real motion (or lingering after motion)
+                                INTERVAL_STATIONARY
+                            } else {
+                                // Truly stationary — suspend GPS to save battery
+                                GPS_SUSPENDED
+                            }
+                        }
                     }
                 }
             }
         }
 
         if (interval != lastComputedInterval) {
-            Log.i(TAG, "Interval changed: ${lastComputedInterval}ms → ${interval}ms " +
+            val intervalStr = if (interval == GPS_SUSPENDED) "SUSPENDED" else "${interval}ms"
+            Log.i(TAG, "Interval changed: ${formatInterval(lastComputedInterval)} → $intervalStr " +
                     "(mode=${settings.trackingMode}, speed=${String.format("%.1f", currentSpeedKmh)}km/h, " +
-                    "charging=${batteryMonitor.batteryState.value.isCharging})")
+                    "charging=${batteryMonitor.batteryState.value.isCharging}, " +
+                    "sensorMotion=${motionSensorManager.motionState.value.isDeviceMoving})")
             lastComputedInterval = interval
         }
 
@@ -98,4 +120,7 @@ class SmartIntervalManager(
             }
         }
     }
+
+    private fun formatInterval(ms: Long): String =
+        if (ms == GPS_SUSPENDED) "SUSPENDED" else "${ms}ms"
 }

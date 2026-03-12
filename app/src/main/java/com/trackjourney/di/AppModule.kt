@@ -72,7 +72,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideSmartIntervalManager(batteryMonitor: BatteryMonitor) = SmartIntervalManager(batteryMonitor)
+    fun provideSmartIntervalManager(
+        batteryMonitor: BatteryMonitor,
+        motionSensorManager: MotionSensorManager
+    ) = SmartIntervalManager(batteryMonitor, motionSensorManager)
 
     @Provides
     @Singleton

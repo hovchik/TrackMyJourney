@@ -260,12 +260,28 @@ class TrackingService : Service() {
 
             TrackingMode.AI_BATTERY_SAVER -> {
                 // Dynamic interval — re-evaluate after each location update.
-                // We use a MutableStateFlow to track the current interval
-                // and restart the location flow when it changes.
+                // When sensors detect no motion, GPS is suspended entirely.
+                // A coroutine watches the motion sensor and resumes GPS when
+                // the device starts moving again.
                 var currentInterval = smartIntervalManager.getInitialInterval(settings)
                 var lastSpeedKmh = 0f
 
                 while (true) {
+                    if (currentInterval == SmartIntervalManager.GPS_SUSPENDED) {
+                        // ── GPS suspended: wait for sensors to detect real motion ──
+                        Log.i(TAG, "GPS suspended — waiting for sensor motion")
+                        updateNotification("Stationary | GPS suspended | ${pointCount} pts")
+
+                        // Block until the motion sensor says GPS is needed again
+                        motionSensorManager.motionState
+                            .first { it.gpsNeeded }
+
+                        Log.i(TAG, "Sensor motion detected — resuming GPS")
+                        // Start with a responsive interval after wake-up
+                        currentInterval = smartIntervalManager.getInitialInterval(settings)
+                        continue
+                    }
+
                     var intervalChanged = false
 
                     locationTracker.locationUpdatesWithInterval(
@@ -278,7 +294,10 @@ class TrackingService : Service() {
                                 lastNotificationTime = it
                             }
 
-                            // Check if the interval should change
+                            // Reset dead reckoning after each GPS fix
+                            motionSensorManager.resetDisplacement()
+
+                            // Check if the interval should change (or GPS should suspend)
                             val newInterval = smartIntervalManager.computeInterval(settings, lastSpeedKmh)
                             if (newInterval != currentInterval) {
                                 currentInterval = newInterval

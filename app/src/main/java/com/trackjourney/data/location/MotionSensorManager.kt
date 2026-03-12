@@ -23,16 +23,13 @@ import kotlin.math.*
  *  • Step Counter           – cumulative step count   (requires ACTIVITY_RECOGNITION)
  *  • Magnetometer           – ambient magnetic field → compass heading
  *
- * When [ACTIVITY_RECOGNITION] permission is not granted, step sensors are skipped
- * and the fusion algorithm redistributes their weight to accelerometer and gyroscope.
+ * Step counting strategy (three tiers):
+ *  1. TYPE_STEP_DETECTOR   – fires per step → increments detectorSteps (primary)
+ *  2. TYPE_STEP_COUNTER    – cumulative, batched → cross-validates / catches missed steps
+ *  3. Accelerometer peaks  – fallback when hardware step sensors are unavailable
  *
- * Outputs (via [motionState]):
- *  • isDeviceMoving / motionConfidence
- *  • step count since monitoring started (0 when permission denied)
- *  • magnetic heading (degrees, 0 = north, clockwise)
- *  • approximate displacement (meters) from dead reckoning (steps × stride × heading)
- *  • gpsNeeded – true when sensors indicate real locomotion that warrants a GPS fix
- *  • stepPermissionGranted – whether step sensors are active
+ * When ACTIVITY_RECOGNITION permission is not granted, step sensors are skipped
+ * and the fusion algorithm redistributes their weight to accelerometer and gyroscope.
  */
 class MotionSensorManager(context: Context) : SensorEventListener {
 
@@ -52,7 +49,6 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         private const val WEIGHT_GYRO_WITH_STEPS = 0.20f
 
         // ── Fusion weights (without step permission) ──
-        // Steps weight is redistributed: accel gets +20%, gyro gets +10%
         private const val WEIGHT_ACCEL_NO_STEPS = 0.70f
         private const val WEIGHT_GYRO_NO_STEPS = 0.30f
 
@@ -67,6 +63,12 @@ class MotionSensorManager(context: Context) : SensorEventListener {
 
         // ── Magnetometer low-pass ──
         private const val MAG_ALPHA = 0.15f
+
+        // ── Accelerometer step detection (fallback) ──
+        // Peak detection on linear acceleration magnitude to count steps
+        // when no hardware step sensor is available.
+        private const val ACCEL_STEP_THRESHOLD = 1.2f      // m/s² peak to count as step
+        private const val ACCEL_STEP_MIN_INTERVAL_MS = 250L // fastest step ~4 steps/s
     }
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -86,10 +88,21 @@ class MotionSensorManager(context: Context) : SensorEventListener {
     private var sampleIndex = 0
     private var samplesCollected = 0
 
-    // Step tracking
+    // ── Step tracking ──
     private var lastStepTimestamp = 0L
+    /** Steps counted by TYPE_STEP_DETECTOR (fires per step, real-time). */
+    private var detectorSteps = 0L
+    /** Steps from TYPE_STEP_COUNTER (cumulative since reboot, batched delivery). */
     private var stepCounterBaseline: Float? = null
-    private var totalSteps = 0L
+    private var counterSteps = 0L
+    /** Whether hardware step sensors are present on this device. */
+    private var hasHardwareStepSensor = false
+
+    // ── Accelerometer step detection fallback ──
+    private var accelSteps = 0L
+    private var lastAccelStepTime = 0L
+    private var prevAccelMagnitude = 0f
+    private var accelRising = false
 
     // Magnetometer / heading
     private val gravityValues = FloatArray(3)
@@ -107,30 +120,18 @@ class MotionSensorManager(context: Context) : SensorEventListener {
     private var lastMotionTimestamp = 0L
 
     private var isMonitoring = false
-
-    /** Whether ACTIVITY_RECOGNITION permission was granted for this monitoring session. */
     private var hasStepPermission = false
 
     data class MotionState(
-        /** True if sensors indicate the device is physically moving */
         val isDeviceMoving: Boolean = false,
-        /** Smoothed linear acceleration magnitude (m/s²) */
         val accelerationMagnitude: Float = 0f,
-        /** Smoothed angular velocity (rad/s) */
         val rotationRate: Float = 0f,
-        /** True if step detector fired recently */
         val stepDetected: Boolean = false,
-        /** Confidence 0..1 that the device is truly in motion */
         val motionConfidence: Float = 0f,
-        /** Total steps detected since monitoring started (0 when permission denied) */
         val steps: Long = 0,
-        /** Compass heading in degrees (0 = magnetic north, clockwise) */
         val headingDeg: Float = 0f,
-        /** Approximate displacement in meters from dead reckoning */
         val displacementMeters: Double = 0.0,
-        /** True when real motion warrants activating GPS */
         val gpsNeeded: Boolean = false,
-        /** Whether step counter/detector sensors are active (permission granted) */
         val stepPermissionGranted: Boolean = false
     )
 
@@ -147,9 +148,14 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         isMonitoring = true
         hasStepPermission = activityRecognitionGranted
 
-        // Reset dead reckoning state
+        // Reset all state
         stepCounterBaseline = null
-        totalSteps = 0
+        detectorSteps = 0
+        counterSteps = 0
+        accelSteps = 0
+        lastAccelStepTime = 0L
+        prevAccelMagnitude = 0f
+        accelRising = false
         displacementX = 0.0
         displacementY = 0.0
         totalDisplacement = 0.0
@@ -158,6 +164,7 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         currentHeadingDeg = 0f
         lastMotionTimestamp = 0L
         lastStepTimestamp = 0L
+        hasHardwareStepSensor = false
 
         accelerometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
@@ -172,13 +179,19 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         if (activityRecognitionGranted) {
             stepDetector?.let {
                 sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+                hasHardwareStepSensor = true
                 Log.i(TAG, "Step detector registered")
-            } ?: Log.w(TAG, "No step detector available")
+            } ?: Log.w(TAG, "No step detector sensor on this device")
 
             stepCounter?.let {
                 sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+                hasHardwareStepSensor = true
                 Log.i(TAG, "Step counter registered")
-            } ?: Log.w(TAG, "No step counter available")
+            } ?: Log.w(TAG, "No step counter sensor on this device")
+
+            if (!hasHardwareStepSensor) {
+                Log.i(TAG, "No hardware step sensors — using accelerometer peak detection fallback")
+            }
         } else {
             Log.w(TAG, "ACTIVITY_RECOGNITION not granted — step sensors skipped, " +
                     "fusion weights redistributed (accel=${WEIGHT_ACCEL_NO_STEPS}, gyro=${WEIGHT_GYRO_NO_STEPS})")
@@ -206,10 +219,6 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         Log.i(TAG, "Sensor monitoring stopped")
     }
 
-    /**
-     * Reset dead-reckoning accumulators.  Called by the service after a GPS fix
-     * so the displacement estimate restarts from the last known position.
-     */
     fun resetDisplacement() {
         displacementX = 0.0
         displacementY = 0.0
@@ -227,6 +236,12 @@ class MotionSensorManager(context: Context) : SensorEventListener {
                 accelSamples[sampleIndex % SAMPLE_WINDOW] = magnitude
                 sampleIndex++
                 samplesCollected++
+
+                // Accelerometer-based step detection fallback:
+                // Detect peaks in acceleration magnitude when no hardware step sensor
+                if (hasStepPermission && !hasHardwareStepSensor) {
+                    detectAccelStep(magnitude)
+                }
             }
 
             Sensor.TYPE_GYROSCOPE -> {
@@ -239,16 +254,19 @@ class MotionSensorManager(context: Context) : SensorEventListener {
             }
 
             Sensor.TYPE_STEP_DETECTOR -> {
+                detectorSteps++
                 lastStepTimestamp = System.currentTimeMillis()
                 onStepDetected()
+                Log.d(TAG, "Step detected (#$detectorSteps)")
             }
 
             Sensor.TYPE_STEP_COUNTER -> {
                 val raw = event.values[0]
                 if (stepCounterBaseline == null) {
                     stepCounterBaseline = raw
+                    Log.d(TAG, "Step counter baseline set: $raw")
                 }
-                totalSteps = (raw - (stepCounterBaseline ?: raw)).toLong().coerceAtLeast(0)
+                counterSteps = (raw - (stepCounterBaseline ?: raw)).toLong().coerceAtLeast(0)
             }
 
             Sensor.TYPE_ACCELEROMETER -> {
@@ -275,6 +293,32 @@ class MotionSensorManager(context: Context) : SensorEventListener {
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { /* unused */ }
+
+    // ── Accelerometer step detection (fallback) ──
+
+    /**
+     * Simple peak detection on linear acceleration magnitude.
+     * When the signal rises above [ACCEL_STEP_THRESHOLD] and then falls back
+     * below, that counts as one step. A minimum interval prevents double-counting.
+     */
+    private fun detectAccelStep(magnitude: Float) {
+        if (magnitude > prevAccelMagnitude) {
+            accelRising = true
+        } else if (accelRising && prevAccelMagnitude >= ACCEL_STEP_THRESHOLD) {
+            // We were rising and just crossed a peak above the threshold
+            val now = System.currentTimeMillis()
+            if (now - lastAccelStepTime >= ACCEL_STEP_MIN_INTERVAL_MS) {
+                accelSteps++
+                lastAccelStepTime = now
+                lastStepTimestamp = now
+                onStepDetected()
+            }
+            accelRising = false
+        } else {
+            accelRising = false
+        }
+        prevAccelMagnitude = magnitude
+    }
 
     // ── Heading computation ──
 
@@ -314,6 +358,25 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         totalDisplacement = sqrt(displacementX * displacementX + displacementY * displacementY)
     }
 
+    // ── Best step count ──
+
+    /**
+     * Returns the best available step count:
+     *  1. Hardware step detector count (most responsive, real-time)
+     *  2. Hardware step counter (cumulative, may catch missed detector events)
+     *  3. Accelerometer peak detection (fallback)
+     *
+     * Uses the maximum of detector and counter to handle devices where one
+     * sensor delivers more reliably than the other.
+     */
+    private fun bestStepCount(): Long {
+        if (!hasStepPermission) return 0
+        return when {
+            hasHardwareStepSensor -> maxOf(detectorSteps, counterSteps)
+            else -> accelSteps
+        }
+    }
+
     // ── Motion state update ──
 
     private fun updateMotionState() {
@@ -344,14 +407,12 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         val accelConfidence = (accelVoteRatio / MOTION_VOTE_THRESHOLD).coerceIn(0f, 1f)
         val gyroConfidence = (gyroVoteRatio / MOTION_VOTE_THRESHOLD).coerceIn(0f, 1f)
 
-        // Dynamic fusion: include step weight only when permission is granted
         val motionConfidence = if (hasStepPermission) {
             val stepConfidence = if (recentStep) 1f else 0f
             (accelConfidence * WEIGHT_ACCEL_WITH_STEPS +
              stepConfidence * WEIGHT_STEPS +
              gyroConfidence * WEIGHT_GYRO_WITH_STEPS)
         } else {
-            // No step data — redistribute to accel (70%) and gyro (30%)
             (accelConfidence * WEIGHT_ACCEL_NO_STEPS +
              gyroConfidence * WEIGHT_GYRO_NO_STEPS)
         }.coerceIn(0f, 1f)
@@ -371,7 +432,7 @@ class MotionSensorManager(context: Context) : SensorEventListener {
             rotationRate = avgGyro,
             stepDetected = recentStep,
             motionConfidence = motionConfidence,
-            steps = totalSteps,
+            steps = bestStepCount(),
             headingDeg = currentHeadingDeg,
             displacementMeters = totalDisplacement,
             gpsNeeded = gpsNeeded,

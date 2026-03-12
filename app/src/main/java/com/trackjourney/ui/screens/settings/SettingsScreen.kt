@@ -43,6 +43,7 @@ import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.model.AiMode
 import com.trackjourney.data.model.ActivityConfig
 import com.trackjourney.data.model.CarProfile
+import com.trackjourney.data.model.CloudAiProvider
 import com.trackjourney.data.model.ExportFormat
 import com.trackjourney.data.model.FuelType
 import com.trackjourney.data.model.SubscriptionStatus
@@ -74,6 +75,21 @@ fun SettingsScreen(
     var showAddCarDialog by remember { mutableStateOf(false) }
     var editingCar by remember { mutableStateOf<CarProfile?>(null) }
     var showAddActivityDialog by remember { mutableStateOf(false) }
+    val showCloudAiWizard by viewModel.showCloudAiWizard.collectAsState()
+
+    // Cloud AI setup wizard
+    if (showCloudAiWizard) {
+        CloudAiWizardDialog(
+            currentProvider = settings.cloudAiProvider,
+            currentApiKey = settings.cloudAiApiKey,
+            currentEndpoint = settings.cloudAiEndpoint,
+            currentModel = settings.cloudAiModel,
+            onDismiss = { viewModel.dismissCloudAiWizard() },
+            onSave = { provider, apiKey, endpoint, model ->
+                viewModel.saveCloudAiConfig(provider, apiKey, endpoint, model)
+            }
+        )
+    }
 
     // File picker for importing backup
     val importLauncher = rememberLauncherForActivityResult(
@@ -1852,28 +1868,60 @@ fun SettingsScreen(
                                     AiMode.RULE_BASED -> Icons.Filled.Speed
                                     AiMode.TFLITE_MODEL -> Icons.Filled.Psychology
                                     AiMode.LOCAL_MODEL -> Icons.Filled.PhoneAndroid
+                                    AiMode.CLOUD_AI -> Icons.Filled.Cloud
                                     AiMode.OFF -> Icons.Filled.PowerSettingsNew
                                 }
+                                val isLocalModelDisabled = mode == AiMode.LOCAL_MODEL &&
+                                    !localModelChecking && !localModelReachable
+                                val contentAlpha = if (isLocalModelDisabled) 0.38f else 1f
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { viewModel.updateAiMode(mode) }
+                                        .then(
+                                            if (isLocalModelDisabled) Modifier
+                                            else Modifier.clickable {
+                                                if (mode == AiMode.CLOUD_AI) {
+                                                    viewModel.openCloudAiWizard()
+                                                } else {
+                                                    viewModel.updateAiMode(mode)
+                                                }
+                                            }
+                                        )
                                         .padding(vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     RadioButton(
                                         selected = settings.aiMode == mode,
-                                        onClick = { viewModel.updateAiMode(mode) }
+                                        onClick = {
+                                            if (!isLocalModelDisabled) {
+                                                if (mode == AiMode.CLOUD_AI) {
+                                                    viewModel.openCloudAiWizard()
+                                                } else {
+                                                    viewModel.updateAiMode(mode)
+                                                }
+                                            }
+                                        },
+                                        enabled = !isLocalModelDisabled
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+                                    Icon(
+                                        icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+                                    )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(mode.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                        Text(
+                                            mode.label,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+                                        )
                                         Text(
                                             mode.description,
                                             fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
                                         )
                                         // Reachability status for Local Model
                                         if (mode == AiMode.LOCAL_MODEL) {
@@ -1899,11 +1947,29 @@ fun SettingsScreen(
                                                     )
                                                     Spacer(modifier = Modifier.width(6.dp))
                                                     Text(
-                                                        if (localModelReachable) "Model available on device" else "Model not available",
+                                                        if (localModelReachable) "Model available on device" else "Not available on this device",
                                                         fontSize = 11.sp,
                                                         color = if (localModelReachable) Accent else Error
                                                     )
                                                 }
+                                            }
+                                        }
+                                        // Cloud AI configured status
+                                        if (mode == AiMode.CLOUD_AI && settings.aiMode == AiMode.CLOUD_AI) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Filled.CheckCircle,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(14.dp),
+                                                    tint = Accent
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    "${settings.cloudAiProvider.label} \u2022 ${settings.cloudAiModel.ifBlank { "default" }}",
+                                                    fontSize = 11.sp,
+                                                    color = Accent
+                                                )
                                             }
                                         }
                                     }
@@ -1924,18 +1990,17 @@ fun SettingsScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(12.dp))
-                            HorizontalDivider()
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            // Advanced AI Engine Settings
-                            OutlinedButton(
-                                onClick = onNavigateToAiEngine,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Filled.Psychology, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Advanced AI Engine Settings", fontSize = 13.sp)
+                            // Configure button for Cloud AI
+                            if (settings.aiMode == AiMode.CLOUD_AI) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = { viewModel.openCloudAiWizard() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Configure Cloud AI", fontSize = 13.sp)
+                                }
                             }
                         }
                     }
@@ -3213,4 +3278,221 @@ private fun compassDirection(degrees: Float): String {
         normalized < 337.5f -> "NW"
         else                -> "N"
     }
+}
+
+// ── Cloud AI Setup Wizard ──────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CloudAiWizardDialog(
+    currentProvider: CloudAiProvider,
+    currentApiKey: String,
+    currentEndpoint: String,
+    currentModel: String,
+    onDismiss: () -> Unit,
+    onSave: (CloudAiProvider, String, String, String) -> Unit
+) {
+    var wizardStep by remember { mutableStateOf(0) }
+    var provider by remember { mutableStateOf(currentProvider) }
+    var apiKey by remember { mutableStateOf(currentApiKey) }
+    var endpoint by remember { mutableStateOf(currentEndpoint) }
+    var model by remember { mutableStateOf(currentModel) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Cloud,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    when (wizardStep) {
+                        0 -> "Choose Provider"
+                        1 -> "API Key"
+                        else -> "Model Settings"
+                    },
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        },
+        text = {
+            Column {
+                // Step indicator
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    repeat(3) { step ->
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .size(if (step == wizardStep) 10.dp else 8.dp)
+                                .then(
+                                    Modifier
+                                        .padding(0.dp) // placeholder for background
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (step <= wizardStep)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.outlineVariant,
+                                modifier = Modifier.size(if (step == wizardStep) 10.dp else 8.dp)
+                            ) {}
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                when (wizardStep) {
+                    // Step 1: Provider selection
+                    0 -> {
+                        Text(
+                            "Select your cloud AI provider",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        CloudAiProvider.entries.forEach { p ->
+                            val providerIcon = when (p) {
+                                CloudAiProvider.OPENAI -> Icons.Filled.AutoAwesome
+                                CloudAiProvider.ANTHROPIC -> Icons.Filled.Psychology
+                                CloudAiProvider.CUSTOM -> Icons.Filled.Dns
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { provider = p }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = provider == p,
+                                    onClick = { provider = p }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(providerIcon, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(p.label, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                    // Step 2: API Key
+                    1 -> {
+                        Text(
+                            "Enter your ${provider.label} API key",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = apiKey,
+                            onValueChange = { apiKey = it },
+                            label = { Text("API Key") },
+                            placeholder = { Text("sk-...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                        )
+                        if (provider == CloudAiProvider.CUSTOM) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = endpoint,
+                                onValueChange = { endpoint = it },
+                                label = { Text("Endpoint URL") },
+                                placeholder = { Text("https://api.example.com/v1") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                            )
+                        }
+                    }
+                    // Step 3: Model
+                    2 -> {
+                        Text(
+                            "Choose the model to use for activity analysis",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val suggestedModels = when (provider) {
+                            CloudAiProvider.OPENAI -> listOf("gpt-4o-mini", "gpt-4o")
+                            CloudAiProvider.ANTHROPIC -> listOf("claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250514")
+                            CloudAiProvider.CUSTOM -> emptyList()
+                        }
+                        if (suggestedModels.isNotEmpty()) {
+                            Text(
+                                "Suggested models",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                suggestedModels.forEach { suggested ->
+                                    FilterChip(
+                                        selected = model == suggested,
+                                        onClick = { model = suggested },
+                                        label = { Text(suggested, fontSize = 12.sp) }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                        OutlinedTextField(
+                            value = model,
+                            onValueChange = { model = it },
+                            label = { Text("Model name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (wizardStep < 2) {
+                Button(
+                    onClick = { wizardStep++ },
+                    enabled = when (wizardStep) {
+                        1 -> apiKey.isNotBlank()
+                        else -> true
+                    }
+                ) {
+                    Text("Next")
+                }
+            } else {
+                Button(
+                    onClick = {
+                        val resolvedEndpoint = when (provider) {
+                            CloudAiProvider.OPENAI -> endpoint.ifBlank { "https://api.openai.com/v1" }
+                            CloudAiProvider.ANTHROPIC -> endpoint.ifBlank { "https://api.anthropic.com" }
+                            CloudAiProvider.CUSTOM -> endpoint
+                        }
+                        onSave(provider, apiKey, resolvedEndpoint, model)
+                    },
+                    enabled = apiKey.isNotBlank() && model.isNotBlank()
+                ) {
+                    Text("Save")
+                }
+            }
+        },
+        dismissButton = {
+            if (wizardStep > 0) {
+                TextButton(onClick = { wizardStep-- }) {
+                    Text("Back")
+                }
+            } else {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        }
+    )
 }

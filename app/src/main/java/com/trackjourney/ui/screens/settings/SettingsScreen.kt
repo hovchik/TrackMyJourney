@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -656,7 +657,7 @@ fun SettingsScreen(
             }
         }
 
-        // ── WEARABLE STATUS ──────────────────────────────
+        // ── SMARTWATCH ───────────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -668,88 +669,295 @@ fun SettingsScreen(
             )
         }
 
+        // Connection status card
         item {
+            val isConnected = wearableState is WearableConnectionState.Connected
+            val isScanning = wearableState is WearableConnectionState.Scanning
+            val isConnecting = wearableState is WearableConnectionState.Connecting
+
             Card(
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val isConnected = wearableState is WearableConnectionState.Connected
                         Surface(
-                            color = if (isConnected) PrimaryLight.copy(alpha = 0.15f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            color = when {
+                                isConnected -> PrimaryLight.copy(alpha = 0.15f)
+                                isScanning || isConnecting -> Accent.copy(alpha = 0.12f)
+                                wearableState is WearableConnectionState.Error -> Error.copy(alpha = 0.12f)
+                                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            },
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    Icons.Filled.Watch,
+                                    when {
+                                        isConnected -> Icons.Filled.Watch
+                                        isScanning -> Icons.Filled.BluetoothSearching
+                                        isConnecting -> Icons.Filled.BluetoothConnected
+                                        wearableState is WearableConnectionState.Error -> Icons.Filled.WatchOff
+                                        else -> Icons.Filled.Watch
+                                    },
                                     contentDescription = null,
-                                    tint = if (isConnected) PrimaryLight
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp)
+                                    tint = when {
+                                        isConnected -> PrimaryLight
+                                        isScanning || isConnecting -> Accent
+                                        wearableState is WearableConnectionState.Error -> Error
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Garmin / Samsung Watch", fontWeight = FontWeight.SemiBold)
+                        Column(modifier = Modifier.weight(1f)) {
                             when (val state = wearableState) {
                                 is WearableConnectionState.Connected -> {
-                                    Text(
-                                        "Connected: ${state.device.name}",
-                                        fontSize = 13.sp,
-                                        color = PrimaryLight
-                                    )
-                                    wearableReading?.let { reading ->
-                                        val details = buildString {
-                                            reading.heartRate?.let { append("HR: $it bpm") }
-                                            reading.batteryLevel?.let {
-                                                if (isNotEmpty()) append("  |  ")
-                                                append("Battery: $it%")
-                                            }
-                                            reading.cadence?.let {
-                                                if (isNotEmpty()) append("  |  ")
-                                                append("Cadence: $it")
-                                            }
-                                        }
-                                        if (details.isNotEmpty()) {
+                                    Text(state.device.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = PrimaryLight,
+                                            modifier = Modifier.size(8.dp)
+                                        ) {}
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Connected",
+                                            fontSize = 13.sp,
+                                            color = PrimaryLight,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        wearableReading?.manufacturerName?.let { mfr ->
                                             Text(
-                                                details,
-                                                fontSize = 12.sp,
+                                                "  •  $mfr",
+                                                fontSize = 13.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
+                                    wearableReading?.modelNumber?.let { model ->
+                                        Text(
+                                            model,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
-                                is WearableConnectionState.Scanning -> Text(
-                                    "Scanning for devices...",
-                                    fontSize = 13.sp,
-                                    color = Accent
-                                )
-                                is WearableConnectionState.Connecting -> Text(
-                                    "Connecting...",
-                                    fontSize = 13.sp,
-                                    color = Accent
-                                )
-                                is WearableConnectionState.Error -> Text(
-                                    state.message,
-                                    fontSize = 13.sp,
-                                    color = Error
-                                )
-                                is WearableConnectionState.Disconnected -> Text(
-                                    "Auto-connects when tracking starts",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                is WearableConnectionState.Scanning -> {
+                                    Text("Scanning...", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(
+                                        "Looking for BLE heart rate devices",
+                                        fontSize = 13.sp,
+                                        color = Accent
+                                    )
+                                }
+                                is WearableConnectionState.Connecting -> {
+                                    Text("Connecting...", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(
+                                        "Establishing BLE connection",
+                                        fontSize = 13.sp,
+                                        color = Accent
+                                    )
+                                }
+                                is WearableConnectionState.Error -> {
+                                    Text("Connection Error", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(state.message, fontSize = 13.sp, color = Error)
+                                }
+                                is WearableConnectionState.Disconnected -> {
+                                    Text("No Watch Connected", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(
+                                        "Auto-connects when tracking starts",
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
+                        }
+                        if (isScanning || isConnecting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = Accent
+                            )
                         }
                     }
                 }
+            }
+        }
+
+        // Live data cards (visible when connected)
+        item {
+            val isConnected = wearableState is WearableConnectionState.Connected
+            val reading = wearableReading
+
+            if (isConnected && reading != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 1: Heart Rate + Watch Battery
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.MonitorHeart,
+                        title = "Heart Rate",
+                        value = reading.heartRate?.toString() ?: "--",
+                        unit = if (reading.heartRate != null) "bpm" else "",
+                        subtitle = when {
+                            reading.sensorContact == false -> "no wrist contact"
+                            reading.heartRate != null && reading.heartRate > 0 -> when {
+                                reading.heartRate < 60 -> "resting"
+                                reading.heartRate < 100 -> "normal"
+                                reading.heartRate < 140 -> "elevated"
+                                reading.heartRate < 170 -> "high"
+                                else -> "max effort"
+                            }
+                            else -> "waiting for data"
+                        },
+                        isActive = reading.heartRate != null && reading.heartRate > 0,
+                        activeColor = Error
+                    )
+
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = when {
+                            (reading.batteryLevel ?: 0) > 80 -> Icons.Filled.BatteryFull
+                            (reading.batteryLevel ?: 0) > 30 -> Icons.Filled.Battery4Bar
+                            (reading.batteryLevel ?: 0) > 10 -> Icons.Filled.Battery2Bar
+                            else -> Icons.Filled.Battery0Bar
+                        },
+                        title = "Watch Battery",
+                        value = reading.batteryLevel?.toString() ?: "--",
+                        unit = if (reading.batteryLevel != null) "%" else "",
+                        subtitle = when {
+                            reading.batteryLevel == null -> "waiting for data"
+                            reading.batteryLevel > 80 -> "fully charged"
+                            reading.batteryLevel > 30 -> "good"
+                            reading.batteryLevel > 10 -> "low"
+                            else -> "critical"
+                        },
+                        isActive = reading.batteryLevel != null,
+                        activeColor = when {
+                            (reading.batteryLevel ?: 0) > 30 -> PrimaryLight
+                            (reading.batteryLevel ?: 0) > 10 -> Accent
+                            else -> Error
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 2: Cadence + RR Intervals
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Speed,
+                        title = "Cadence",
+                        value = reading.cadence?.toString() ?: "--",
+                        unit = if (reading.cadence != null) "rpm" else "",
+                        subtitle = when {
+                            reading.cadence == null -> "waiting for data"
+                            reading.cadence == 0 -> "stopped"
+                            reading.cadence < 100 -> "walking pace"
+                            reading.cadence < 180 -> "running pace"
+                            else -> "sprinting"
+                        },
+                        isActive = reading.cadence != null && reading.cadence > 0,
+                        activeColor = Cycling
+                    )
+
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Timeline,
+                        title = "RR Interval",
+                        value = if (reading.rrIntervals.isNotEmpty())
+                            reading.rrIntervals.last().toString()
+                        else "--",
+                        unit = if (reading.rrIntervals.isNotEmpty()) "ms" else "",
+                        subtitle = when {
+                            reading.rrIntervals.isEmpty() -> "waiting for data"
+                            reading.rrIntervals.size >= 2 -> {
+                                val diff = kotlin.math.abs(
+                                    reading.rrIntervals.last() -
+                                    reading.rrIntervals[reading.rrIntervals.size - 2]
+                                )
+                                "variability: ${diff}ms"
+                            }
+                            else -> "measuring..."
+                        },
+                        isActive = reading.rrIntervals.isNotEmpty(),
+                        activeColor = Driving
+                    )
+                }
+
+                // Energy Expended (full width, only if available)
+                if (reading.energyExpended != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Running.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.LocalFireDepartment,
+                                        contentDescription = null,
+                                        tint = Running,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Energy Expended",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    "Cumulative from heart rate sensor",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                "${reading.energyExpended} kJ",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Running
+                            )
+                        }
+                    }
+                }
+
+                // Last updated timestamp
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "Last updated: ${formatWearableTimestamp(reading.timestamp)}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.End
+                )
             }
         }
 
@@ -2860,6 +3068,12 @@ private fun SensorCard(
             }
         }
     }
+}
+
+private fun formatWearableTimestamp(timestamp: Long): String {
+    if (timestamp <= 0L) return "—"
+    val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+    return sdf.format(java.util.Date(timestamp))
 }
 
 private fun compassDirection(degrees: Float): String {

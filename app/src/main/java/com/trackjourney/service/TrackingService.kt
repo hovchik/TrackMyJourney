@@ -85,6 +85,10 @@ class TrackingService : Service() {
     private var pointCount = 0
     private var batteryAtStart: Int? = null
     @Volatile private var latestWebhookPayload: WebhookLocationPayload? = null
+    /** Timestamp of the last recorded GPS point (used for stationary skip logic). */
+    private var lastRecordedTime = 0L
+    /** Max time (ms) between recorded points even when stationary, to keep the track alive. */
+    private val stationaryMaxGapMs = 60_000L
 
     /** Stops tracking when the device location toggle is switched off. */
     private val locationProviderReceiver = object : BroadcastReceiver() {
@@ -154,6 +158,7 @@ class TrackingService : Service() {
                 val track = repository.startNewTrack(trackName)
                 currentTrackId = track.id
                 pointCount = 0
+                lastRecordedTime = 0L
 
                 // Regenerate webhook key for each new tracking session
                 val newKey = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
@@ -297,31 +302,38 @@ class TrackingService : Service() {
         settings: TrackingSettings,
         lastNotificationTime: Long
     ): Long {
+        // ── STATIONARY SKIP ──
+        // If the device sensors indicate the user is not moving, skip recording
+        // to save battery and storage. Still record at least once per minute
+        // so the track doesn't have large time gaps.
+        val motionState = motionSensorManager.motionState.value
+        val now = System.currentTimeMillis()
+        val timeSinceLastRecord = now - lastRecordedTime
+        if (!motionState.isDeviceMoving
+            && motionState.motionConfidence < 0.2f
+            && timeSinceLastRecord < stationaryMaxGapMs
+            && lastRecordedTime > 0L
+        ) {
+            Log.d(TAG, "Skipping GPS point — device stationary (confidence=${motionState.motionConfidence})")
+            // Still update webhook payload with latest position even if not recording
+            if (settings.webhookEnabled && settings.webhookUrl.isNotBlank()) {
+                updateWebhookPayload(location, settings)
+            }
+            return lastNotificationTime
+        }
+
         val wearableReading = wearableManager.latestReading.value
 
         val point = repository.addTrackPoint(trackId, location, wearableReading)
         if (point != null) {
             pointCount++
+            lastRecordedTime = now
         }
 
         // Build the latest webhook payload so the independent ticker always
         // has fresh data to send, regardless of GPS update cadence.
         if (settings.webhookEnabled && settings.webhookUrl.isNotBlank()) {
-            val speedKmh = LocationTracker.msToKmh(location.speed)
-            val activity = ActivityType.fromSpeed(speedKmh, settings.activityConfigs)
-            latestWebhookPayload = WebhookLocationPayload(
-                key = settings.webhookKey,
-                timestamp = location.time / 1000,
-                lat = location.latitude,
-                lng = location.longitude,
-                alt = if (location.hasAltitude()) location.altitude else null,
-                speedKmh = speedKmh,
-                bearing = if (location.hasBearing()) location.bearing else null,
-                accuracyM = if (location.hasAccuracy()) location.accuracy else null,
-                activity = activity.name.lowercase(),
-                heartRate = wearableReading?.heartRate,
-                battery = getBatteryLevel()
-            )
+            updateWebhookPayload(location, settings, wearableReading?.heartRate)
         }
 
         // Throttle notification updates to at most once per 2 seconds
@@ -342,6 +354,28 @@ class TrackingService : Service() {
             return now
         }
         return lastNotificationTime
+    }
+
+    private fun updateWebhookPayload(
+        location: android.location.Location,
+        settings: TrackingSettings,
+        heartRate: Int? = null
+    ) {
+        val speedKmh = LocationTracker.msToKmh(location.speed)
+        val activity = ActivityType.fromSpeed(speedKmh, settings.activityConfigs)
+        latestWebhookPayload = WebhookLocationPayload(
+            key = settings.webhookKey,
+            timestamp = location.time / 1000,
+            lat = location.latitude,
+            lng = location.longitude,
+            alt = if (location.hasAltitude()) location.altitude else null,
+            speedKmh = speedKmh,
+            bearing = if (location.hasBearing()) location.bearing else null,
+            accuracyM = if (location.hasAccuracy()) location.accuracy else null,
+            activity = activity.name.lowercase(),
+            heartRate = heartRate,
+            battery = getBatteryLevel()
+        )
     }
 
     /**

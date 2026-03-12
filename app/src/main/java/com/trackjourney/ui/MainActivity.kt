@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -28,39 +30,61 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.data.model.ActivityType
 import com.trackjourney.ui.navigation.Screen
 import com.trackjourney.ui.screens.analysis.AnalysisScreen
 import com.trackjourney.ui.screens.dashboard.DashboardScreen
 import com.trackjourney.ui.screens.map.MapScreen
+import com.trackjourney.ui.screens.onboarding.OnboardingScreen
 import com.trackjourney.ui.screens.settings.SettingsScreen
 import com.trackjourney.ui.screens.subscription.SubscriptionScreen
 import com.trackjourney.ui.screens.tracks.TracksScreen
 import com.trackjourney.ui.theme.*
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import java.util.Locale
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject lateinit var settingsDataStore: SettingsDataStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             TrackMyJourneyTheme {
-                TrackMyJourneyApp()
+                TrackMyJourneyApp(settingsDataStore)
             }
         }
     }
 }
 
 @Composable
-fun TrackMyJourneyApp() {
+fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val coroutineScope = rememberCoroutineScope()
 
     val trackingViewModel: TrackingStateViewModel = hiltViewModel()
     val trackingState by trackingViewModel.state.collectAsState()
+
+    val onboardingCompleted by settingsDataStore.onboardingCompleted.collectAsState(initial = true)
+    // Use a second state to track if we've loaded the real value from DataStore
+    var onboardingLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        settingsDataStore.onboardingCompleted.collect {
+            onboardingLoaded = true
+        }
+    }
+
+    val startDestination = if (onboardingLoaded && !onboardingCompleted) {
+        Screen.Onboarding.route
+    } else {
+        Screen.Dashboard.route
+    }
 
     var pendingTrackingStart by remember { mutableStateOf(false) }
 
@@ -74,59 +98,87 @@ fun TrackMyJourneyApp() {
         }
     }
 
+    // Hide bottom bar and tracking bar on onboarding screen
+    val isOnboarding = currentDestination?.route == Screen.Onboarding.route
+
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                Screen.bottomNavItems.forEach { screen ->
-                    val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
+            if (!isOnboarding) {
+                NavigationBar {
+                    Screen.bottomNavItems.forEach { screen ->
+                        val selected =
+                            currentDestination?.hierarchy?.any { it.route == screen.route } == true
 
-                    NavigationBarItem(
-                        icon = {
-                            Icon(
-                                if (selected) screen.selectedIcon else screen.unselectedIcon,
-                                contentDescription = screen.title
-                            )
-                        },
-                        label = { Text(screen.title) },
-                        selected = selected,
-                        onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+                        NavigationBarItem(
+                            icon = {
+                                Icon(
+                                    if (selected) screen.selectedIcon else screen.unselectedIcon,
+                                    contentDescription = screen.title
+                                )
+                            },
+                            label = {
+                                Text(
+                                    screen.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 11.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            },
+                            selected = selected,
+                            onClick = {
+                                navController.navigate(screen.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            // Global tracking toggle bar — visible on all pages
-            TrackingToggleBar(
-                state = trackingState,
-                onToggle = { enabled ->
-                    if (enabled) {
-                        pendingTrackingStart = true
-                        permissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION,
-                                Manifest.permission.POST_NOTIFICATIONS
+            // Global tracking toggle bar — visible on all pages except onboarding
+            if (!isOnboarding) {
+                TrackingToggleBar(
+                    state = trackingState,
+                    onToggle = { enabled ->
+                        if (enabled) {
+                            pendingTrackingStart = true
+                            permissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    Manifest.permission.POST_NOTIFICATIONS
+                                )
                             )
-                        )
-                    } else {
-                        trackingViewModel.stopTracking()
+                        } else {
+                            trackingViewModel.stopTracking()
+                        }
                     }
-                }
-            )
+                )
+            }
 
             NavHost(
                 navController = navController,
-                startDestination = Screen.Dashboard.route
+                startDestination = startDestination
             ) {
+                composable(Screen.Onboarding.route) {
+                    OnboardingScreen(
+                        onOnboardingComplete = {
+                            coroutineScope.launch {
+                                settingsDataStore.completeOnboarding()
+                            }
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(Screen.Onboarding.route) { inclusive = true }
+                            }
+                        }
+                    )
+                }
                 composable(Screen.Dashboard.route) {
                     DashboardScreen()
                 }

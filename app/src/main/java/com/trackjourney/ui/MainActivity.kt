@@ -71,19 +71,26 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
     val trackingViewModel: TrackingStateViewModel = hiltViewModel()
     val trackingState by trackingViewModel.state.collectAsState()
 
-    val onboardingCompleted by settingsDataStore.onboardingCompleted.collectAsState(initial = true)
-    // Use a second state to track if we've loaded the real value from DataStore
-    var onboardingLoaded by remember { mutableStateOf(false) }
+    // Onboarding state: default to true (completed) to avoid flashing the onboarding screen
+    // while DataStore loads, then update once the real value arrives.
+    var showOnboarding by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        settingsDataStore.onboardingCompleted.collect {
-            onboardingLoaded = true
+        settingsDataStore.onboardingCompleted.collect { completed ->
+            showOnboarding = !completed
         }
     }
 
-    val startDestination = if (onboardingLoaded && !onboardingCompleted) {
-        Screen.Onboarding.route
-    } else {
-        Screen.Dashboard.route
+    // Show onboarding as a full-screen overlay — avoids NavHost startDestination issues
+    if (showOnboarding) {
+        OnboardingScreen(
+            onOnboardingComplete = {
+                coroutineScope.launch {
+                    settingsDataStore.completeOnboarding()
+                }
+                showOnboarding = false
+            }
+        )
+        return
     }
 
     var pendingTrackingStart by remember { mutableStateOf(false) }
@@ -98,87 +105,68 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
         }
     }
 
-    // Hide bottom bar and tracking bar on onboarding screen
-    val isOnboarding = currentDestination?.route == Screen.Onboarding.route
-
     Scaffold(
         bottomBar = {
-            if (!isOnboarding) {
-                NavigationBar {
-                    Screen.bottomNavItems.forEach { screen ->
-                        val selected =
-                            currentDestination?.hierarchy?.any { it.route == screen.route } == true
+            NavigationBar {
+                Screen.bottomNavItems.forEach { screen ->
+                    val selected =
+                        currentDestination?.hierarchy?.any { it.route == screen.route } == true
 
-                        NavigationBarItem(
-                            icon = {
-                                Icon(
-                                    if (selected) screen.selectedIcon else screen.unselectedIcon,
-                                    contentDescription = screen.title
-                                )
-                            },
-                            label = {
-                                Text(
-                                    screen.title,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontSize = 11.sp,
-                                    textAlign = TextAlign.Center
-                                )
-                            },
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
+                    NavigationBarItem(
+                        icon = {
+                            Icon(
+                                if (selected) screen.selectedIcon else screen.unselectedIcon,
+                                contentDescription = screen.title
+                            )
+                        },
+                        label = {
+                            Text(
+                                screen.title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        },
+                        selected = selected,
+                        onClick = {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
                                 }
+                                launchSingleTop = true
+                                restoreState = true
                             }
-                        )
-                    }
+                        }
+                    )
                 }
             }
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            // Global tracking toggle bar — visible on all pages except onboarding
-            if (!isOnboarding) {
-                TrackingToggleBar(
-                    state = trackingState,
-                    onToggle = { enabled ->
-                        if (enabled) {
-                            pendingTrackingStart = true
-                            permissionLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                                    Manifest.permission.POST_NOTIFICATIONS
-                                )
+            // Global tracking toggle bar — visible on all pages
+            TrackingToggleBar(
+                state = trackingState,
+                onToggle = { enabled ->
+                    if (enabled) {
+                        pendingTrackingStart = true
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                                Manifest.permission.POST_NOTIFICATIONS
                             )
-                        } else {
-                            trackingViewModel.stopTracking()
-                        }
+                        )
+                    } else {
+                        trackingViewModel.stopTracking()
                     }
-                )
-            }
+                }
+            )
 
             NavHost(
                 navController = navController,
-                startDestination = startDestination
+                startDestination = Screen.Dashboard.route
             ) {
-                composable(Screen.Onboarding.route) {
-                    OnboardingScreen(
-                        onOnboardingComplete = {
-                            coroutineScope.launch {
-                                settingsDataStore.completeOnboarding()
-                            }
-                            navController.navigate(Screen.Dashboard.route) {
-                                popUpTo(Screen.Onboarding.route) { inclusive = true }
-                            }
-                        }
-                    )
-                }
                 composable(Screen.Dashboard.route) {
                     DashboardScreen()
                 }

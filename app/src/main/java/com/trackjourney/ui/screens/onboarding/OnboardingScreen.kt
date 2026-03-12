@@ -5,8 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -18,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -36,6 +33,8 @@ fun OnboardingScreen(
 ) {
     val context = LocalContext.current
 
+    // ── Permission states ──
+
     var locationGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -43,6 +42,17 @@ fun OnboardingScreen(
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
+
+    var backgroundLocationGranted by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+            } else true // Not needed before Q
+        )
+    }
+
     var notificationGranted by remember {
         mutableStateOf(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -53,11 +63,32 @@ fun OnboardingScreen(
         )
     }
 
+    var activityRecognitionGranted by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACTIVITY_RECOGNITION
+                ) == PackageManager.PERMISSION_GRANTED
+            } else true
+        )
+    }
+
+    // Internet doesn't require runtime permission — always granted via manifest
+    val internetGranted = true
+
+    // ── Launchers ──
+
     val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+    }
+
+    val backgroundLocationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        backgroundLocationGranted = granted
     }
 
     val notificationLauncher = rememberLauncherForActivityResult(
@@ -66,7 +97,14 @@ fun OnboardingScreen(
         notificationGranted = granted
     }
 
-    val allGranted = locationGranted && notificationGranted
+    val activityRecognitionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        activityRecognitionGranted = granted
+    }
+
+    val allGranted = locationGranted && backgroundLocationGranted &&
+            notificationGranted && activityRecognitionGranted
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -119,7 +157,7 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Location permission card
+            // Location permission
             PermissionCard(
                 icon = Icons.Filled.LocationOn,
                 title = "Location Access",
@@ -137,7 +175,49 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Notification permission card
+            // Background location permission (only requestable after foreground location is granted)
+            PermissionCard(
+                icon = Icons.Filled.ShareLocation,
+                title = "Background Location",
+                description = "Allows tracking to continue when the app is in the background.",
+                isGranted = backgroundLocationGranted,
+                enabled = locationGranted,
+                onRequest = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Activity recognition permission
+            PermissionCard(
+                icon = Icons.Filled.DirectionsWalk,
+                title = "Activity Recognition",
+                description = "Detects walking, running, cycling, and driving automatically.",
+                isGranted = activityRecognitionGranted,
+                onRequest = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        activityRecognitionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Internet (always granted — informational)
+            PermissionCard(
+                icon = Icons.Filled.Wifi,
+                title = "Internet",
+                description = "Used for map tiles, webhooks, and AI insights.",
+                isGranted = internetGranted,
+                onRequest = { /* always granted */ }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Notification permission
             PermissionCard(
                 icon = Icons.Filled.Notifications,
                 title = "Notifications",
@@ -151,6 +231,8 @@ fun OnboardingScreen(
             )
 
             Spacer(modifier = Modifier.weight(1f))
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Continue button
             Button(
@@ -166,7 +248,9 @@ fun OnboardingScreen(
                 enabled = locationGranted
             ) {
                 Text(
-                    text = if (allGranted) "Get Started" else if (locationGranted) "Continue" else "Grant Permissions to Continue",
+                    text = if (allGranted) "Get Started"
+                    else if (locationGranted) "Continue"
+                    else "Grant Location to Continue",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -193,18 +277,25 @@ private fun PermissionCard(
     title: String,
     description: String,
     isGranted: Boolean,
+    enabled: Boolean = true,
     onRequest: () -> Unit
 ) {
+    val cardAlpha = if (enabled) 1f else 0.5f
+
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = if (isGranted)
             PrimaryLight.copy(alpha = 0.1f)
         else
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (!enabled) Modifier else Modifier)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .padding(16.dp)
+                .then(if (enabled) Modifier else Modifier),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
@@ -218,7 +309,8 @@ private fun PermissionCard(
                         icon,
                         contentDescription = null,
                         modifier = Modifier.size(22.dp),
-                        tint = if (isGranted) PrimaryLight else MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (isGranted) PrimaryLight
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = cardAlpha)
                     )
                 }
             }
@@ -230,12 +322,12 @@ private fun PermissionCard(
                     text = title,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = cardAlpha)
                 )
                 Text(
                     text = description,
                     fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = cardAlpha)
                 )
             }
 
@@ -259,6 +351,7 @@ private fun PermissionCard(
             } else {
                 FilledTonalButton(
                     onClick = onRequest,
+                    enabled = enabled,
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                 ) {

@@ -53,6 +53,7 @@ import com.trackjourney.ui.theme.*
 @Composable
 fun SettingsScreen(
     onNavigateToSubscription: () -> Unit = {},
+    onNavigateToAiEngine: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -1921,6 +1922,20 @@ fun SettingsScreen(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Re-check local model", fontSize = 13.sp)
                                 }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HorizontalDivider()
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Advanced AI Engine Settings
+                            OutlinedButton(
+                                onClick = onNavigateToAiEngine,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Filled.Psychology, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Advanced AI Engine Settings", fontSize = 13.sp)
                             }
                         }
                     }

@@ -37,6 +37,8 @@ import com.trackjourney.ui.screens.analysis.AnalysisScreen
 import com.trackjourney.ui.screens.dashboard.DashboardScreen
 import com.trackjourney.ui.screens.map.MapScreen
 import com.trackjourney.ui.screens.onboarding.OnboardingScreen
+import com.trackjourney.ui.screens.aiengine.AiEngineSettingsScreen
+import com.trackjourney.ui.screens.aiwizard.SetupWizardScreen
 import com.trackjourney.ui.screens.settings.SettingsScreen
 import com.trackjourney.ui.screens.subscription.SubscriptionScreen
 import com.trackjourney.ui.screens.tracks.TracksScreen
@@ -195,12 +197,27 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
                     SettingsScreen(
                         onNavigateToSubscription = {
                             navController.navigate(Screen.Subscription.route)
+                        },
+                        onNavigateToAiEngine = {
+                            navController.navigate(Screen.AiEngineSettings.route)
                         }
                     )
                 }
                 composable(Screen.Subscription.route) {
                     SubscriptionScreen(
                         onBack = { navController.popBackStack() }
+                    )
+                }
+                composable(Screen.AiEngineSettings.route) {
+                    AiEngineSettingsScreen(
+                        onNavigateToWizard = {
+                            navController.navigate(Screen.AiSetupWizard.route)
+                        }
+                    )
+                }
+                composable(Screen.AiSetupWizard.route) {
+                    SetupWizardScreen(
+                        onComplete = { navController.popBackStack() }
                     )
                 }
             }

@@ -1,6 +1,8 @@
 package com.trackjourney.data.local
 
 import androidx.room.*
+import com.trackjourney.data.ai.models.LocalAiModelEntity
+import com.trackjourney.data.ai.models.LocalAiModelDao
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.flow.Flow
 
@@ -9,8 +11,8 @@ import kotlinx.coroutines.flow.Flow
 // ─────────────────────────────────────────────────────────
 
 @Database(
-    entities = [TrackSession::class, TrackPoint::class, HealthData::class, AiAnalysis::class, CarProfile::class],
-    version = 7,
+    entities = [TrackSession::class, TrackPoint::class, HealthData::class, AiAnalysis::class, CarProfile::class, LocalAiModelEntity::class],
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -20,6 +22,7 @@ abstract class TrackDatabase : RoomDatabase() {
     abstract fun healthDataDao(): HealthDataDao
     abstract fun aiAnalysisDao(): AiAnalysisDao
     abstract fun carProfileDao(): CarProfileDao
+    abstract fun localAiModelDao(): LocalAiModelDao
 }
 
 // ─────────────────────────────────────────────────────────

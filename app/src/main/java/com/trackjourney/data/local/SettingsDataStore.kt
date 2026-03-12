@@ -30,6 +30,10 @@ class SettingsDataStore(
         val CURRENCY = stringPreferencesKey("currency")
         val ACTIVITY_CONFIGS = stringPreferencesKey("activity_configs")
         val AI_MODE = stringPreferencesKey("ai_mode")
+        val CLOUD_AI_PROVIDER = stringPreferencesKey("cloud_ai_provider")
+        val CLOUD_AI_API_KEY = stringPreferencesKey("cloud_ai_api_key")
+        val CLOUD_AI_ENDPOINT = stringPreferencesKey("cloud_ai_endpoint")
+        val CLOUD_AI_MODEL = stringPreferencesKey("cloud_ai_model")
         val WEBHOOK_ENABLED = booleanPreferencesKey("webhook_enabled")
         val WEBHOOK_URL = stringPreferencesKey("webhook_url")
         val WEBHOOK_KEY = stringPreferencesKey("webhook_key")
@@ -75,6 +79,12 @@ class SettingsDataStore(
             aiMode = try {
                 AiMode.valueOf(prefs[AI_MODE] ?: "RULE_BASED")
             } catch (e: Exception) { AiMode.RULE_BASED },
+            cloudAiProvider = try {
+                CloudAiProvider.valueOf(prefs[CLOUD_AI_PROVIDER] ?: "OPENAI")
+            } catch (e: Exception) { CloudAiProvider.OPENAI },
+            cloudAiApiKey = prefs[CLOUD_AI_API_KEY] ?: "",
+            cloudAiEndpoint = prefs[CLOUD_AI_ENDPOINT] ?: "",
+            cloudAiModel = prefs[CLOUD_AI_MODEL] ?: "",
             webhookEnabled = prefs[WEBHOOK_ENABLED] ?: false,
             webhookUrl = prefs[WEBHOOK_URL] ?: "https://pathwise.art",
             webhookKey = prefs[WEBHOOK_KEY] ?: java.util.UUID.randomUUID().toString().replace("-", "").take(16),
@@ -138,6 +148,22 @@ class SettingsDataStore(
 
     suspend fun updateAiMode(mode: AiMode) {
         context.dataStore.edit { it[AI_MODE] = mode.name }
+    }
+
+    suspend fun updateCloudAiProvider(provider: CloudAiProvider) {
+        context.dataStore.edit { it[CLOUD_AI_PROVIDER] = provider.name }
+    }
+
+    suspend fun updateCloudAiApiKey(apiKey: String) {
+        context.dataStore.edit { it[CLOUD_AI_API_KEY] = apiKey }
+    }
+
+    suspend fun updateCloudAiEndpoint(endpoint: String) {
+        context.dataStore.edit { it[CLOUD_AI_ENDPOINT] = endpoint }
+    }
+
+    suspend fun updateCloudAiModel(model: String) {
+        context.dataStore.edit { it[CLOUD_AI_MODEL] = model }
     }
 
     suspend fun updateWebhookEnabled(enabled: Boolean) {
@@ -219,6 +245,10 @@ class SettingsDataStore(
             prefs[CURRENCY] = settings.currency
             prefs[ACTIVITY_CONFIGS] = gson.toJson(settings.activityConfigs)
             prefs[AI_MODE] = settings.aiMode.name
+            prefs[CLOUD_AI_PROVIDER] = settings.cloudAiProvider.name
+            prefs[CLOUD_AI_API_KEY] = settings.cloudAiApiKey
+            prefs[CLOUD_AI_ENDPOINT] = settings.cloudAiEndpoint
+            prefs[CLOUD_AI_MODEL] = settings.cloudAiModel
             prefs[WEBHOOK_ENABLED] = settings.webhookEnabled
             prefs[WEBHOOK_URL] = settings.webhookUrl
             prefs[WEBHOOK_KEY] = settings.webhookKey

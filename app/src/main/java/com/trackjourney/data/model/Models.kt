@@ -480,6 +480,10 @@ data class TrackingSettings(
     val currency: String = "$",                    // currency symbol for ride cost
     val activityConfigs: List<ActivityConfig> = ActivityConfig.defaults(),
     val aiMode: AiMode = AiMode.RULE_BASED,
+    val cloudAiProvider: CloudAiProvider = CloudAiProvider.OPENAI,
+    val cloudAiApiKey: String = "",
+    val cloudAiEndpoint: String = "",
+    val cloudAiModel: String = "",
     val webhookEnabled: Boolean = false,
     val webhookUrl: String = "https://pathwise.art",
     val webhookKey: String = UUID.randomUUID().toString().replace("-", "").take(16),
@@ -498,7 +502,14 @@ enum class AiMode(val label: String, val description: String) {
     RULE_BASED("Rule-Based", "Fast classification from speed and sensor thresholds"),
     TFLITE_MODEL("TFLite Model", "On-device ML model for nuanced classification"),
     LOCAL_MODEL("Local AI Model", "Use phone\u2019s built-in AI model for on-device inference"),
+    CLOUD_AI("Cloud AI", "Use a cloud-hosted LLM for advanced activity analysis"),
     OFF("Off", "Disable automatic activity detection")
+}
+
+enum class CloudAiProvider(val label: String) {
+    OPENAI("OpenAI"),
+    ANTHROPIC("Anthropic"),
+    CUSTOM("Custom Endpoint")
 }
 
 enum class FuelType(val label: String) {

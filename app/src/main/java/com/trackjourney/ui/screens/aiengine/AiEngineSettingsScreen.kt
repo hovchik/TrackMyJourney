@@ -1,5 +1,10 @@
 package com.trackjourney.ui.screens.aiengine
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -119,22 +125,52 @@ fun AiEngineSettingsScreen(
 
         // Scan for models
         item {
+            val scanContext = LocalContext.current
             Spacer(modifier = Modifier.height(4.dp))
-            OutlinedButton(
-                onClick = { viewModel.scanForModels() },
-                enabled = !state.isScanning,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (state.isScanning) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Scanning...")
-                } else {
+
+            // On Android 11+ we need All Files Access to walk external storage
+            val needsAllFilesAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                    !Environment.isExternalStorageManager()
+
+            if (needsAllFilesAccess) {
+                OutlinedButton(
+                    onClick = {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            Uri.parse("package:${scanContext.packageName}")
+                        )
+                        scanContext.startActivity(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Scan for Downloaded Models")
+                    Text("Grant File Access to Scan Device")
+                }
+                Text(
+                    "Storage access is required to find model files on your device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            } else {
+                OutlinedButton(
+                    onClick = { viewModel.scanForModels() },
+                    enabled = !state.isScanning,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (state.isScanning) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Scanning device...")
+                    } else {
+                        Icon(Icons.Filled.SearchOff, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Scan Device for Models")
+                    }
                 }
             }
+
             state.scanResultMessage?.let { msg ->
                 Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
             }

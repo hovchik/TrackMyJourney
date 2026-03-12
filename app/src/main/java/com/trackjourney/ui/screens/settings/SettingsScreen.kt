@@ -54,6 +54,7 @@ import com.trackjourney.ui.theme.*
 @Composable
 fun SettingsScreen(
     onNavigateToSubscription: () -> Unit = {},
+    onNavigateToAiEngine: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current

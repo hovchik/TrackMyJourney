@@ -44,8 +44,11 @@ class MotionSensorManager(context: Context) : SensorEventListener {
         private const val STEP_COOLDOWN_MS = 5000L
 
         // ── Fusion weights (with step permission) ──
-        private const val WEIGHT_ACCEL_WITH_STEPS = 0.50f
-        private const val WEIGHT_STEPS = 0.30f
+        // Steps are the strongest indicator of real locomotion — a step event
+        // is unambiguous proof the user is walking/running, while accelerometer
+        // and gyroscope can fire from hand gestures or vibrations.
+        private const val WEIGHT_ACCEL_WITH_STEPS = 0.25f
+        private const val WEIGHT_STEPS = 0.55f
         private const val WEIGHT_GYRO_WITH_STEPS = 0.20f
 
         // ── Fusion weights (without step permission) ──

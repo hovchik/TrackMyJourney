@@ -513,7 +513,7 @@ fun SettingsScreen(
                         ) {
                             Text(
                                 if (motionState.stepPermissionGranted)
-                                    "Accel 50%  •  Steps 30%  •  Gyro 20%"
+                                    "Steps 55%  •  Accel 25%  •  Gyro 20%"
                                 else
                                     "Accel 70%  •  Gyro 30%  (steps: no permission)",
                                 fontSize = 11.sp,

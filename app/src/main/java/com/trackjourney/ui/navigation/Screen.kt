@@ -69,6 +69,20 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Start
     )
 
+    data object AiEngineSettings : Screen(
+        route = "ai_engine_settings",
+        title = "AI Engine",
+        selectedIcon = Icons.Filled.Psychology,
+        unselectedIcon = Icons.Outlined.Psychology
+    )
+
+    data object AiSetupWizard : Screen(
+        route = "ai_setup_wizard",
+        title = "AI Setup",
+        selectedIcon = Icons.Filled.Tune,
+        unselectedIcon = Icons.Outlined.Tune
+    )
+
     companion object {
         val bottomNavItems = listOf(Dashboard, Map, Tracks, Analysis, Settings)
     }

@@ -1,0 +1,90 @@
+package com.trackjourney.ui.screens.aiengine
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.trackjourney.data.ai.models.*
+import com.trackjourney.data.ai.provider.SystemAiProvider
+import com.trackjourney.data.ai.runtime.SystemAiRuntimeAdapter
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+data class AiEngineSettingsUiState(
+    val selectedMode: AiExecutionMode = AiExecutionMode.AUTO,
+    val activeModel: LocalAiModel? = null,
+    val installedModels: List<LocalAiModel> = emptyList(),
+    val storageUsedMb: Long = 0,
+    val performanceNote: String? = null,
+    val systemAiStatus: String = "Checking...",
+    val systemAiAvailable: Boolean = false,
+    val isScanning: Boolean = false,
+    val scanResultMessage: String? = null
+)
+
+@HiltViewModel
+class AiEngineSettingsViewModel @Inject constructor(
+    private val aiPreferences: AiPreferences,
+    private val localModelManager: LocalModelManager,
+    private val modelInstaller: ModelInstaller,
+    private val systemAiRuntime: SystemAiRuntimeAdapter
+) : ViewModel() {
+
+    private val _scanState = MutableStateFlow(false)
+    private val _scanResult = MutableStateFlow<String?>(null)
+    private val _storageUsed = MutableStateFlow(0L)
+
+    val state: StateFlow<AiEngineSettingsUiState> = combine(
+        aiPreferences.observeSelectedMode(),
+        localModelManager.observeActiveModel(),
+        localModelManager.observeInstalledModels(),
+        _scanState,
+        _scanResult
+    ) { mode, active, installed, scanning, scanMsg ->
+        AiEngineSettingsUiState(
+            selectedMode = mode,
+            activeModel = active,
+            installedModels = installed,
+            storageUsedMb = _storageUsed.value,
+            performanceNote = active?.let { "RAM: ${it.requiredRamMb}+ MB required" },
+            systemAiStatus = systemAiRuntime.getStatusMessage(),
+            systemAiAvailable = systemAiRuntime.isAvailable(),
+            isScanning = scanning,
+            scanResultMessage = scanMsg
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiEngineSettingsUiState())
+
+    init {
+        viewModelScope.launch {
+            _storageUsed.value = localModelManager.getTotalStorageUsedMb()
+        }
+    }
+
+    fun selectMode(mode: AiExecutionMode) {
+        viewModelScope.launch {
+            aiPreferences.setSelectedMode(mode)
+        }
+    }
+
+    fun deleteModel(modelId: String) {
+        viewModelScope.launch {
+            localModelManager.deleteModel(modelId)
+            _storageUsed.value = localModelManager.getTotalStorageUsedMb()
+        }
+    }
+
+    fun scanForModels() {
+        viewModelScope.launch {
+            _scanState.value = true
+            _scanResult.value = null
+            try {
+                val count = modelInstaller.scanForModels()
+                _scanResult.value = if (count > 0) "Found $count new model(s)" else "No new models found"
+                _storageUsed.value = localModelManager.getTotalStorageUsedMb()
+            } catch (e: Exception) {
+                _scanResult.value = "Scan failed: ${e.message}"
+            }
+            _scanState.value = false
+        }
+    }
+}

@@ -389,7 +389,7 @@ fun SettingsScreen(
             }
         }
 
-        // ── MOTION SENSOR STATUS ──────────────────────────
+        // ── MOTION SENSORS ───────────────────────────────
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -401,11 +401,19 @@ fun SettingsScreen(
             )
         }
 
+        // ── Fusion summary card ──
         item {
             val hasSensorData = motionState.accelerationMagnitude > 0f || motionState.rotationRate > 0f
+            val confidencePct = (motionState.motionConfidence * 100).toInt()
+            val confidenceColor = when {
+                confidencePct > 70 -> PrimaryLight
+                confidencePct > 35 -> Accent
+                else -> Stationary
+            }
+
             Card(
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -415,48 +423,221 @@ fun SettingsScreen(
                         Surface(
                             color = if (hasSensorData) {
                                 if (motionState.isDeviceMoving) PrimaryLight.copy(alpha = 0.15f)
-                                else Secondary.copy(alpha = 0.15f)
+                                else Stationary.copy(alpha = 0.15f)
                             } else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    if (motionState.isDeviceMoving) Icons.Filled.DirectionsWalk
+                                    else if (hasSensorData) Icons.Filled.PauseCircle
+                                    else Icons.Filled.SensorsOff,
+                                    contentDescription = null,
+                                    tint = if (hasSensorData) {
+                                        if (motionState.isDeviceMoving) PrimaryLight else Stationary
+                                    } else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (hasSensorData) {
+                                    if (motionState.isDeviceMoving) "Motion Detected" else "Stationary"
+                                } else "Sensors Inactive",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            if (hasSensorData) {
+                                Text(
+                                    "Fusion confidence: $confidencePct%",
+                                    fontSize = 13.sp,
+                                    color = confidenceColor,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            } else {
+                                Text(
+                                    "Start tracking to see live sensor data",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        if (hasSensorData) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (motionState.gpsNeeded) PrimaryLight.copy(alpha = 0.15f)
+                                    else Stationary.copy(alpha = 0.12f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (motionState.gpsNeeded) Icons.Filled.GpsFixed else Icons.Filled.GpsOff,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = if (motionState.gpsNeeded) PrimaryLight else Stationary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        if (motionState.gpsNeeded) "GPS ON" else "GPS OFF",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (motionState.gpsNeeded) PrimaryLight else Stationary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Fusion algorithm bar ──
+                    if (hasSensorData) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        // Confidence bar
+                        LinearProgressIndicator(
+                            progress = { motionState.motionConfidence },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp),
+                            color = confidenceColor,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "Accel 50%  •  Steps 30%  •  Gyro 20%",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Individual sensor cards (2-column grid) ──
+        item {
+            val hasSensorData = motionState.accelerationMagnitude > 0f || motionState.rotationRate > 0f
+
+            if (hasSensorData) {
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 1: Accelerometer + Gyroscope
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Vibration,
+                        title = "Accelerometer",
+                        value = String.format(java.util.Locale.US, "%.2f", motionState.accelerationMagnitude),
+                        unit = "m/s\u00B2",
+                        isActive = motionState.accelerationMagnitude > 0.4f,
+                        activeColor = Accent
+                    )
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.RotateRight,
+                        title = "Gyroscope",
+                        value = String.format(java.util.Locale.US, "%.3f", motionState.rotationRate),
+                        unit = "rad/s",
+                        isActive = motionState.rotationRate > 0.08f,
+                        activeColor = Secondary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 2: Step Counter + Magnetometer
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.DirectionsWalk,
+                        title = "Step Counter",
+                        value = "${motionState.steps}",
+                        unit = "steps",
+                        subtitle = if (motionState.stepDetected) "stepping now" else "idle",
+                        isActive = motionState.stepDetected,
+                        activeColor = Walking
+                    )
+                    SensorCard(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Explore,
+                        title = "Magnetometer",
+                        value = String.format(java.util.Locale.US, "%.0f", motionState.headingDeg),
+                        unit = "\u00B0 ${compassDirection(motionState.headingDeg)}",
+                        isActive = true,
+                        activeColor = Cycling
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Row 3: Dead Reckoning (full width)
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Driving.copy(alpha = 0.12f),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.size(40.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    if (motionState.isDeviceMoving) Icons.Filled.DirectionsWalk else Icons.Filled.PauseCircle,
+                                    Icons.Filled.Timeline,
                                     contentDescription = null,
-                                    tint = if (hasSensorData) {
-                                        if (motionState.isDeviceMoving) PrimaryLight else Secondary
-                                    } else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp)
+                                    tint = Driving,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                if (hasSensorData) {
-                                    if (motionState.isDeviceMoving) "Device Moving" else "Device Stationary"
-                                } else "Sensors Inactive",
-                                fontWeight = FontWeight.SemiBold
+                                "Dead Reckoning",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
                             )
-                            if (hasSensorData) {
-                                Text(
-                                    "Accel: ${String.format(java.util.Locale.US, "%.2f", motionState.accelerationMagnitude)} m/s\u00B2  |  Gyro: ${String.format(java.util.Locale.US, "%.2f", motionState.rotationRate)} rad/s",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    "Confidence: ${(motionState.motionConfidence * 100).toInt()}%${if (motionState.stepDetected) "  |  Steps detected" else ""}",
-                                    fontSize = 12.sp,
-                                    color = if (motionState.isDeviceMoving) PrimaryLight else Secondary
-                                )
-                            } else {
-                                Text(
-                                    "Start tracking to enable GPS drift filtering",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                "Estimated displacement between GPS fixes",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                if (motionState.displacementMeters < 1000) {
+                                    String.format(java.util.Locale.US, "%.1f m", motionState.displacementMeters)
+                                } else {
+                                    String.format(java.util.Locale.US, "%.2f km", motionState.displacementMeters / 1000)
+                                },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Driving
+                            )
+                            Text(
+                                "heading ${String.format(java.util.Locale.US, "%.0f", motionState.headingDeg)}\u00B0",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -2589,4 +2770,97 @@ private fun AddActivityDialog(
         },
         shape = RoundedCornerShape(20.dp)
     )
+}
+
+// ─── Sensor Cards ──────────────────────────────────────
+
+@Composable
+private fun SensorCard(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    title: String,
+    value: String,
+    unit: String,
+    subtitle: String? = null,
+    isActive: Boolean = false,
+    activeColor: Color = PrimaryLight
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = if (isActive) activeColor.copy(alpha = 0.12f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            icon,
+                            contentDescription = null,
+                            tint = if (isActive) activeColor
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    title,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Text(
+                    value,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isActive) activeColor
+                    else MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    unit,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    fontSize = 11.sp,
+                    color = if (isActive) activeColor.copy(alpha = 0.8f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
+private fun compassDirection(degrees: Float): String {
+    val normalized = ((degrees % 360f) + 360f) % 360f
+    return when {
+        normalized < 22.5f  -> "N"
+        normalized < 67.5f  -> "NE"
+        normalized < 112.5f -> "E"
+        normalized < 157.5f -> "SE"
+        normalized < 202.5f -> "S"
+        normalized < 247.5f -> "SW"
+        normalized < 292.5f -> "W"
+        normalized < 337.5f -> "NW"
+        else                -> "N"
+    }
 }

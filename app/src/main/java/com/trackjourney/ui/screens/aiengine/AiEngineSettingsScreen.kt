@@ -17,8 +17,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trackjourney.data.ai.models.AiExecutionMode
@@ -128,11 +131,25 @@ fun AiEngineSettingsScreen(
             val scanContext = LocalContext.current
             Spacer(modifier = Modifier.height(4.dp))
 
-            // On Android 11+ we need All Files Access to walk external storage
-            val needsAllFilesAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                    !Environment.isExternalStorageManager()
+            // Re-check storage permission every time the screen resumes (e.g. returning from Settings)
+            var hasStorageAccess by remember {
+                mutableStateOf(
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+                )
+            }
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        hasStorageAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+                                Environment.isExternalStorageManager()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
 
-            if (needsAllFilesAccess) {
+            if (!hasStorageAccess) {
                 OutlinedButton(
                     onClick = {
                         val intent = Intent(

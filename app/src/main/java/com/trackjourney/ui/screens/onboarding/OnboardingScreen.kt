@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 
 private const val PAGE_COUNT = 5
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingScreen(
     onOnboardingComplete: () -> Unit

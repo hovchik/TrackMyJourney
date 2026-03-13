@@ -53,13 +53,20 @@ fun SetupWizardScreen(
                 onModeSelected = { viewModel.selectMode(it) },
                 onNext = {
                     val mode = state.selectedMode ?: state.recommendedMode
-                    if (mode == AiExecutionMode.CUSTOM_LOCAL) {
-                        viewModel.goToStep(SetupStep.MODEL_INSTALL_OPTIONS)
-                    } else {
-                        viewModel.goToStep(SetupStep.READY)
+                    when (mode) {
+                        AiExecutionMode.CUSTOM_LOCAL -> viewModel.goToStep(SetupStep.MODEL_INSTALL_OPTIONS)
+                        AiExecutionMode.CLOUD -> viewModel.goToStep(SetupStep.CLOUD_CONFIG)
+                        else -> viewModel.goToStep(SetupStep.READY)
                     }
                 },
                 onBack = { viewModel.goToStep(SetupStep.DEVICE_COMPATIBILITY) }
+            )
+            SetupStep.CLOUD_CONFIG -> CloudConfigScreen(
+                state = state,
+                onApiKeyChanged = { viewModel.setCloudApiKey(it) },
+                onProviderTypeChanged = { viewModel.setCloudProviderType(it) },
+                onSave = { viewModel.saveCloudConfig() },
+                onBack = { viewModel.goToStep(SetupStep.RECOMMENDED_MODE) }
             )
             SetupStep.MODEL_INSTALL_OPTIONS -> ModelInstallOptionsScreen(
                 state = state,
@@ -214,20 +221,26 @@ private fun RecommendedAiModeScreen(
     onBack: () -> Unit
 ) {
     val selected = state.selectedMode ?: state.recommendedMode
+    val systemAiAvailable = state.deviceCapability?.supportsSystemAi ?: false
 
     WizardPage(title = "Choose AI Mode") {
         Spacer(modifier = Modifier.height(8.dp))
         AiExecutionMode.entries.forEach { mode ->
-            val isSelected = selected == mode
+            val isDisabled = mode == AiExecutionMode.SYSTEM_LOCAL && !systemAiAvailable
+            val isSelected = selected == mode && !isDisabled
             val isRecommended = mode == state.recommendedMode
             Card(
-                onClick = { onModeSelected(mode) },
+                onClick = { if (!isDisabled) onModeSelected(mode) },
+                enabled = !isDisabled,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surface
+                    containerColor = when {
+                        isDisabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        isSelected -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.surface
+                    }
                 ),
                 border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
             ) {
@@ -235,12 +248,21 @@ private fun RecommendedAiModeScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    RadioButton(selected = isSelected, onClick = { onModeSelected(mode) })
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { if (!isDisabled) onModeSelected(mode) },
+                        enabled = !isDisabled
+                    )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(mode.label, fontWeight = FontWeight.SemiBold)
-                            if (isRecommended) {
+                            Text(
+                                mode.label,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isDisabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                else Color.Unspecified
+                            )
+                            if (isRecommended && !isDisabled) {
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
@@ -255,7 +277,19 @@ private fun RecommendedAiModeScreen(
                                 }
                             }
                         }
-                        Text(mode.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            mode.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDisabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (isDisabled) {
+                            Text(
+                                "Not available on this device",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
             }
@@ -265,6 +299,100 @@ private fun RecommendedAiModeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
             Button(onClick = onNext, modifier = Modifier.weight(1f)) { Text("Next") }
+        }
+    }
+}
+
+@Composable
+private fun CloudConfigScreen(
+    state: LocalAiSetupState,
+    onApiKeyChanged: (String) -> Unit,
+    onProviderTypeChanged: (CloudProviderType) -> Unit,
+    onSave: () -> Unit,
+    onBack: () -> Unit
+) {
+    WizardPage(title = "Configure Cloud AI") {
+        Spacer(modifier = Modifier.height(8.dp))
+        Icon(
+            Icons.Filled.Cloud,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "Cloud AI sends summarized track data to an external AI service for analysis. " +
+                    "Your raw GPS data stays on your device.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Provider type selection
+        Text("AI Provider", fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        CloudProviderType.entries.forEach { provider ->
+            val isSelected = state.cloudProviderType == provider
+            Card(
+                onClick = { onProviderTypeChanged(provider) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surface
+                ),
+                border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = isSelected, onClick = { onProviderTypeChanged(provider) })
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(provider.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        Text(provider.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // API key input
+        Text("API Key", fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = state.cloudApiKey,
+            onValueChange = onApiKeyChanged,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Enter your API key") },
+            singleLine = true,
+            shape = RoundedCornerShape(8.dp)
+        )
+
+        state.error?.let {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
+            Button(
+                onClick = onSave,
+                enabled = state.cloudApiKey.isNotBlank() && !state.isValidatingApiKey,
+                modifier = Modifier.weight(1f)
+            ) {
+                if (state.isValidatingApiKey) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text("Save & Continue")
+            }
         }
     }
 }

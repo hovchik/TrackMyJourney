@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.ai.models.*
+import com.trackjourney.data.ai.provider.CloudProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,7 @@ enum class SetupStep {
     INTRO,
     DEVICE_COMPATIBILITY,
     RECOMMENDED_MODE,
+    CLOUD_CONFIG,
     MODEL_INSTALL_OPTIONS,
     MODEL_DOWNLOAD,
     IMPORT_MODEL,
@@ -34,7 +36,10 @@ data class LocalAiSetupState(
     val isDetecting: Boolean = false,
     val isBenchmarking: Boolean = false,
     val error: String? = null,
-    val isComplete: Boolean = false
+    val isComplete: Boolean = false,
+    val cloudApiKey: String = "",
+    val cloudProviderType: CloudProviderType = CloudProviderType.CLAUDE,
+    val isValidatingApiKey: Boolean = false
 )
 
 @HiltViewModel
@@ -44,7 +49,8 @@ class SetupViewModel @Inject constructor(
     private val modelInstaller: ModelInstaller,
     private val modelManager: LocalModelManager,
     private val benchmarkRunner: LocalAiBenchmarkRunner,
-    private val aiPreferences: AiPreferences
+    private val aiPreferences: AiPreferences,
+    private val cloudProvider: CloudProvider
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LocalAiSetupState())
@@ -129,6 +135,33 @@ class SetupViewModel @Inject constructor(
             aiPreferences.setSelectedMode(mode)
             aiPreferences.setSetupCompleted(true)
             _state.update { it.copy(isComplete = true) }
+        }
+    }
+
+    fun setCloudApiKey(key: String) {
+        _state.update { it.copy(cloudApiKey = key) }
+    }
+
+    fun setCloudProviderType(type: CloudProviderType) {
+        _state.update { it.copy(cloudProviderType = type) }
+    }
+
+    fun saveCloudConfig() {
+        val currentState = _state.value
+        if (currentState.cloudApiKey.isBlank()) {
+            _state.update { it.copy(error = "API key is required") }
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(isValidatingApiKey = true, error = null) }
+            try {
+                cloudProvider.setApiKey(currentState.cloudApiKey)
+                aiPreferences.setCloudApiKey(currentState.cloudApiKey)
+                aiPreferences.setCloudProviderType(currentState.cloudProviderType.name)
+                _state.update { it.copy(isValidatingApiKey = false, currentStep = SetupStep.READY) }
+            } catch (e: Exception) {
+                _state.update { it.copy(isValidatingApiKey = false, error = e.message) }
+            }
         }
     }
 

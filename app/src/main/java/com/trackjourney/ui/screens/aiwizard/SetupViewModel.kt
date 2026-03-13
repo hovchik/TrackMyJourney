@@ -43,7 +43,9 @@ data class LocalAiSetupState(
     val isValidatingApiKey: Boolean = false,
     val isDownloading: Boolean = false,
     val isImporting: Boolean = false,
-    val downloadingModelId: String? = null
+    val downloadingModelId: String? = null,
+    val isScanning: Boolean = false,
+    val scanResultMessage: String? = null
 )
 
 @HiltViewModel
@@ -201,6 +203,30 @@ class SetupViewModel @Inject constructor(
                 _state.update { it.copy(isValidatingApiKey = false, currentStep = SetupStep.READY) }
             } catch (e: Exception) {
                 _state.update { it.copy(isValidatingApiKey = false, error = e.message) }
+            }
+        }
+    }
+
+    fun scanForModels() {
+        viewModelScope.launch {
+            _state.update { it.copy(isScanning = true, scanResultMessage = null, error = null) }
+            try {
+                val count = modelInstaller.scanForModels()
+                _state.update {
+                    it.copy(
+                        isScanning = false,
+                        scanResultMessage = if (count > 0) "Found $count model(s) on device"
+                        else "No models found on device"
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        isScanning = false,
+                        scanResultMessage = null,
+                        error = "Scan failed: ${e.message}"
+                    )
+                }
             }
         }
     }

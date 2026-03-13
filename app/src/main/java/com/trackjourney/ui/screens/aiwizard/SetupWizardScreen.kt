@@ -74,6 +74,7 @@ fun SetupWizardScreen(
                 onDownload = { viewModel.downloadModel(it) },
                 onCancelDownload = { viewModel.cancelDownload() },
                 onImport = { model, uri -> viewModel.importModel(model, uri) },
+                onScanDevice = { viewModel.scanForModels() },
                 onSkip = { viewModel.goToStep(SetupStep.READY) },
                 onBack = { viewModel.goToStep(SetupStep.RECOMMENDED_MODE) }
             )
@@ -421,6 +422,7 @@ private fun LocalModelConfigScreen(
     onDownload: (LocalAiModel) -> Unit,
     onCancelDownload: () -> Unit,
     onImport: (LocalAiModel, Uri) -> Unit,
+    onScanDevice: () -> Unit,
     onSkip: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -660,12 +662,53 @@ private fun LocalModelConfigScreen(
                 }
             }
 
+            // Scan device for existing models
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onScanDevice,
+                    enabled = !state.isDownloading && !state.isImporting && !state.isScanning,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (state.isScanning) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Scanning device...")
+                    } else {
+                        Icon(Icons.Filled.Search, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Scan Device for Models")
+                    }
+                }
+                state.scanResultMessage?.let { msg ->
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (msg.startsWith("Found")) Icons.Filled.CheckCircle else Icons.Filled.Info,
+                            null,
+                            modifier = Modifier.size(14.dp),
+                            tint = if (msg.startsWith("Found")) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            msg,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (msg.startsWith("Found")) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             // Import from device
             item {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { filePickerLauncher.launch("*/*") },
-                    enabled = !state.isDownloading && !state.isImporting,
+                    enabled = !state.isDownloading && !state.isImporting && !state.isScanning,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp))

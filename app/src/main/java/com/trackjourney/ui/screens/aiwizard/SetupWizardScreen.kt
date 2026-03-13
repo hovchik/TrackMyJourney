@@ -794,7 +794,9 @@ private fun DownloadableModelCard(
     val isInstalled = model.installState == ModelInstallState.INSTALLED
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .wrapContentHeight(),
         colors = CardDefaults.cardColors(
             containerColor = when {
                 isIncompatible -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
@@ -804,76 +806,120 @@ private fun DownloadableModelCard(
             }
         )
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(model.displayName, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                        if (isInstalled) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.primary
-                            ) {
-                                Text(
-                                    if (model.isActive) "Active" else "Installed",
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .padding(12.dp)
+        ) {
+            // Model name row with badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    model.displayName,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    modifier = Modifier.weight(1f, fill = false),
+                    maxLines = 2
+                )
+                if (isInstalled) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (model.isActive) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.secondary
+                    ) {
                         Text(
-                            "${model.sizeMb} MB",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            " | ${model.quantization ?: "N/A"} | ${model.runtimeType}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            if (model.isActive) "Active" else "Installed",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 10.sp,
+                            color = if (model.isActive) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSecondary
                         )
                     }
-                    Text(
-                        "RAM: ${model.requiredRamMb}+ MB required",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp
-                    )
                 }
-                if (isInstalled && model.isActive) {
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            // Specs row
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${model.sizeMb} MB",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    " | ${model.quantization ?: "N/A"} | ${model.runtimeType}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                "RAM: ${model.requiredRamMb}+ MB required",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
+            // Action row: Set Active / Download / Progress
+            if (isInstalled && model.isActive) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         Icons.Filled.CheckCircle, null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(16.dp)
                     )
-                } else if (isInstalled && onSetActive != null) {
-                    FilledTonalButton(
-                        onClick = onSetActive,
-                        enabled = enabled,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                    ) {
-                        Text("Set Active", fontSize = 12.sp)
-                    }
-                } else if (onDownload != null && !isDownloading) {
-                    FilledTonalButton(
-                        onClick = onDownload,
-                        enabled = enabled,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Filled.Download, null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Download", fontSize = 12.sp)
-                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        "Currently active model",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
-                if (isDownloading) {
+            } else if (isInstalled && onSetActive != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                FilledTonalButton(
+                    onClick = onSetActive,
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Filled.CheckCircle, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Set as Active", fontSize = 12.sp)
+                }
+            } else if (onDownload != null && !isDownloading) {
+                Spacer(modifier = Modifier.height(6.dp))
+                FilledTonalButton(
+                    onClick = onDownload,
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Download", fontSize = 12.sp)
+                }
+            }
+            if (isDownloading) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Downloading...", style = MaterialTheme.typography.bodySmall)
                 }
             }
             report?.warnings?.forEach { warning ->

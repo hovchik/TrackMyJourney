@@ -1,11 +1,14 @@
 package com.trackjourney.ui.screens.aiwizard
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.ai.models.*
 import com.trackjourney.data.ai.provider.CloudProvider
+import com.trackjourney.service.ModelDownloadService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +53,7 @@ data class LocalAiSetupState(
 
 @HiltViewModel
 class SetupViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val detector: DeviceAiCapabilityDetector,
     private val validator: ModelCompatibilityValidator,
     private val modelInstaller: ModelInstaller,
@@ -110,31 +114,51 @@ class SetupViewModel @Inject constructor(
                 error = null
             )
         }
+
+        // Launch via foreground service with WakeLock so the download
+        // survives the phone being locked / screen turning off.
+        ModelDownloadService.startDownload(appContext, model.modelId, url)
+
+        // Observe the installer's progress flow to update UI state
         viewModelScope.launch {
-            val result = modelInstaller.downloadModel(model, url)
-            result.onSuccess { installed ->
-                modelManager.setActiveModel(installed.modelId)
-                _state.update {
-                    it.copy(
-                        selectedModel = installed,
-                        isDownloading = false,
-                        downloadingModelId = null,
-                        currentStep = SetupStep.READY
-                    )
-                }
-            }.onFailure { e ->
-                _state.update {
-                    it.copy(
-                        isDownloading = false,
-                        downloadingModelId = null,
-                        error = e.message
-                    )
+            modelInstaller.installProgress.collect { progress ->
+                if (progress != null && progress.modelId == model.modelId) {
+                    when (progress.state) {
+                        ModelInstallState.INSTALLED -> {
+                            val installed = model.copy(
+                                installState = ModelInstallState.INSTALLED,
+                                localPath = model.localPath
+                            )
+                            modelManager.setActiveModel(installed.modelId)
+                            _state.update {
+                                it.copy(
+                                    selectedModel = installed,
+                                    isDownloading = false,
+                                    downloadingModelId = null,
+                                    currentStep = SetupStep.READY
+                                )
+                            }
+                            return@collect
+                        }
+                        ModelInstallState.FAILED -> {
+                            _state.update {
+                                it.copy(
+                                    isDownloading = false,
+                                    downloadingModelId = null,
+                                    error = progress.errorMessage ?: "Download failed"
+                                )
+                            }
+                            return@collect
+                        }
+                        else -> { /* downloading / installing — handled by notification */ }
+                    }
                 }
             }
         }
     }
 
     fun cancelDownload() {
+        ModelDownloadService.cancelDownload(appContext)
         _state.update {
             it.copy(
                 isDownloading = false,

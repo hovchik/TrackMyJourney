@@ -99,13 +99,24 @@ class SetupViewModel @Inject constructor(
     /**
      * Merges the static model catalog with the database so already-installed
      * models reflect their real install state, path, and active flag.
+     * Also appends scanned/imported models that aren't in the catalog.
      */
     private suspend fun mergedCatalog(): List<LocalAiModel> {
         val installedModels = modelManager.getInstalledModels()
         val installedMap = installedModels.associateBy { it.modelId }
-        return ModelCatalog.availableModels.map { catalogModel ->
+        val catalogIds = ModelCatalog.availableModels.map { it.modelId }.toSet()
+
+        // Merge catalog with DB state
+        val merged = ModelCatalog.availableModels.map { catalogModel ->
             installedMap[catalogModel.modelId] ?: catalogModel
+        }.toMutableList()
+
+        // Append scanned/imported models not in catalog
+        installedModels.filter { it.modelId !in catalogIds }.forEach { model ->
+            merged.add(model)
         }
+
+        return merged
     }
 
     /**
@@ -283,6 +294,15 @@ class SetupViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    fun setModelActive(model: LocalAiModel) {
+        viewModelScope.launch {
+            modelManager.setActiveModel(model.modelId)
+            val updated = modelManager.getModel(model.modelId) ?: model
+            _state.update { it.copy(selectedModel = updated) }
+            refreshCatalogModels()
         }
     }
 

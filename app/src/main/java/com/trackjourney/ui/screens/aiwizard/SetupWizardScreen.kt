@@ -73,6 +73,7 @@ fun SetupWizardScreen(
                 progress = progress,
                 onDownload = { viewModel.downloadModel(it) },
                 onCancelDownload = { viewModel.cancelDownload() },
+                onSetActive = { viewModel.setModelActive(it) },
                 onImport = { model, uri -> viewModel.importModel(model, uri) },
                 onScanDevice = { viewModel.scanForModels() },
                 onSkip = { viewModel.goToStep(SetupStep.READY) },
@@ -421,6 +422,7 @@ private fun LocalModelConfigScreen(
     progress: InstallProgress?,
     onDownload: (LocalAiModel) -> Unit,
     onCancelDownload: () -> Unit,
+    onSetActive: (LocalAiModel) -> Unit,
     onImport: (LocalAiModel, Uri) -> Unit,
     onScanDevice: () -> Unit,
     onSkip: () -> Unit,
@@ -567,10 +569,15 @@ private fun LocalModelConfigScreen(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            val compatibleModels = state.catalogModels.filter { model ->
+            // Separate catalog models from scanned/imported models
+            val catalogIds = ModelCatalog.availableModels.map { it.modelId }.toSet()
+            val catalogModels = state.catalogModels.filter { it.modelId in catalogIds }
+            val scannedModels = state.catalogModels.filter { it.modelId !in catalogIds }
+
+            val compatibleModels = catalogModels.filter { model ->
                 state.compatibility[model.modelId]?.isCompatible != false
             }
-            val incompatibleModels = state.catalogModels.filter { model ->
+            val incompatibleModels = catalogModels.filter { model ->
                 state.compatibility[model.modelId]?.isCompatible == false
             }
 
@@ -593,6 +600,7 @@ private fun LocalModelConfigScreen(
                         report = state.compatibility[model.modelId],
                         isDownloading = state.downloadingModelId == model.modelId,
                         onDownload = { onDownload(model) },
+                        onSetActive = { onSetActive(model) },
                         enabled = !state.isDownloading && !state.isImporting
                     )
                 }
@@ -614,6 +622,7 @@ private fun LocalModelConfigScreen(
                         report = state.compatibility[model.modelId],
                         isDownloading = state.downloadingModelId == model.modelId,
                         onDownload = { onDownload(model) },
+                        onSetActive = { onSetActive(model) },
                         enabled = !state.isDownloading && !state.isImporting
                     )
                 }
@@ -635,6 +644,31 @@ private fun LocalModelConfigScreen(
                         report = state.compatibility[model.modelId],
                         isDownloading = state.downloadingModelId == model.modelId,
                         onDownload = { onDownload(model) },
+                        onSetActive = { onSetActive(model) },
+                        enabled = !state.isDownloading && !state.isImporting
+                    )
+                }
+            }
+
+            // Scanned/imported models not in catalog
+            if (scannedModels.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Found on Device",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
+                }
+                items(scannedModels, key = { it.modelId }) { model ->
+                    DownloadableModelCard(
+                        model = model,
+                        report = null,
+                        isDownloading = false,
+                        onDownload = null,
+                        onSetActive = { onSetActive(model) },
                         enabled = !state.isDownloading && !state.isImporting
                     )
                 }
@@ -657,6 +691,7 @@ private fun LocalModelConfigScreen(
                         report = state.compatibility[model.modelId],
                         isDownloading = false,
                         onDownload = null,
+                        onSetActive = null,
                         enabled = false
                     )
                 }
@@ -681,22 +716,23 @@ private fun LocalModelConfigScreen(
                     }
                 }
                 state.scanResultMessage?.let { msg ->
+                    val isPositive = msg.contains("model(s)") && !msg.startsWith("No")
                     Row(
                         modifier = Modifier.padding(top = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            if (msg.startsWith("Found")) Icons.Filled.CheckCircle else Icons.Filled.Info,
+                            if (isPositive) Icons.Filled.CheckCircle else Icons.Filled.Info,
                             null,
                             modifier = Modifier.size(14.dp),
-                            tint = if (msg.startsWith("Found")) MaterialTheme.colorScheme.primary
+                            tint = if (isPositive) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             msg,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (msg.startsWith("Found")) MaterialTheme.colorScheme.primary
+                            color = if (isPositive) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -751,6 +787,7 @@ private fun DownloadableModelCard(
     report: CompatibilityReport?,
     isDownloading: Boolean,
     onDownload: (() -> Unit)?,
+    onSetActive: (() -> Unit)? = null,
     enabled: Boolean
 ) {
     val isIncompatible = report?.isCompatible == false
@@ -807,12 +844,20 @@ private fun DownloadableModelCard(
                         fontSize = 11.sp
                     )
                 }
-                if (isInstalled) {
+                if (isInstalled && model.isActive) {
                     Icon(
                         Icons.Filled.CheckCircle, null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
+                } else if (isInstalled && onSetActive != null) {
+                    FilledTonalButton(
+                        onClick = onSetActive,
+                        enabled = enabled,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text("Set Active", fontSize = 12.sp)
+                    }
                 } else if (onDownload != null && !isDownloading) {
                     FilledTonalButton(
                         onClick = onDownload,

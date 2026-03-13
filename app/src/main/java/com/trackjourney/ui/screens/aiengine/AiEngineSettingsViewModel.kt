@@ -78,8 +78,13 @@ class AiEngineSettingsViewModel @Inject constructor(
             _scanState.value = true
             _scanResult.value = null
             try {
-                val count = modelInstaller.scanForModels()
-                _scanResult.value = if (count > 0) "Found $count new model(s)" else "No new models found"
+                val newCount = modelInstaller.scanForModels()
+                val installedCount = localModelManager.getInstalledModels().size
+                _scanResult.value = when {
+                    newCount > 0 -> "Found $newCount new model(s)"
+                    installedCount > 0 -> "$installedCount model(s) already installed"
+                    else -> "No models found on device"
+                }
                 _storageUsed.value = localModelManager.getTotalStorageUsedMb()
             } catch (e: Exception) {
                 _scanResult.value = "Scan failed: ${e.message}"

@@ -77,7 +77,7 @@ class SetupViewModel @Inject constructor(
             _state.update { it.copy(isDetecting = true, error = null) }
             try {
                 val capability = detector.detect()
-                val catalog = ModelCatalog.availableModels
+                val catalog = mergedCatalog()
                 val compatMap = catalog.associate { model ->
                     model.modelId to validator.validate(model)
                 }
@@ -93,6 +93,28 @@ class SetupViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.update { it.copy(isDetecting = false, error = e.message) }
             }
+        }
+    }
+
+    /**
+     * Merges the static model catalog with the database so already-installed
+     * models reflect their real install state, path, and active flag.
+     */
+    private suspend fun mergedCatalog(): List<LocalAiModel> {
+        val installedModels = modelManager.getInstalledModels()
+        val installedMap = installedModels.associateBy { it.modelId }
+        return ModelCatalog.availableModels.map { catalogModel ->
+            installedMap[catalogModel.modelId] ?: catalogModel
+        }
+    }
+
+    /**
+     * Refreshes the catalog models in the wizard state from the database so
+     * that install state, active flag, etc. are up-to-date.
+     */
+    private fun refreshCatalogModels() {
+        viewModelScope.launch {
+            _state.update { it.copy(catalogModels = mergedCatalog()) }
         }
     }
 
@@ -125,11 +147,11 @@ class SetupViewModel @Inject constructor(
                 if (progress != null && progress.modelId == model.modelId) {
                     when (progress.state) {
                         ModelInstallState.INSTALLED -> {
-                            val installed = model.copy(
-                                installState = ModelInstallState.INSTALLED,
-                                localPath = model.localPath
+                            // Fetch the real model from DB (has localPath, checksum, etc.)
+                            val installed = modelManager.getModel(model.modelId) ?: model.copy(
+                                installState = ModelInstallState.INSTALLED
                             )
-                            modelManager.setActiveModel(installed.modelId)
+                            modelManager.setActiveModel(model.modelId)
                             _state.update {
                                 it.copy(
                                     selectedModel = installed,
@@ -138,6 +160,7 @@ class SetupViewModel @Inject constructor(
                                     currentStep = SetupStep.READY
                                 )
                             }
+                            refreshCatalogModels()
                             return@collect
                         }
                         ModelInstallState.FAILED -> {
@@ -235,12 +258,20 @@ class SetupViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isScanning = true, scanResultMessage = null, error = null) }
             try {
-                val count = modelInstaller.scanForModels()
+                val newCount = modelInstaller.scanForModels()
+                // Refresh catalog to reflect any newly found or already-installed models
+                val updatedCatalog = mergedCatalog()
+                val installedCount = modelManager.getInstalledModels().size
+                val message = when {
+                    newCount > 0 -> "Found $newCount new model(s) on device"
+                    installedCount > 0 -> "$installedCount model(s) already installed"
+                    else -> "No models found on device"
+                }
                 _state.update {
                     it.copy(
                         isScanning = false,
-                        scanResultMessage = if (count > 0) "Found $count model(s) on device"
-                        else "No models found on device"
+                        catalogModels = updatedCatalog,
+                        scanResultMessage = message
                     )
                 }
             } catch (e: Exception) {

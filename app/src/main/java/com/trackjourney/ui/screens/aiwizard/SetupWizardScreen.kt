@@ -754,12 +754,14 @@ private fun DownloadableModelCard(
     enabled: Boolean
 ) {
     val isIncompatible = report?.isCompatible == false
+    val isInstalled = model.installState == ModelInstallState.INSTALLED
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = when {
                 isIncompatible -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                isInstalled -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                 isDownloading -> MaterialTheme.colorScheme.secondaryContainer
                 else -> MaterialTheme.colorScheme.surfaceVariant
             }
@@ -768,7 +770,23 @@ private fun DownloadableModelCard(
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(model.displayName, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(model.displayName, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        if (isInstalled) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            ) {
+                                Text(
+                                    if (model.isActive) "Active" else "Installed",
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "${model.sizeMb} MB",
@@ -789,7 +807,13 @@ private fun DownloadableModelCard(
                         fontSize = 11.sp
                     )
                 }
-                if (onDownload != null && !isDownloading) {
+                if (isInstalled) {
+                    Icon(
+                        Icons.Filled.CheckCircle, null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else if (onDownload != null && !isDownloading) {
                     FilledTonalButton(
                         onClick = onDownload,
                         enabled = enabled,

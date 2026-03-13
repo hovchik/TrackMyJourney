@@ -18,6 +18,7 @@ enum class SetupStep {
     DEVICE_COMPATIBILITY,
     RECOMMENDED_MODE,
     CLOUD_CONFIG,
+    LOCAL_MODEL_CONFIG,
     MODEL_INSTALL_OPTIONS,
     MODEL_DOWNLOAD,
     IMPORT_MODEL,
@@ -39,7 +40,10 @@ data class LocalAiSetupState(
     val isComplete: Boolean = false,
     val cloudApiKey: String = "",
     val cloudProviderType: CloudProviderType = CloudProviderType.CLAUDE,
-    val isValidatingApiKey: Boolean = false
+    val isValidatingApiKey: Boolean = false,
+    val isDownloading: Boolean = false,
+    val isImporting: Boolean = false,
+    val downloadingModelId: String? = null
 )
 
 @HiltViewModel
@@ -96,27 +100,63 @@ class SetupViewModel @Inject constructor(
 
     fun downloadModel(model: LocalAiModel) {
         val url = model.downloadUrl ?: return
-        _state.update { it.copy(selectedModel = model, currentStep = SetupStep.MODEL_DOWNLOAD, error = null) }
+        _state.update {
+            it.copy(
+                selectedModel = model,
+                isDownloading = true,
+                downloadingModelId = model.modelId,
+                error = null
+            )
+        }
         viewModelScope.launch {
             val result = modelInstaller.downloadModel(model, url)
             result.onSuccess { installed ->
                 modelManager.setActiveModel(installed.modelId)
-                _state.update { it.copy(currentStep = SetupStep.READY) }
+                _state.update {
+                    it.copy(
+                        selectedModel = installed,
+                        isDownloading = false,
+                        downloadingModelId = null,
+                        currentStep = SetupStep.READY
+                    )
+                }
             }.onFailure { e ->
-                _state.update { it.copy(error = e.message) }
+                _state.update {
+                    it.copy(
+                        isDownloading = false,
+                        downloadingModelId = null,
+                        error = e.message
+                    )
+                }
             }
         }
     }
 
+    fun cancelDownload() {
+        _state.update {
+            it.copy(
+                isDownloading = false,
+                downloadingModelId = null,
+                error = null
+            )
+        }
+    }
+
     fun importModel(model: LocalAiModel, uri: Uri) {
-        _state.update { it.copy(selectedModel = model, error = null) }
+        _state.update { it.copy(selectedModel = model, isImporting = true, error = null) }
         viewModelScope.launch {
             val result = modelInstaller.importFromUri(model, uri)
             result.onSuccess { installed ->
                 modelManager.setActiveModel(installed.modelId)
-                _state.update { it.copy(currentStep = SetupStep.READY) }
+                _state.update {
+                    it.copy(
+                        selectedModel = installed,
+                        isImporting = false,
+                        currentStep = SetupStep.READY
+                    )
+                }
             }.onFailure { e ->
-                _state.update { it.copy(error = e.message) }
+                _state.update { it.copy(isImporting = false, error = e.message) }
             }
         }
     }

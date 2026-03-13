@@ -87,7 +87,15 @@ fun SetupWizardScreen(
             SetupStep.READY -> ReadyScreen(
                 state = state,
                 onBenchmark = { viewModel.runBenchmark() },
-                onDone = { viewModel.completeSetup() }
+                onDone = { viewModel.completeSetup() },
+                onBack = {
+                    val mode = state.selectedMode ?: state.recommendedMode
+                    when (mode) {
+                        AiExecutionMode.CLOUD -> viewModel.goToStep(SetupStep.CLOUD_CONFIG)
+                        AiExecutionMode.CUSTOM_LOCAL -> viewModel.goToStep(SetupStep.MODEL_INSTALL_OPTIONS)
+                        else -> viewModel.goToStep(SetupStep.RECOMMENDED_MODE)
+                    }
+                }
             )
         }
     }
@@ -634,7 +642,8 @@ private fun ImportModelScreen(
 private fun ReadyScreen(
     state: LocalAiSetupState,
     onBenchmark: () -> Unit,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onBack: () -> Unit
 ) {
     WizardPage(title = "Setup Complete") {
         Spacer(modifier = Modifier.height(24.dp))
@@ -706,10 +715,10 @@ private fun ReadyScreen(
         }
 
         Spacer(modifier = Modifier.weight(1f))
-        Button(
-            onClick = onDone,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Done") }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
+            Button(onClick = onDone, modifier = Modifier.weight(1f)) { Text("Done") }
+        }
     }
 }
 

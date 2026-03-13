@@ -55,6 +55,7 @@ import com.trackjourney.ui.theme.*
 fun SettingsScreen(
     onNavigateToSubscription: () -> Unit = {},
     onNavigateToAiEngine: () -> Unit = {},
+    onNavigateToLocalAiWizard: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -1976,7 +1977,7 @@ fun SettingsScreen(
                                 }
                             }
 
-                            // Recheck button for local model
+                            // Recheck button and wizard for local model
                             if (settings.aiMode == AiMode.LOCAL_MODEL) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedButton(
@@ -1987,6 +1988,15 @@ fun SettingsScreen(
                                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Re-check local model", fontSize = 13.sp)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = onNavigateToLocalAiWizard,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Setup Local AI Model", fontSize = 13.sp)
                                 }
                             }
 

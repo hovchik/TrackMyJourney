@@ -200,6 +200,9 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
                         },
                         onNavigateToAiEngine = {
                             navController.navigate(Screen.AiEngineSettings.route)
+                        },
+                        onNavigateToLocalAiWizard = {
+                            navController.navigate(Screen.AiSetupWizard.route)
                         }
                     )
                 }

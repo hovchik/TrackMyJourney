@@ -1,5 +1,6 @@
 package com.trackjourney.data.ai.provider
 
+import android.util.Log
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.model.TrackWithPoints
 import java.util.concurrent.TimeUnit
@@ -12,6 +13,10 @@ import javax.inject.Singleton
  */
 @Singleton
 class CloudProvider @Inject constructor() : AiAnalysisProvider {
+
+    companion object {
+        private const val TAG = "CloudProvider"
+    }
 
     override val executionMode: AiExecutionMode = AiExecutionMode.CLOUD
     override val displayName: String = "Cloud AI"
@@ -32,9 +37,12 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
             throw IllegalStateException("Cloud AI provider not configured. Set API key first.")
         }
         val prompt = buildDailyPrompt(snapshot)
+        Log.d(TAG, "AI Prompt [daily]:\n$prompt")
         // TODO: Replace with actual cloud API call (Claude/GPT/Gemini)
         // For now, return the prompt wrapped as a structured placeholder
-        return """{"source": "cloud_ai", "prompt": ${prompt.toJsonString()}, "status": "api_call_pending"}"""
+        val response = """{"source": "cloud_ai", "prompt": ${prompt.toJsonString()}, "status": "api_call_pending"}"""
+        Log.d(TAG, "AI Response [daily]:\n$response")
+        return response
     }
 
     override suspend fun analyzeWeeklyBehavior(snapshots: List<TrackWithPoints>): String {
@@ -42,7 +50,10 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
             throw IllegalStateException("Cloud AI provider not configured. Set API key first.")
         }
         val prompt = buildWeeklyPrompt(snapshots)
-        return """{"source": "cloud_ai", "prompt": ${prompt.toJsonString()}, "status": "api_call_pending"}"""
+        Log.d(TAG, "AI Prompt [weekly]:\n$prompt")
+        val response = """{"source": "cloud_ai", "prompt": ${prompt.toJsonString()}, "status": "api_call_pending"}"""
+        Log.d(TAG, "AI Response [weekly]:\n$response")
+        return response
     }
 
     private fun buildDailyPrompt(snapshot: TrackWithPoints): String {

@@ -1,5 +1,6 @@
 package com.trackjourney.data.ai.provider
 
+import android.util.Log
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.ai.runtime.SystemAiRuntimeAdapter
 import com.trackjourney.data.model.TrackWithPoints
@@ -12,6 +13,10 @@ class SystemAiProvider @Inject constructor(
     private val systemRuntime: SystemAiRuntimeAdapter
 ) : AiAnalysisProvider {
 
+    companion object {
+        private const val TAG = "SystemAiProvider"
+    }
+
     override val executionMode: AiExecutionMode = AiExecutionMode.SYSTEM_LOCAL
     override val displayName: String = "System AI (AICore)"
 
@@ -22,12 +27,18 @@ class SystemAiProvider @Inject constructor(
 
     override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints): String {
         val prompt = buildDailyPrompt(snapshot)
-        return systemRuntime.runPrompt(prompt)
+        Log.d(TAG, "AI Prompt [daily]:\n$prompt")
+        val response = systemRuntime.runPrompt(prompt)
+        Log.d(TAG, "AI Response [daily]:\n$response")
+        return response
     }
 
     override suspend fun analyzeWeeklyBehavior(snapshots: List<TrackWithPoints>): String {
         val prompt = buildWeeklyPrompt(snapshots)
-        return systemRuntime.runPrompt(prompt)
+        Log.d(TAG, "AI Prompt [weekly]:\n$prompt")
+        val response = systemRuntime.runPrompt(prompt)
+        Log.d(TAG, "AI Response [weekly]:\n$response")
+        return response
     }
 
     private fun buildDailyPrompt(snapshot: TrackWithPoints): String {

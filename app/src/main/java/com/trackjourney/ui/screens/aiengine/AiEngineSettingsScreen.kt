@@ -32,6 +32,7 @@ import com.trackjourney.data.ai.models.ModelInstallState
 @Composable
 fun AiEngineSettingsScreen(
     onNavigateToWizard: () -> Unit,
+    onNavigateToSubscription: () -> Unit = {},
     viewModel: AiEngineSettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -87,7 +88,14 @@ fun AiEngineSettingsScreen(
                 isSelected = state.selectedMode == mode,
                 systemAiAvailable = state.systemAiAvailable,
                 systemAiStatus = state.systemAiStatus,
-                onClick = { viewModel.selectMode(mode) }
+                isPremium = state.isPremium,
+                onClick = {
+                    if (mode == AiExecutionMode.CUSTOM_LOCAL && !state.isPremium) {
+                        onNavigateToSubscription()
+                    } else {
+                        viewModel.selectMode(mode)
+                    }
+                }
             )
         }
 
@@ -215,6 +223,7 @@ private fun AiModeCard(
     isSelected: Boolean,
     systemAiAvailable: Boolean,
     systemAiStatus: String,
+    isPremium: Boolean = true,
     onClick: () -> Unit
 ) {
     val icon = when (mode) {
@@ -224,7 +233,9 @@ private fun AiModeCard(
         AiExecutionMode.CLOUD -> Icons.Filled.Cloud
     }
 
-    val isDisabled = mode == AiExecutionMode.SYSTEM_LOCAL && !systemAiAvailable
+    val isSystemUnavailable = mode == AiExecutionMode.SYSTEM_LOCAL && !systemAiAvailable
+    val requiresPremium = mode == AiExecutionMode.CUSTOM_LOCAL && !isPremium
+    val isDisabled = isSystemUnavailable
 
     Card(
         onClick = { if (!isDisabled) onClick() },
@@ -233,11 +244,11 @@ private fun AiModeCard(
         colors = CardDefaults.cardColors(
             containerColor = when {
                 isDisabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                isSelected -> MaterialTheme.colorScheme.primaryContainer
+                isSelected && !requiresPremium -> MaterialTheme.colorScheme.primaryContainer
                 else -> MaterialTheme.colorScheme.surface
             }
         ),
-        border = if (isSelected && !isDisabled) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        border = if (isSelected && !isDisabled && !requiresPremium) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -247,18 +258,29 @@ private fun AiModeCard(
                 icon, null,
                 tint = when {
                     isDisabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                    isSelected -> MaterialTheme.colorScheme.primary
+                    isSelected && !requiresPremium -> MaterialTheme.colorScheme.primary
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    mode.label,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 14.sp,
-                    color = if (isDisabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else Color.Unspecified
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        mode.label,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        color = if (isDisabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else Color.Unspecified
+                    )
+                    if (requiresPremium) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            Icons.Filled.Lock,
+                            contentDescription = "Premium",
+                            tint = Color(0xFFFFA000),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
                 Text(
                     mode.description,
                     style = MaterialTheme.typography.bodySmall,
@@ -267,8 +289,11 @@ private fun AiModeCard(
                 if (isDisabled) {
                     Text(systemAiStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
                 }
+                if (requiresPremium) {
+                    Text("Premium required", style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFA000))
+                }
             }
-            if (isSelected && !isDisabled) {
+            if (isSelected && !isDisabled && !requiresPremium) {
                 Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             }
         }

@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.ai.models.*
 import com.trackjourney.data.ai.provider.SystemAiProvider
 import com.trackjourney.data.ai.runtime.SystemAiRuntimeAdapter
+import com.trackjourney.data.local.SettingsDataStore
+import com.trackjourney.data.model.SubscriptionStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -19,7 +21,8 @@ data class AiEngineSettingsUiState(
     val systemAiStatus: String = "Checking...",
     val systemAiAvailable: Boolean = false,
     val isScanning: Boolean = false,
-    val scanResultMessage: String? = null
+    val scanResultMessage: String? = null,
+    val isPremium: Boolean = false
 )
 
 @HiltViewModel
@@ -27,7 +30,8 @@ class AiEngineSettingsViewModel @Inject constructor(
     private val aiPreferences: AiPreferences,
     private val localModelManager: LocalModelManager,
     private val modelInstaller: ModelInstaller,
-    private val systemAiRuntime: SystemAiRuntimeAdapter
+    private val systemAiRuntime: SystemAiRuntimeAdapter,
+    private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
     private val _scanState = MutableStateFlow(false)
@@ -38,9 +42,10 @@ class AiEngineSettingsViewModel @Inject constructor(
         aiPreferences.observeSelectedMode(),
         localModelManager.observeActiveModel(),
         localModelManager.observeInstalledModels(),
-        _scanState,
-        _scanResult
-    ) { mode, active, installed, scanning, scanMsg ->
+        combine(_scanState, _scanResult, settingsDataStore.subscriptionStatus) { scanning, scanMsg, sub ->
+            Triple(scanning, scanMsg, sub)
+        }
+    ) { mode, active, installed, (scanning, scanMsg, subscriptionStatus) ->
         AiEngineSettingsUiState(
             selectedMode = mode,
             activeModel = active,
@@ -50,7 +55,8 @@ class AiEngineSettingsViewModel @Inject constructor(
             systemAiStatus = systemAiRuntime.getStatusMessage(),
             systemAiAvailable = systemAiRuntime.isAvailable(),
             isScanning = scanning,
-            scanResultMessage = scanMsg
+            scanResultMessage = scanMsg,
+            isPremium = (subscriptionStatus as SubscriptionStatus).isActive
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiEngineSettingsUiState())
 

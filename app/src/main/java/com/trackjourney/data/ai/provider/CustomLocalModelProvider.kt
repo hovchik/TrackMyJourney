@@ -1,11 +1,13 @@
 package com.trackjourney.data.ai.provider
 
+import android.util.Log
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.ai.models.LocalModelManager
 import com.trackjourney.data.ai.runtime.LiteRtRuntimeAdapter
 import com.trackjourney.data.ai.runtime.LocalModelRuntime
 import com.trackjourney.data.ai.runtime.MediaPipeLlmRuntimeAdapter
 import com.trackjourney.data.model.TrackWithPoints
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,6 +18,10 @@ class CustomLocalModelProvider @Inject constructor(
     private val mediaPipeRuntime: MediaPipeLlmRuntimeAdapter,
     private val liteRtRuntime: LiteRtRuntimeAdapter
 ) : AiAnalysisProvider {
+
+    companion object {
+        private const val TAG = "CustomLocalModelProvider"
+    }
 
     override val executionMode: AiExecutionMode = AiExecutionMode.CUSTOM_LOCAL
     override val displayName: String = "Local Model"
@@ -37,23 +43,49 @@ class CustomLocalModelProvider @Inject constructor(
         }
     }
 
+    private fun ensureModelLoaded(runtime: LocalModelRuntime, runtimeType: String, localPath: String?) {
+        if (!runtime.isAvailable() && localPath != null) {
+            Log.i(TAG, "Loading model from: $localPath (runtime: $runtimeType)")
+            when (runtime) {
+                is MediaPipeLlmRuntimeAdapter -> runtime.loadModel(localPath)
+                is LiteRtRuntimeAdapter -> runtime.loadModel(localPath)
+            }
+            if (!runtime.isAvailable()) {
+                Log.e(TAG, "Model failed to load from: $localPath")
+                throw IllegalStateException("Model failed to load from: $localPath")
+            }
+            Log.i(TAG, "Model loaded successfully")
+        }
+    }
+
+    private fun validateJsonResponse(json: String, requiredKeys: List<String>): String {
+        try {
+            val jsonObj = JSONObject(json)
+            val missingKeys = requiredKeys.filter { !jsonObj.has(it) }
+            if (missingKeys.isNotEmpty()) {
+                Log.w(TAG, "AI response missing keys: $missingKeys")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "AI response is not valid JSON: ${e.message}")
+            Log.d(TAG, "Raw response: $json")
+        }
+        return json
+    }
+
     override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints): String {
         val activeModel = modelManager.getActiveModelSync()
             ?: throw IllegalStateException("No active local model configured")
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")
 
-        // Load model if needed
-        if (!runtime.isAvailable() && activeModel.localPath != null) {
-            when (runtime) {
-                is MediaPipeLlmRuntimeAdapter -> runtime.loadModel(activeModel.localPath)
-                is LiteRtRuntimeAdapter -> runtime.loadModel(activeModel.localPath)
-            }
-        }
+        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath)
 
         val prompt = buildDailyPrompt(snapshot)
+        Log.d(TAG, "AI Prompt [daily] (model=${activeModel.displayName}):\n$prompt")
         val rawOutput = runtime.runPrompt(prompt)
-        return extractJson(rawOutput)
+        Log.d(TAG, "AI Response [daily] (model=${activeModel.displayName}):\n$rawOutput")
+        val json = extractJson(rawOutput)
+        return validateJsonResponse(json, listOf("activity", "confidence", "summary", "suggestions"))
     }
 
     override suspend fun analyzeWeeklyBehavior(snapshots: List<TrackWithPoints>): String {
@@ -62,16 +94,14 @@ class CustomLocalModelProvider @Inject constructor(
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")
 
-        if (!runtime.isAvailable() && activeModel.localPath != null) {
-            when (runtime) {
-                is MediaPipeLlmRuntimeAdapter -> runtime.loadModel(activeModel.localPath)
-                is LiteRtRuntimeAdapter -> runtime.loadModel(activeModel.localPath)
-            }
-        }
+        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath)
 
         val prompt = buildWeeklyPrompt(snapshots)
+        Log.d(TAG, "AI Prompt [weekly] (model=${activeModel.displayName}):\n$prompt")
         val rawOutput = runtime.runPrompt(prompt)
-        return extractJson(rawOutput)
+        Log.d(TAG, "AI Response [weekly] (model=${activeModel.displayName}):\n$rawOutput")
+        val json = extractJson(rawOutput)
+        return validateJsonResponse(json, listOf("totalDistance", "totalCalories", "dominantActivity", "weekSummary", "improvements"))
     }
 
     private fun buildDailyPrompt(snapshot: TrackWithPoints): String {

@@ -215,12 +215,18 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
                     AiEngineSettingsScreen(
                         onNavigateToWizard = {
                             navController.navigate(Screen.AiSetupWizard.route)
+                        },
+                        onNavigateToSubscription = {
+                            navController.navigate(Screen.Subscription.route)
                         }
                     )
                 }
                 composable(Screen.AiSetupWizard.route) {
                     SetupWizardScreen(
-                        onComplete = { navController.popBackStack() }
+                        onComplete = { navController.popBackStack() },
+                        onNavigateToSubscription = {
+                            navController.navigate(Screen.Subscription.route)
+                        }
                     )
                 }
             }

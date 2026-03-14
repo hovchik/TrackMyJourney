@@ -26,6 +26,7 @@ import com.trackjourney.data.ai.models.*
 @Composable
 fun SetupWizardScreen(
     onComplete: () -> Unit,
+    onNavigateToSubscription: () -> Unit = {},
     viewModel: SetupViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -50,11 +51,23 @@ fun SetupWizardScreen(
             )
             SetupStep.RECOMMENDED_MODE -> RecommendedAiModeScreen(
                 state = state,
-                onModeSelected = { viewModel.selectMode(it) },
+                onModeSelected = { mode ->
+                    if (mode == AiExecutionMode.CUSTOM_LOCAL && !state.isPremium) {
+                        onNavigateToSubscription()
+                    } else {
+                        viewModel.selectMode(mode)
+                    }
+                },
                 onNext = {
                     val mode = state.selectedMode ?: state.recommendedMode
                     when (mode) {
-                        AiExecutionMode.CUSTOM_LOCAL -> viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG)
+                        AiExecutionMode.CUSTOM_LOCAL -> {
+                            if (!state.isPremium) {
+                                onNavigateToSubscription()
+                            } else {
+                                viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG)
+                            }
+                        }
                         AiExecutionMode.CLOUD -> viewModel.goToStep(SetupStep.CLOUD_CONFIG)
                         else -> viewModel.goToStep(SetupStep.READY)
                     }
@@ -245,8 +258,10 @@ private fun RecommendedAiModeScreen(
     WizardPage(title = "Choose AI Mode") {
         Spacer(modifier = Modifier.height(8.dp))
         AiExecutionMode.entries.forEach { mode ->
-            val isDisabled = mode == AiExecutionMode.SYSTEM_LOCAL && !systemAiAvailable
-            val isSelected = selected == mode && !isDisabled
+            val isSystemUnavailable = mode == AiExecutionMode.SYSTEM_LOCAL && !systemAiAvailable
+            val requiresPremium = mode == AiExecutionMode.CUSTOM_LOCAL && !state.isPremium
+            val isDisabled = isSystemUnavailable
+            val isSelected = selected == mode && !isDisabled && !requiresPremium
             val isRecommended = mode == state.recommendedMode
             Card(
                 onClick = { if (!isDisabled) onModeSelected(mode) },
@@ -281,7 +296,16 @@ private fun RecommendedAiModeScreen(
                                 color = if (isDisabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                                 else Color.Unspecified
                             )
-                            if (isRecommended && !isDisabled) {
+                            if (requiresPremium) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    Icons.Filled.Lock,
+                                    contentDescription = "Premium",
+                                    tint = Color(0xFFFFA000),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            if (isRecommended && !isDisabled && !requiresPremium) {
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
@@ -307,6 +331,13 @@ private fun RecommendedAiModeScreen(
                                 "Not available on this device",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                            )
+                        }
+                        if (requiresPremium) {
+                            Text(
+                                "Premium required",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFFA000)
                             )
                         }
                     }

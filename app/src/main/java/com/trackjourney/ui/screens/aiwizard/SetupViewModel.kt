@@ -6,12 +6,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.ai.models.*
 import com.trackjourney.data.ai.provider.CloudProvider
+import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.service.ModelDownloadService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -48,7 +50,8 @@ data class LocalAiSetupState(
     val isImporting: Boolean = false,
     val downloadingModelId: String? = null,
     val isScanning: Boolean = false,
-    val scanResultMessage: String? = null
+    val scanResultMessage: String? = null,
+    val isPremium: Boolean = false
 )
 
 @HiltViewModel
@@ -60,13 +63,21 @@ class SetupViewModel @Inject constructor(
     private val modelManager: LocalModelManager,
     private val benchmarkRunner: LocalAiBenchmarkRunner,
     private val aiPreferences: AiPreferences,
-    private val cloudProvider: CloudProvider
+    private val cloudProvider: CloudProvider,
+    private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LocalAiSetupState())
     val state: StateFlow<LocalAiSetupState> = _state.asStateFlow()
 
     val installProgress: StateFlow<InstallProgress?> = modelInstaller.installProgress
+
+    init {
+        viewModelScope.launch {
+            val isPremium = settingsDataStore.subscriptionStatus.first().isActive
+            _state.update { it.copy(isPremium = isPremium) }
+        }
+    }
 
     fun goToStep(step: SetupStep) {
         _state.update { it.copy(currentStep = step) }

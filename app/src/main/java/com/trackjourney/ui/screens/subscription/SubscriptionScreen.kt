@@ -160,12 +160,6 @@ fun SubscriptionScreen(
                 title = "Track Playback",
                 description = "Replay and animate saved GPS tracks on the map"
             )
-            PremiumFeatureItem(
-                icon = Icons.Filled.Psychology,
-                title = "Custom AI Selection",
-                description = "Choose and configure your preferred AI model for smart features"
-            )
-
             Spacer(modifier = Modifier.height(24.dp))
 
             // Pricing plans

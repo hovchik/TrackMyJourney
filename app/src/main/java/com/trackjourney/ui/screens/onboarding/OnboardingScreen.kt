@@ -122,7 +122,7 @@ private fun WelcomePage() {
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            "Welcome to\nTrackMyJourney",
+            "Welcome to\nPathwise",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
@@ -407,7 +407,7 @@ private fun PermissionsPage(onOnboardingComplete: () -> Unit) {
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            "TrackMyJourney needs these permissions to work properly.",
+            "Pathwise needs these permissions to work properly.",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center

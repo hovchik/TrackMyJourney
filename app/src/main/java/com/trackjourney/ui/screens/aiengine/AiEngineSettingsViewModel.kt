@@ -6,7 +6,6 @@ import com.trackjourney.data.ai.models.*
 import com.trackjourney.data.ai.provider.SystemAiProvider
 import com.trackjourney.data.ai.runtime.SystemAiRuntimeAdapter
 import com.trackjourney.data.local.SettingsDataStore
-import com.trackjourney.data.model.SubscriptionStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -56,7 +55,7 @@ class AiEngineSettingsViewModel @Inject constructor(
             systemAiAvailable = systemAiRuntime.isAvailable(),
             isScanning = scanning,
             scanResultMessage = scanMsg,
-            isPremium = (subscriptionStatus as SubscriptionStatus).isActive
+            isPremium = subscriptionStatus.isActive
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiEngineSettingsUiState())
 

@@ -9,6 +9,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -108,8 +112,12 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
     }
 
     Scaffold(
+        modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
+        contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                modifier = Modifier.navigationBarsPadding()
+            ) {
                 Screen.bottomNavItems.forEach { screen ->
                     val selected =
                         currentDestination?.hierarchy?.any { it.route == screen.route } == true

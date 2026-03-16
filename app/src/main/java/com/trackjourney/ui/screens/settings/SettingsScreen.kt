@@ -1104,7 +1104,7 @@ fun SettingsScreen(
                                 )
                             }
                             Text(
-                                String.format("%.1f°C", reading.temperatureC),
+                                String.format(java.util.Locale.US, "%.1f°C", reading.temperatureC),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = Accent

@@ -1061,7 +1061,7 @@ private fun relativeDay(timestamp: Long): String? {
         timestamp >= todayStart - 86_400_000 -> "Yesterday"
         timestamp >= todayStart - 2 * 86_400_000 -> "2 days ago"
         timestamp >= todayStart - 7 * 86_400_000 -> {
-            val days = ((todayStart - timestamp) / 86_400_000 + 1).toInt()
+            val days = ((todayStart - timestamp) / 86_400_000).toInt()
             "$days days ago"
         }
         else -> null

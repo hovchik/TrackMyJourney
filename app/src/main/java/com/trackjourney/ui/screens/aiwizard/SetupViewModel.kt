@@ -10,6 +10,7 @@ import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.service.ModelDownloadService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,6 +71,8 @@ class SetupViewModel @Inject constructor(
     val state: StateFlow<LocalAiSetupState> = _state.asStateFlow()
 
     val installProgress: StateFlow<InstallProgress?> = modelInstaller.installProgress
+
+    private var downloadProgressJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -164,7 +167,8 @@ class SetupViewModel @Inject constructor(
         ModelDownloadService.startDownload(appContext, model.modelId, url)
 
         // Observe the installer's progress flow to update UI state
-        viewModelScope.launch {
+        downloadProgressJob?.cancel()
+        downloadProgressJob = viewModelScope.launch {
             modelInstaller.installProgress.collect { progress ->
                 if (progress != null && progress.modelId == model.modelId) {
                     when (progress.state) {
@@ -203,6 +207,8 @@ class SetupViewModel @Inject constructor(
     }
 
     fun cancelDownload() {
+        downloadProgressJob?.cancel()
+        downloadProgressJob = null
         ModelDownloadService.cancelDownload(appContext)
         _state.update {
             it.copy(

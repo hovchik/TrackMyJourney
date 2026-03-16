@@ -1,6 +1,7 @@
 package com.trackjourney.ui.screens.subscription
 
 import android.app.Activity
+import android.content.ContextWrapper
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -31,7 +32,7 @@ fun SubscriptionScreen(
     viewModel: SubscriptionViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
+    val activity = context.findActivity()
 
     val subscriptionStatus by viewModel.subscriptionStatus.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -432,4 +433,13 @@ private fun PlanCard(
             }
         }
     }
+}
+
+private fun android.content.Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }

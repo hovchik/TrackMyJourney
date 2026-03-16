@@ -187,7 +187,8 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
                     TracksScreen(
                         onTrackClick = { trackId ->
                             navController.navigate("map/$trackId")
-                        }
+                        },
+                        isTracking = trackingState.isTracking
                     )
                 }
                 composable(

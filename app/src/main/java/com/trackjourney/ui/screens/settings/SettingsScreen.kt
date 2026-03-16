@@ -2961,7 +2961,19 @@ private fun PermissionsSection() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            if (!granted) {
+                            if (granted && item.permission == Manifest.permission.POST_NOTIFICATIONS) {
+                                // Open app notification settings so the user can turn off notifications
+                                val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                    }
+                                } else {
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", context.packageName, null)
+                                    }
+                                }
+                                context.startActivity(intent)
+                            } else if (!granted) {
                                 // Background location always needs app settings
                                 if (item.permission == Manifest.permission.ACCESS_BACKGROUND_LOCATION) {
                                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -2995,7 +3007,11 @@ private fun PermissionsSection() {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(item.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
                         Text(
-                            if (granted) "Granted" else "Tap to grant",
+                            when {
+                                granted && item.permission == Manifest.permission.POST_NOTIFICATIONS -> "Tap to manage"
+                                granted -> "Granted"
+                                else -> "Tap to grant"
+                            },
                             fontSize = 12.sp,
                             color = if (granted) grantedColor else deniedColor
                         )

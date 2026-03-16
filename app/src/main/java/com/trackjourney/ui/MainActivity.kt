@@ -1,6 +1,7 @@
 package com.trackjourney.ui
 
 import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -9,6 +10,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -108,8 +113,12 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
     }
 
     Scaffold(
+        modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
+        contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                modifier = Modifier.navigationBarsPadding()
+            ) {
                 Screen.bottomNavItems.forEach { screen ->
                     val selected =
                         currentDestination?.hierarchy?.any { it.route == screen.route } == true
@@ -152,13 +161,14 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
                 onToggle = { enabled ->
                     if (enabled) {
                         pendingTrackingStart = true
-                        permissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION,
-                                Manifest.permission.POST_NOTIFICATIONS
-                            )
+                        val perms = mutableListOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
                         )
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        permissionLauncher.launch(perms.toTypedArray())
                     } else {
                         trackingViewModel.stopTracking()
                     }
@@ -179,7 +189,8 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
                     TracksScreen(
                         onTrackClick = { trackId ->
                             navController.navigate("map/$trackId")
-                        }
+                        },
+                        isTracking = trackingState.isTracking
                     )
                 }
                 composable(
@@ -200,6 +211,9 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
                         },
                         onNavigateToAiEngine = {
                             navController.navigate(Screen.AiEngineSettings.route)
+                        },
+                        onNavigateToLocalAiWizard = {
+                            navController.navigate(Screen.AiSetupWizard.route)
                         }
                     )
                 }
@@ -212,12 +226,18 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
                     AiEngineSettingsScreen(
                         onNavigateToWizard = {
                             navController.navigate(Screen.AiSetupWizard.route)
+                        },
+                        onNavigateToSubscription = {
+                            navController.navigate(Screen.Subscription.route)
                         }
                     )
                 }
                 composable(Screen.AiSetupWizard.route) {
                     SetupWizardScreen(
-                        onComplete = { navController.popBackStack() }
+                        onComplete = { navController.popBackStack() },
+                        onNavigateToSubscription = {
+                            navController.navigate(Screen.Subscription.route)
+                        }
                     )
                 }
             }

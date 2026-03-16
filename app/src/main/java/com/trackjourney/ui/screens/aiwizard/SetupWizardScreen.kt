@@ -26,6 +26,7 @@ import com.trackjourney.data.ai.models.*
 @Composable
 fun SetupWizardScreen(
     onComplete: () -> Unit,
+    onNavigateToSubscription: () -> Unit = {},
     viewModel: SetupViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -50,37 +51,75 @@ fun SetupWizardScreen(
             )
             SetupStep.RECOMMENDED_MODE -> RecommendedAiModeScreen(
                 state = state,
-                onModeSelected = { viewModel.selectMode(it) },
+                onModeSelected = { mode ->
+                    if (mode == AiExecutionMode.CUSTOM_LOCAL && !state.isPremium) {
+                        onNavigateToSubscription()
+                    } else {
+                        viewModel.selectMode(mode)
+                    }
+                },
                 onNext = {
                     val mode = state.selectedMode ?: state.recommendedMode
-                    if (mode == AiExecutionMode.CUSTOM_LOCAL) {
-                        viewModel.goToStep(SetupStep.MODEL_INSTALL_OPTIONS)
-                    } else {
-                        viewModel.goToStep(SetupStep.READY)
+                    when (mode) {
+                        AiExecutionMode.CUSTOM_LOCAL -> {
+                            if (!state.isPremium) {
+                                onNavigateToSubscription()
+                            } else {
+                                viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG)
+                            }
+                        }
+                        AiExecutionMode.CLOUD -> viewModel.goToStep(SetupStep.CLOUD_CONFIG)
+                        else -> viewModel.goToStep(SetupStep.READY)
                     }
                 },
                 onBack = { viewModel.goToStep(SetupStep.DEVICE_COMPATIBILITY) }
+            )
+            SetupStep.CLOUD_CONFIG -> CloudConfigScreen(
+                state = state,
+                onApiKeyChanged = { viewModel.setCloudApiKey(it) },
+                onProviderTypeChanged = { viewModel.setCloudProviderType(it) },
+                onSave = { viewModel.saveCloudConfig() },
+                onBack = { viewModel.goToStep(SetupStep.RECOMMENDED_MODE) }
+            )
+            SetupStep.LOCAL_MODEL_CONFIG -> LocalModelConfigScreen(
+                state = state,
+                progress = progress,
+                onDownload = { viewModel.downloadModel(it) },
+                onCancelDownload = { viewModel.cancelDownload() },
+                onSetActive = { viewModel.setModelActive(it) },
+                onImport = { model, uri -> viewModel.importModel(model, uri) },
+                onScanDevice = { viewModel.scanForModels() },
+                onSkip = { viewModel.goToStep(SetupStep.READY) },
+                onBack = { viewModel.goToStep(SetupStep.RECOMMENDED_MODE) }
             )
             SetupStep.MODEL_INSTALL_OPTIONS -> ModelInstallOptionsScreen(
                 state = state,
                 onDownload = { viewModel.downloadModel(it) },
                 onImport = { viewModel.goToStep(SetupStep.IMPORT_MODEL) },
-                onBack = { viewModel.goToStep(SetupStep.RECOMMENDED_MODE) }
+                onBack = { viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG) }
             )
             SetupStep.MODEL_DOWNLOAD -> ModelDownloadScreen(
                 state = state,
                 progress = progress,
-                onCancel = { viewModel.goToStep(SetupStep.MODEL_INSTALL_OPTIONS) }
+                onCancel = { viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG) }
             )
             SetupStep.IMPORT_MODEL -> ImportModelScreen(
                 state = state,
                 onModelImported = { model, uri -> viewModel.importModel(model, uri) },
-                onBack = { viewModel.goToStep(SetupStep.MODEL_INSTALL_OPTIONS) }
+                onBack = { viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG) }
             )
             SetupStep.READY -> ReadyScreen(
                 state = state,
                 onBenchmark = { viewModel.runBenchmark() },
-                onDone = { viewModel.completeSetup() }
+                onDone = { viewModel.completeSetup() },
+                onBack = {
+                    val mode = state.selectedMode ?: state.recommendedMode
+                    when (mode) {
+                        AiExecutionMode.CLOUD -> viewModel.goToStep(SetupStep.CLOUD_CONFIG)
+                        AiExecutionMode.CUSTOM_LOCAL -> viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG)
+                        else -> viewModel.goToStep(SetupStep.RECOMMENDED_MODE)
+                    }
+                }
             )
         }
     }
@@ -105,7 +144,7 @@ private fun IntroScreen(onNext: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "TrackMyJourney can analyze your tracks using different AI engines. " +
+            "Pathwise can analyze your tracks using different AI engines. " +
                     "You can use cloud-based AI, your device's built-in AI, " +
                     "or download a local AI model for fully private analysis.",
             style = MaterialTheme.typography.bodyMedium,
@@ -214,20 +253,28 @@ private fun RecommendedAiModeScreen(
     onBack: () -> Unit
 ) {
     val selected = state.selectedMode ?: state.recommendedMode
+    val systemAiAvailable = state.deviceCapability?.supportsSystemAi ?: false
 
     WizardPage(title = "Choose AI Mode") {
         Spacer(modifier = Modifier.height(8.dp))
         AiExecutionMode.entries.forEach { mode ->
-            val isSelected = selected == mode
+            val isSystemUnavailable = mode == AiExecutionMode.SYSTEM_LOCAL && !systemAiAvailable
+            val requiresPremium = mode == AiExecutionMode.CUSTOM_LOCAL && !state.isPremium
+            val isDisabled = isSystemUnavailable
+            val isSelected = selected == mode && !isDisabled && !requiresPremium
             val isRecommended = mode == state.recommendedMode
             Card(
-                onClick = { onModeSelected(mode) },
+                onClick = { if (!isDisabled) onModeSelected(mode) },
+                enabled = !isDisabled,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surface
+                    containerColor = when {
+                        isDisabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        isSelected -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.surface
+                    }
                 ),
                 border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
             ) {
@@ -235,12 +282,30 @@ private fun RecommendedAiModeScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    RadioButton(selected = isSelected, onClick = { onModeSelected(mode) })
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { if (!isDisabled) onModeSelected(mode) },
+                        enabled = !isDisabled
+                    )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(mode.label, fontWeight = FontWeight.SemiBold)
-                            if (isRecommended) {
+                            Text(
+                                mode.label,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isDisabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                else Color.Unspecified
+                            )
+                            if (requiresPremium) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    Icons.Filled.Lock,
+                                    contentDescription = "Premium",
+                                    tint = Color(0xFFFFA000),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            if (isRecommended && !isDisabled && !requiresPremium) {
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
@@ -255,7 +320,26 @@ private fun RecommendedAiModeScreen(
                                 }
                             }
                         }
-                        Text(mode.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            mode.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDisabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (isDisabled) {
+                            Text(
+                                "Not available on this device",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                            )
+                        }
+                        if (requiresPremium) {
+                            Text(
+                                "Premium required",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFFA000)
+                            )
+                        }
                     }
                 }
             }
@@ -265,6 +349,616 @@ private fun RecommendedAiModeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
             Button(onClick = onNext, modifier = Modifier.weight(1f)) { Text("Next") }
+        }
+    }
+}
+
+@Composable
+private fun CloudConfigScreen(
+    state: LocalAiSetupState,
+    onApiKeyChanged: (String) -> Unit,
+    onProviderTypeChanged: (CloudProviderType) -> Unit,
+    onSave: () -> Unit,
+    onBack: () -> Unit
+) {
+    WizardPage(title = "Configure Cloud AI") {
+        Spacer(modifier = Modifier.height(8.dp))
+        Icon(
+            Icons.Filled.Cloud,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "Cloud AI sends summarized track data to an external AI service for analysis. " +
+                    "Your raw GPS data stays on your device.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Provider type selection
+        Text("AI Provider", fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        CloudProviderType.entries.forEach { provider ->
+            val isSelected = state.cloudProviderType == provider
+            Card(
+                onClick = { onProviderTypeChanged(provider) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surface
+                ),
+                border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = isSelected, onClick = { onProviderTypeChanged(provider) })
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(provider.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        Text(provider.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // API key input
+        Text("API Key", fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = state.cloudApiKey,
+            onValueChange = onApiKeyChanged,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Enter your API key") },
+            singleLine = true,
+            shape = RoundedCornerShape(8.dp)
+        )
+
+        state.error?.let {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
+            Button(
+                onClick = onSave,
+                enabled = state.cloudApiKey.isNotBlank() && !state.isValidatingApiKey,
+                modifier = Modifier.weight(1f)
+            ) {
+                if (state.isValidatingApiKey) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text("Save & Continue")
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocalModelConfigScreen(
+    state: LocalAiSetupState,
+    progress: InstallProgress?,
+    onDownload: (LocalAiModel) -> Unit,
+    onCancelDownload: () -> Unit,
+    onSetActive: (LocalAiModel) -> Unit,
+    onImport: (LocalAiModel, Uri) -> Unit,
+    onScanDevice: () -> Unit,
+    onSkip: () -> Unit,
+    onBack: () -> Unit
+) {
+    var showImportPicker by remember { mutableStateOf(false) }
+
+    val importModel = LocalAiModel(
+        modelId = "imported-model",
+        displayName = "Imported Model",
+        runtimeType = "mediapipe_llm",
+        fileFormat = "bin",
+        quantization = null,
+        requiredRamMb = 2048,
+        recommendedRamMb = 4096,
+        sizeMb = 0,
+        localPath = null,
+        installState = ModelInstallState.NOT_INSTALLED,
+        checksum = null,
+        version = "1.0",
+        supportsStructuredJson = false,
+        supportsStreaming = true,
+        supportsTextGeneration = true
+    )
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onImport(importModel, uri)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+    ) {
+        Text(
+            "Configure Local AI Model",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Device capability summary
+        state.deviceCapability?.let { cap ->
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Memory, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            "RAM: ${cap.totalRamMb} MB (${cap.ramTier.name}) | Storage: ${cap.availableStorageMb} MB free",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            "All analysis runs locally on your device. No data leaves your phone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Active download progress
+        if (state.isDownloading && progress != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Download, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            state.selectedModel?.displayName ?: "Model",
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { (progress.progressPercent) / 100f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "${progress.state.label} — ${progress.progressPercent}%",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        TextButton(
+                            onClick = onCancelDownload,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("Cancel", fontSize = 12.sp)
+                        }
+                    }
+                    progress.errorMessage?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Importing indicator
+        if (state.isImporting) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Importing model...", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Model catalog
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Separate catalog models from scanned/imported models
+            val catalogIds = ModelCatalog.availableModels.map { it.modelId }.toSet()
+            val catalogModels = state.catalogModels.filter { it.modelId in catalogIds }
+            val scannedModels = state.catalogModels.filter { it.modelId !in catalogIds }
+
+            val compatibleModels = catalogModels.filter { model ->
+                state.compatibility[model.modelId]?.isCompatible != false
+            }
+            val incompatibleModels = catalogModels.filter { model ->
+                state.compatibility[model.modelId]?.isCompatible == false
+            }
+
+            val smallModels = compatibleModels.filter { it.sizeMb < 1000 }
+            val mediumModels = compatibleModels.filter { it.sizeMb in 1000..3000 }
+            val largeModels = compatibleModels.filter { it.sizeMb > 3000 }
+
+            if (mediumModels.isNotEmpty()) {
+                item {
+                    Text(
+                        "Recommended (1-3 GB)",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
+                }
+                items(mediumModels, key = { it.modelId }) { model ->
+                    DownloadableModelCard(
+                        model = model,
+                        report = state.compatibility[model.modelId],
+                        isDownloading = state.downloadingModelId == model.modelId,
+                        onDownload = { onDownload(model) },
+                        onSetActive = { onSetActive(model) },
+                        enabled = !state.isDownloading && !state.isImporting
+                    )
+                }
+            }
+
+            if (smallModels.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Small (< 1 GB)",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
+                }
+                items(smallModels, key = { it.modelId }) { model ->
+                    DownloadableModelCard(
+                        model = model,
+                        report = state.compatibility[model.modelId],
+                        isDownloading = state.downloadingModelId == model.modelId,
+                        onDownload = { onDownload(model) },
+                        onSetActive = { onSetActive(model) },
+                        enabled = !state.isDownloading && !state.isImporting
+                    )
+                }
+            }
+
+            if (largeModels.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Large (3+ GB)",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
+                }
+                items(largeModels, key = { it.modelId }) { model ->
+                    DownloadableModelCard(
+                        model = model,
+                        report = state.compatibility[model.modelId],
+                        isDownloading = state.downloadingModelId == model.modelId,
+                        onDownload = { onDownload(model) },
+                        onSetActive = { onSetActive(model) },
+                        enabled = !state.isDownloading && !state.isImporting
+                    )
+                }
+            }
+
+            // Scanned/imported models not in catalog
+            if (scannedModels.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Found on Device",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
+                }
+                items(scannedModels, key = { it.modelId }) { model ->
+                    DownloadableModelCard(
+                        model = model,
+                        report = null,
+                        isDownloading = false,
+                        onDownload = null,
+                        onSetActive = { onSetActive(model) },
+                        enabled = !state.isDownloading && !state.isImporting
+                    )
+                }
+            }
+
+            if (incompatibleModels.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Incompatible with this device",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
+                }
+                items(incompatibleModels, key = { it.modelId }) { model ->
+                    DownloadableModelCard(
+                        model = model,
+                        report = state.compatibility[model.modelId],
+                        isDownloading = false,
+                        onDownload = null,
+                        onSetActive = null,
+                        enabled = false
+                    )
+                }
+            }
+
+            // Scan device for existing models
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onScanDevice,
+                    enabled = !state.isDownloading && !state.isImporting && !state.isScanning,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (state.isScanning) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Scanning device...")
+                    } else {
+                        Icon(Icons.Filled.Search, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Scan Device for Models")
+                    }
+                }
+                state.scanResultMessage?.let { msg ->
+                    val isPositive = msg.contains("model(s)") && !msg.startsWith("No")
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (isPositive) Icons.Filled.CheckCircle else Icons.Filled.Info,
+                            null,
+                            modifier = Modifier.size(14.dp),
+                            tint = if (isPositive) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            msg,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isPositive) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // Import from device
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { filePickerLauncher.launch("*/*") },
+                    enabled = !state.isDownloading && !state.isImporting && !state.isScanning,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Import Model from Device")
+                }
+                Text(
+                    "Supports .bin, .gguf, and .tflite model files",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+
+        state.error?.let {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(
+                onClick = onBack,
+                enabled = !state.isDownloading,
+                modifier = Modifier.weight(1f)
+            ) { Text("Back") }
+            Button(
+                onClick = onSkip,
+                enabled = !state.isDownloading && !state.isImporting,
+                modifier = Modifier.weight(1f)
+            ) { Text("Skip for Now") }
+        }
+    }
+}
+
+@Composable
+private fun DownloadableModelCard(
+    model: LocalAiModel,
+    report: CompatibilityReport?,
+    isDownloading: Boolean,
+    onDownload: (() -> Unit)?,
+    onSetActive: (() -> Unit)? = null,
+    enabled: Boolean
+) {
+    val isIncompatible = report?.isCompatible == false
+    val isInstalled = model.installState == ModelInstallState.INSTALLED
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .wrapContentHeight(),
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                isIncompatible -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                isInstalled -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                isDownloading -> MaterialTheme.colorScheme.secondaryContainer
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .padding(12.dp)
+        ) {
+            // Model name row with badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    model.displayName,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    modifier = Modifier.weight(1f, fill = false),
+                    maxLines = 2
+                )
+                if (isInstalled) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (model.isActive) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.secondary
+                    ) {
+                        Text(
+                            if (model.isActive) "Active" else "Installed",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 10.sp,
+                            color = if (model.isActive) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSecondary
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            // Specs row
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${model.sizeMb} MB",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    " | ${model.quantization ?: "N/A"} | ${model.runtimeType}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                "RAM: ${model.requiredRamMb}+ MB required",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
+            // Action row: Set Active / Download / Progress
+            if (isInstalled && model.isActive) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.CheckCircle, null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        "Currently active model",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            } else if (isInstalled && onSetActive != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                FilledTonalButton(
+                    onClick = onSetActive,
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Filled.CheckCircle, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Set as Active", fontSize = 12.sp)
+                }
+            } else if (onDownload != null && !isDownloading) {
+                Spacer(modifier = Modifier.height(6.dp))
+                FilledTonalButton(
+                    onClick = onDownload,
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Download", fontSize = 12.sp)
+                }
+            }
+            if (isDownloading) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Downloading...", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            report?.warnings?.forEach { warning ->
+                Text("Warning: $warning", fontSize = 11.sp, color = Color(0xFFF57C00))
+            }
+            report?.issues?.forEach { issue ->
+                Text(issue, fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }
@@ -506,7 +1200,8 @@ private fun ImportModelScreen(
 private fun ReadyScreen(
     state: LocalAiSetupState,
     onBenchmark: () -> Unit,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onBack: () -> Unit
 ) {
     WizardPage(title = "Setup Complete") {
         Spacer(modifier = Modifier.height(24.dp))
@@ -578,10 +1273,10 @@ private fun ReadyScreen(
         }
 
         Spacer(modifier = Modifier.weight(1f))
-        Button(
-            onClick = onDone,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Done") }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
+            Button(onClick = onDone, modifier = Modifier.weight(1f)) { Text("Done") }
+        }
     }
 }
 

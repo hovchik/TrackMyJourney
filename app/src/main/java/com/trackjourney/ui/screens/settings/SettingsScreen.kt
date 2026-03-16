@@ -55,6 +55,7 @@ import com.trackjourney.ui.theme.*
 fun SettingsScreen(
     onNavigateToSubscription: () -> Unit = {},
     onNavigateToAiEngine: () -> Unit = {},
+    onNavigateToLocalAiWizard: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -1103,7 +1104,7 @@ fun SettingsScreen(
                                 )
                             }
                             Text(
-                                String.format("%.1f°C", reading.temperatureC),
+                                String.format(java.util.Locale.US, "%.1f°C", reading.temperatureC),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = Accent
@@ -1976,7 +1977,7 @@ fun SettingsScreen(
                                 }
                             }
 
-                            // Recheck button for local model
+                            // Recheck button and wizard for local model
                             if (settings.aiMode == AiMode.LOCAL_MODEL) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedButton(
@@ -1987,6 +1988,15 @@ fun SettingsScreen(
                                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Re-check local model", fontSize = 13.sp)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = onNavigateToLocalAiWizard,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Setup Local AI Model", fontSize = 13.sp)
                                 }
                             }
 
@@ -2199,7 +2209,7 @@ fun SettingsScreen(
                                 onClick = {
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "Track My Journey – Live Tracking URL")
+                                        putExtra(Intent.EXTRA_SUBJECT, "Pathwise – Live Tracking URL")
                                         putExtra(Intent.EXTRA_TEXT, trackingUrl)
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, "Share tracking URL"))
@@ -2951,7 +2961,19 @@ private fun PermissionsSection() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            if (!granted) {
+                            if (granted && item.permission == Manifest.permission.POST_NOTIFICATIONS) {
+                                // Open app notification settings so the user can turn off notifications
+                                val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                    }
+                                } else {
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", context.packageName, null)
+                                    }
+                                }
+                                context.startActivity(intent)
+                            } else if (!granted) {
                                 // Background location always needs app settings
                                 if (item.permission == Manifest.permission.ACCESS_BACKGROUND_LOCATION) {
                                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -2985,7 +3007,11 @@ private fun PermissionsSection() {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(item.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
                         Text(
-                            if (granted) "Granted" else "Tap to grant",
+                            when {
+                                granted && item.permission == Manifest.permission.POST_NOTIFICATIONS -> "Tap to manage"
+                                granted -> "Granted"
+                                else -> "Tap to grant"
+                            },
                             fontSize = 12.sp,
                             color = if (granted) grantedColor else deniedColor
                         )

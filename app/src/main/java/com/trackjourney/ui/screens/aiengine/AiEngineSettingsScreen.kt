@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +32,7 @@ import com.trackjourney.data.ai.models.ModelInstallState
 @Composable
 fun AiEngineSettingsScreen(
     onNavigateToWizard: () -> Unit,
+    onNavigateToSubscription: () -> Unit = {},
     viewModel: AiEngineSettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -86,7 +88,14 @@ fun AiEngineSettingsScreen(
                 isSelected = state.selectedMode == mode,
                 systemAiAvailable = state.systemAiAvailable,
                 systemAiStatus = state.systemAiStatus,
-                onClick = { viewModel.selectMode(mode) }
+                isPremium = state.isPremium,
+                onClick = {
+                    if (mode == AiExecutionMode.CUSTOM_LOCAL && !state.isPremium) {
+                        onNavigateToSubscription()
+                    } else {
+                        viewModel.selectMode(mode)
+                    }
+                }
             )
         }
 
@@ -214,6 +223,7 @@ private fun AiModeCard(
     isSelected: Boolean,
     systemAiAvailable: Boolean,
     systemAiStatus: String,
+    isPremium: Boolean = true,
     onClick: () -> Unit
 ) {
     val icon = when (mode) {
@@ -223,29 +233,67 @@ private fun AiModeCard(
         AiExecutionMode.CLOUD -> Icons.Filled.Cloud
     }
 
+    val isSystemUnavailable = mode == AiExecutionMode.SYSTEM_LOCAL && !systemAiAvailable
+    val requiresPremium = mode == AiExecutionMode.CUSTOM_LOCAL && !isPremium
+    val isDisabled = isSystemUnavailable
+
     Card(
-        onClick = onClick,
+        onClick = { if (!isDisabled) onClick() },
+        enabled = !isDisabled,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surface
+            containerColor = when {
+                isDisabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                isSelected && !requiresPremium -> MaterialTheme.colorScheme.primaryContainer
+                else -> MaterialTheme.colorScheme.surface
+            }
         ),
-        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        border = if (isSelected && !isDisabled && !requiresPremium) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, null, tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(
+                icon, null,
+                tint = when {
+                    isDisabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    isSelected && !requiresPremium -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(mode.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                Text(mode.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (mode == AiExecutionMode.SYSTEM_LOCAL && !systemAiAvailable) {
-                    Text(systemAiStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        mode.label,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        color = if (isDisabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else Color.Unspecified
+                    )
+                    if (requiresPremium) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            Icons.Filled.Lock,
+                            contentDescription = "Premium",
+                            tint = Color(0xFFFFA000),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                Text(
+                    mode.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isDisabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (isDisabled) {
+                    Text(systemAiStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
+                }
+                if (requiresPremium) {
+                    Text("Premium required", style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFA000))
                 }
             }
-            if (isSelected) {
+            if (isSelected && !isDisabled && !requiresPremium) {
                 Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             }
         }

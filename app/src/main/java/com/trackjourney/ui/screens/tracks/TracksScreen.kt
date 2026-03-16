@@ -130,7 +130,8 @@ enum class TrackSortOption(val label: String) {
 @Composable
 fun TracksScreen(
     viewModel: TracksViewModel = hiltViewModel(),
-    onTrackClick: (String) -> Unit = {}
+    onTrackClick: (String) -> Unit = {},
+    isTracking: Boolean = false
 ) {
     val context = LocalContext.current
     val currentSettings by viewModel.settings.collectAsState()
@@ -357,7 +358,8 @@ fun TracksScreen(
                         onClick = { onTrackClick(track.id) },
                         onExport = { exportTrackId = track.id },
                         onDelete = { viewModel.deleteTrack(track.id) },
-                        onReanalyze = { viewModel.reanalyzeTrack(track.id) }
+                        onReanalyze = { viewModel.reanalyzeTrack(track.id) },
+                        isTrackingActive = isTracking
                     )
                 }
             }
@@ -520,7 +522,8 @@ private fun TrackCard(
     onClick: () -> Unit,
     onExport: () -> Unit,
     onDelete: () -> Unit,
-    onReanalyze: () -> Unit
+    onReanalyze: () -> Unit,
+    isTrackingActive: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -802,6 +805,7 @@ private fun TrackCard(
                         }
                         FilledTonalButton(
                             onClick = { showDeleteDialog = true },
+                            enabled = !(isTrackingActive && track.isActive),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
                                 containerColor = Error.copy(alpha = 0.1f),
@@ -811,7 +815,7 @@ private fun TrackCard(
                         ) {
                             Icon(
                                 Icons.Filled.Delete,
-                                contentDescription = "Delete",
+                                contentDescription = if (isTrackingActive && track.isActive) "Stop tracking to delete" else "Delete",
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -1057,7 +1061,7 @@ private fun relativeDay(timestamp: Long): String? {
         timestamp >= todayStart - 86_400_000 -> "Yesterday"
         timestamp >= todayStart - 2 * 86_400_000 -> "2 days ago"
         timestamp >= todayStart - 7 * 86_400_000 -> {
-            val days = ((todayStart - timestamp) / 86_400_000 + 1).toInt()
+            val days = ((todayStart - timestamp) / 86_400_000).toInt()
             "$days days ago"
         }
         else -> null

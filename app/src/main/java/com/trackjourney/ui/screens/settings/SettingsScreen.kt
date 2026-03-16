@@ -2209,7 +2209,7 @@ fun SettingsScreen(
                                 onClick = {
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "Track My Journey – Live Tracking URL")
+                                        putExtra(Intent.EXTRA_SUBJECT, "Pathwise – Live Tracking URL")
                                         putExtra(Intent.EXTRA_TEXT, trackingUrl)
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, "Share tracking URL"))

@@ -144,7 +144,7 @@ private fun IntroScreen(onNext: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "TrackMyJourney can analyze your tracks using different AI engines. " +
+            "Pathwise can analyze your tracks using different AI engines. " +
                     "You can use cloud-based AI, your device's built-in AI, " +
                     "or download a local AI model for fully private analysis.",
             style = MaterialTheme.typography.bodyMedium,

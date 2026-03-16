@@ -1,6 +1,7 @@
 package com.trackjourney.data.ai.provider
 
 import android.util.Log
+import com.trackjourney.BuildConfig
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.ai.models.LocalModelManager
 import com.trackjourney.data.ai.runtime.LiteRtRuntimeAdapter
@@ -44,7 +45,10 @@ class CustomLocalModelProvider @Inject constructor(
     }
 
     private fun ensureModelLoaded(runtime: LocalModelRuntime, runtimeType: String, localPath: String?) {
-        if (!runtime.isAvailable() && localPath != null) {
+        if (!runtime.isAvailable()) {
+            if (localPath == null) {
+                throw IllegalStateException("Model needs loading but no local path is available for runtime: $runtimeType")
+            }
             Log.i(TAG, "Loading model from: $localPath (runtime: $runtimeType)")
             when (runtime) {
                 is MediaPipeLlmRuntimeAdapter -> runtime.loadModel(localPath)
@@ -67,7 +71,7 @@ class CustomLocalModelProvider @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "AI response is not valid JSON: ${e.message}")
-            Log.d(TAG, "Raw response: $json")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Raw response: $json")
         }
         return json
     }
@@ -81,9 +85,9 @@ class CustomLocalModelProvider @Inject constructor(
         ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath)
 
         val prompt = buildDailyPrompt(snapshot)
-        Log.d(TAG, "AI Prompt [daily] (model=${activeModel.displayName}):\n$prompt")
+        if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily] (model=${activeModel.displayName}):\n$prompt")
         val rawOutput = runtime.runPrompt(prompt)
-        Log.d(TAG, "AI Response [daily] (model=${activeModel.displayName}):\n$rawOutput")
+        if (BuildConfig.DEBUG) Log.d(TAG, "AI Response [daily] (model=${activeModel.displayName}):\n$rawOutput")
         val json = extractJson(rawOutput)
         return validateJsonResponse(json, listOf("activity", "confidence", "summary", "suggestions"))
     }
@@ -97,9 +101,9 @@ class CustomLocalModelProvider @Inject constructor(
         ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath)
 
         val prompt = buildWeeklyPrompt(snapshots)
-        Log.d(TAG, "AI Prompt [weekly] (model=${activeModel.displayName}):\n$prompt")
+        if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [weekly] (model=${activeModel.displayName}):\n$prompt")
         val rawOutput = runtime.runPrompt(prompt)
-        Log.d(TAG, "AI Response [weekly] (model=${activeModel.displayName}):\n$rawOutput")
+        if (BuildConfig.DEBUG) Log.d(TAG, "AI Response [weekly] (model=${activeModel.displayName}):\n$rawOutput")
         val json = extractJson(rawOutput)
         return validateJsonResponse(json, listOf("totalDistance", "totalCalories", "dominantActivity", "weekSummary", "improvements"))
     }
@@ -168,7 +172,7 @@ class CustomLocalModelProvider @Inject constructor(
                 appendLine("- Route: ${track.startPlaceName ?: "?"} → ${track.endPlaceName ?: "?"}")
             }
             if (activitySegments.size > 1) {
-                appendLine("- Activity Segments: ${activitySegments.joinToString { "${it.key}(${(it.value * 100) / points.size}%)" }}")
+                appendLine("- Activity Segments: ${activitySegments.joinToString { "${it.key}(${if (points.isNotEmpty()) (it.value * 100) / points.size else 0}%)" }}")
             }
             if (batteryDrain != null) {
                 appendLine("- Battery Used: $batteryDrain%")

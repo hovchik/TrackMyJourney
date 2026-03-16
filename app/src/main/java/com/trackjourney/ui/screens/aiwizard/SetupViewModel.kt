@@ -13,7 +13,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -74,8 +73,9 @@ class SetupViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val isPremium = settingsDataStore.subscriptionStatus.first().isActive
-            _state.update { it.copy(isPremium = isPremium) }
+            settingsDataStore.subscriptionStatus.collect { status ->
+                _state.update { it.copy(isPremium = status.isActive) }
+            }
         }
     }
 
@@ -243,6 +243,11 @@ class SetupViewModel @Inject constructor(
     fun completeSetup() {
         viewModelScope.launch {
             val mode = _state.value.selectedMode ?: _state.value.recommendedMode
+            // Re-check premium status before saving CUSTOM_LOCAL mode
+            if (mode == AiExecutionMode.CUSTOM_LOCAL && !_state.value.isPremium) {
+                _state.update { it.copy(error = "Local AI models require a Premium subscription") }
+                return@launch
+            }
             aiPreferences.setSelectedMode(mode)
             aiPreferences.setSetupCompleted(true)
             _state.update { it.copy(isComplete = true) }

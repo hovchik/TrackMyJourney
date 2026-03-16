@@ -1,6 +1,7 @@
 package com.trackjourney.data.ai.provider
 
 import android.util.Log
+import com.trackjourney.BuildConfig
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.model.TrackWithPoints
 import java.util.concurrent.TimeUnit
@@ -37,11 +38,11 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
             throw IllegalStateException("Cloud AI provider not configured. Set API key first.")
         }
         val prompt = buildDailyPrompt(snapshot)
-        Log.d(TAG, "AI Prompt [daily]:\n$prompt")
+        if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily]:\n$prompt")
         // TODO: Replace with actual cloud API call (Claude/GPT/Gemini)
         // For now, return the prompt wrapped as a structured placeholder
         val response = """{"source": "cloud_ai", "prompt": ${prompt.toJsonString()}, "status": "api_call_pending"}"""
-        Log.d(TAG, "AI Response [daily]:\n$response")
+        if (BuildConfig.DEBUG) Log.d(TAG, "AI Response [daily]:\n$response")
         return response
     }
 
@@ -50,9 +51,9 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
             throw IllegalStateException("Cloud AI provider not configured. Set API key first.")
         }
         val prompt = buildWeeklyPrompt(snapshots)
-        Log.d(TAG, "AI Prompt [weekly]:\n$prompt")
+        if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [weekly]:\n$prompt")
         val response = """{"source": "cloud_ai", "prompt": ${prompt.toJsonString()}, "status": "api_call_pending"}"""
-        Log.d(TAG, "AI Response [weekly]:\n$response")
+        if (BuildConfig.DEBUG) Log.d(TAG, "AI Response [weekly]:\n$response")
         return response
     }
 
@@ -157,7 +158,7 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
                 appendLine()
                 appendLine("=== ACTIVITY SEGMENTS ===")
                 activitySegments.forEach { (activity, count) ->
-                    val pct = (count * 100) / points.size
+                    val pct = if (points.isNotEmpty()) (count * 100) / points.size else 0
                     appendLine("$activity: $pct% of track ($count points)")
                 }
             }

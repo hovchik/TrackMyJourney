@@ -805,7 +805,7 @@ private fun TrackCard(
                         }
                         FilledTonalButton(
                             onClick = { showDeleteDialog = true },
-                            enabled = !isTrackingActive,
+                            enabled = !(isTrackingActive && track.isActive),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
                                 containerColor = Error.copy(alpha = 0.1f),
@@ -815,7 +815,7 @@ private fun TrackCard(
                         ) {
                             Icon(
                                 Icons.Filled.Delete,
-                                contentDescription = if (isTrackingActive) "Stop tracking to delete" else "Delete",
+                                contentDescription = if (isTrackingActive && track.isActive) "Stop tracking to delete" else "Delete",
                                 modifier = Modifier.size(16.dp)
                             )
                         }

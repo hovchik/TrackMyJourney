@@ -1,6 +1,7 @@
 package com.trackjourney.ui
 
 import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -160,13 +161,14 @@ fun TrackMyJourneyApp(settingsDataStore: SettingsDataStore) {
                 onToggle = { enabled ->
                     if (enabled) {
                         pendingTrackingStart = true
-                        permissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION,
-                                Manifest.permission.POST_NOTIFICATIONS
-                            )
+                        val perms = mutableListOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
                         )
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        permissionLauncher.launch(perms.toTypedArray())
                     } else {
                         trackingViewModel.stopTracking()
                     }

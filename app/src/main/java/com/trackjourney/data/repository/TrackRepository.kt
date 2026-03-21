@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.Log
 import com.google.gson.GsonBuilder
 import com.trackjourney.data.ai.LocalAiEngine
+import com.trackjourney.data.ai.provider.AiProviderSelector
 import com.trackjourney.data.local.*
 import com.trackjourney.data.location.GpsSatelliteTracker
 import com.trackjourney.data.location.LocationTracker
@@ -29,6 +30,7 @@ class TrackRepository(
     private val carProfileDao: CarProfileDao,
     private val locationTracker: LocationTracker,
     private val aiEngine: LocalAiEngine,
+    private val aiProviderSelector: AiProviderSelector,
     private val settingsDataStore: SettingsDataStore,
     private val gpsSatelliteTracker: GpsSatelliteTracker,
     val motionSensorManager: MotionSensorManager
@@ -443,11 +445,24 @@ class TrackRepository(
 
             if (points.isEmpty()) return@withContext null
 
+            // Try using the user's selected AI provider first
+            val providerAnalysis = tryProviderAnalysis(trackId, points, healthData)
+            if (providerAnalysis != null) {
+                aiAnalysisDao.insert(providerAnalysis)
+                trackDao.getTrackById(trackId)?.let { track ->
+                    trackDao.update(track.copy(
+                        aiSummary = providerAnalysis.summary,
+                        activityType = providerAnalysis.detectedActivity
+                    ))
+                }
+                return@withContext providerAnalysis
+            }
+
+            // Fall back to local rule-based engine
             val analysis = aiEngine.analyzeTrack(points, healthData)
             val finalAnalysis = analysis.copy(trackId = trackId)
             aiAnalysisDao.insert(finalAnalysis)
 
-            // Update track with AI summary
             trackDao.getTrackById(trackId)?.let { track ->
                 trackDao.update(track.copy(
                     aiSummary = finalAnalysis.summary,
@@ -458,6 +473,74 @@ class TrackRepository(
             finalAnalysis
         } catch (e: Exception) {
             Log.e(TAG, "AI analysis failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Attempts to analyze a track using the user's selected AI provider (System AI,
+     * Custom Local Model, or Cloud). Returns null if the provider is unavailable or
+     * the response cannot be parsed, allowing fallback to the local rule-based engine.
+     */
+    private suspend fun tryProviderAnalysis(
+        trackId: String,
+        points: List<TrackPoint>,
+        healthData: List<HealthData>
+    ): AiAnalysis? {
+        return try {
+            val selection = aiProviderSelector.selectProvider()
+            val provider = selection.provider
+
+            if (!provider.isAvailable()) {
+                Log.d(TAG, "Selected provider '${provider.displayName}' is not available: ${selection.reason}")
+                return null
+            }
+
+            val track = trackDao.getTrackById(trackId) ?: return null
+            val snapshot = TrackWithPoints(track, points, healthData)
+
+            Log.i(TAG, "Analyzing track with ${provider.displayName} (${selection.mode}): ${selection.reason}")
+            val responseJson = provider.analyzeDailyBehavior(snapshot)
+
+            parseProviderResponse(trackId, responseJson)
+        } catch (e: Exception) {
+            Log.w(TAG, "Provider analysis failed, will use local engine: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Parses the JSON response from an AI provider into an AiAnalysis entity.
+     */
+    private fun parseProviderResponse(trackId: String, responseJson: String): AiAnalysis? {
+        return try {
+            val json = org.json.JSONObject(responseJson)
+
+            // Skip placeholder responses from unconfigured cloud provider
+            if (json.optString("status") == "api_call_pending") return null
+
+            val activityStr = json.optString("activity", "UNKNOWN")
+            val activity = try {
+                ActivityType.valueOf(activityStr.uppercase())
+            } catch (_: Exception) {
+                ActivityType.UNKNOWN
+            }
+
+            val suggestionsArray = json.optJSONArray("suggestions")
+            val suggestions = if (suggestionsArray != null) {
+                (0 until suggestionsArray.length()).map { suggestionsArray.getString(it) }
+            } else emptyList()
+
+            AiAnalysis(
+                trackId = trackId,
+                detectedActivity = activity,
+                confidence = json.optDouble("confidence", 0.0).toFloat(),
+                summary = json.optString("summary", ""),
+                suggestions = suggestions.joinToString("|"),
+                healthInsights = json.optString("healthInsights").takeIf { it.isNotEmpty() && it != "null" }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse provider response: ${e.message}")
             null
         }
     }

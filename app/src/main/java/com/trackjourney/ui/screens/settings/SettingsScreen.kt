@@ -3389,6 +3389,8 @@ private fun CloudAiWizardDialog(
                             val providerIcon = when (p) {
                                 CloudAiProvider.OPENAI -> Icons.Filled.AutoAwesome
                                 CloudAiProvider.ANTHROPIC -> Icons.Filled.Psychology
+                                CloudAiProvider.GEMINI -> Icons.Filled.Lightbulb
+                                CloudAiProvider.DEEPSEEK -> Icons.Filled.Explore
                                 CloudAiProvider.CUSTOM -> Icons.Filled.Dns
                             }
                             Row(
@@ -3450,6 +3452,8 @@ private fun CloudAiWizardDialog(
                         val suggestedModels = when (provider) {
                             CloudAiProvider.OPENAI -> listOf("gpt-4o-mini", "gpt-4o")
                             CloudAiProvider.ANTHROPIC -> listOf("claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250514")
+                            CloudAiProvider.GEMINI -> listOf("gemini-2.0-flash", "gemini-2.5-pro-preview-06-05")
+                            CloudAiProvider.DEEPSEEK -> listOf("deepseek-chat", "deepseek-reasoner")
                             CloudAiProvider.CUSTOM -> emptyList()
                         }
                         if (suggestedModels.isNotEmpty()) {
@@ -3498,7 +3502,9 @@ private fun CloudAiWizardDialog(
                     onClick = {
                         val resolvedEndpoint = when (provider) {
                             CloudAiProvider.OPENAI -> endpoint.ifBlank { "https://api.openai.com/v1" }
-                            CloudAiProvider.ANTHROPIC -> endpoint.ifBlank { "https://api.anthropic.com" }
+                            CloudAiProvider.ANTHROPIC -> endpoint.ifBlank { "https://api.anthropic.com/v1" }
+                            CloudAiProvider.GEMINI -> endpoint.ifBlank { "https://generativelanguage.googleapis.com/v1beta" }
+                            CloudAiProvider.DEEPSEEK -> endpoint.ifBlank { "https://api.deepseek.com" }
                             CloudAiProvider.CUSTOM -> endpoint
                         }
                         onSave(provider, apiKey, resolvedEndpoint, model)

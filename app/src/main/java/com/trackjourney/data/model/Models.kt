@@ -509,6 +509,8 @@ enum class AiMode(val label: String, val description: String) {
 enum class CloudAiProvider(val label: String) {
     OPENAI("OpenAI"),
     ANTHROPIC("Anthropic"),
+    GEMINI("Google Gemini"),
+    DEEPSEEK("DeepSeek"),
     CUSTOM("Custom Endpoint")
 }
 

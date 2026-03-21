@@ -5,6 +5,7 @@ import com.trackjourney.BuildConfig
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.model.TrackWithPoints
 import java.util.concurrent.TimeUnit
+import kotlin.math.sqrt
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -99,18 +100,47 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
             .mapValues { it.value.size }
             .entries.sortedByDescending { it.value }
 
+        // Pace calculation (min/km) for walking/running
+        val paceMinPerKm = if (track.distanceMeters > 0 && durationMin > 0) {
+            (durationMin + durationSec / 60.0) / (track.distanceMeters / 1000.0)
+        } else null
+
+        // Moving vs stopped time estimation
+        val stoppedPoints = points.count { it.speedKmh < 0.5f }
+        val movingRatio = if (points.isNotEmpty()) {
+            ((points.size - stoppedPoints).toFloat() / points.size * 100).toInt()
+        } else 100
+
+        // Speed consistency (coefficient of variation)
+        val speedStdDev = if (speeds.size > 1) {
+            val mean = speeds.average()
+            sqrt(speeds.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else 0f
+        val speedConsistency = if (speeds.isNotEmpty() && speeds.average() > 0) {
+            (1.0 - (speedStdDev / speeds.average())).coerceIn(0.0, 1.0)
+        } else 0.0
+
         return buildString {
-            appendLine("You are an expert journey and fitness analyst. Analyze this tracked journey and provide detailed insights.")
-            appendLine("Return a JSON object with these keys: activity (string), confidence (0.0-1.0), summary (string), suggestions (array of strings), healthInsights (string or null).")
+            appendLine("You are a sports scientist and mobility analyst specializing in GPS-tracked activity data.")
+            appendLine("Analyze this journey and return a JSON object with exactly these keys:")
+            appendLine("- activity (string): the primary activity type — one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY, or UNKNOWN")
+            appendLine("- confidence (number 0.0-1.0): how confident you are in the activity classification based on the speed, duration, and movement patterns")
+            appendLine("- summary (string): a 2-3 sentence natural-language summary of the journey covering distance, performance, and notable patterns. Be specific with numbers.")
+            appendLine("- suggestions (array of strings): 2-4 specific, actionable suggestions. Reference the actual data (e.g., 'Your pace of X min/km could improve by...'). Avoid generic advice.")
+            appendLine("- healthInsights (string or null): if heart rate or cadence data is present, provide specific health zone analysis (e.g., time in fat-burn vs cardio zone). Null if no health data.")
             appendLine()
             appendLine("=== JOURNEY DATA ===")
-            appendLine("Activity Type: ${track.activityType}")
+            appendLine("Detected Activity Type: ${track.activityType}")
             appendLine("Distance: ${"%.1f".format(track.distanceMeters)} meters (${"%.2f".format(track.distanceMeters / 1000)} km)")
             appendLine("Duration: ${durationMin}m ${durationSec}s")
             appendLine("Average Speed: ${"%.1f".format(track.avgSpeedKmh)} km/h")
             appendLine("Max Speed: ${"%.1f".format(track.maxSpeedKmh)} km/h")
             appendLine("Median Speed: ${"%.1f".format(medianSpeed)} km/h")
-            appendLine("GPS Points: ${points.size}")
+            if (paceMinPerKm != null && track.avgSpeedKmh < 20) {
+                appendLine("Pace: ${"%.1f".format(paceMinPerKm)} min/km")
+            }
+            appendLine("Speed Consistency: ${"%.0f".format(speedConsistency * 100)}% (higher = steadier pace)")
+            appendLine("Moving Time Ratio: $movingRatio% (${points.size - stoppedPoints} of ${points.size} GPS points in motion)")
             appendLine("Calories Burned: ${"%.0f".format(track.caloriesBurned)} kcal")
 
             if (minAltitude != null && maxAltitude != null) {
@@ -128,6 +158,14 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
                 appendLine("Average HR: $avgHr bpm")
                 appendLine("Max HR: $maxHr bpm")
                 appendLine("Min HR: $minHr bpm")
+                // Heart rate zone distribution hints
+                val hrAbove150 = heartRates.count { it > 150 }
+                val hrBelow100 = heartRates.count { it < 100 }
+                val totalHr = heartRates.size
+                if (totalHr > 0) {
+                    appendLine("Time above 150 bpm: ${"%.0f".format(hrAbove150 * 100.0 / totalHr)}%")
+                    appendLine("Time below 100 bpm: ${"%.0f".format(hrBelow100 * 100.0 / totalHr)}%")
+                }
             }
 
             if (avgCadence != null) {
@@ -164,19 +202,27 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
             }
 
             appendLine()
-            appendLine("Provide actionable fitness and travel insights. Return valid JSON only.")
+            appendLine("Important: Base your analysis on the actual numbers provided. Do not invent data. If the detected activity type seems inconsistent with the speed/distance data, note the discrepancy and suggest the correct activity. Return valid JSON only.")
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("You are an expert journey and fitness analyst. Analyze the following ${snapshots.size} journeys from the past week.")
-            appendLine("Return a JSON object with keys: totalDistance (meters), totalCalories, dominantActivity (string), weekSummary (string), improvements (array of strings), healthTrend (string or null).")
+            appendLine("You are a sports scientist and mobility analyst. Analyze these ${snapshots.size} tracked journeys from the past week and identify patterns, trends, and actionable improvements.")
+            appendLine()
+            appendLine("Return a JSON object with exactly these keys:")
+            appendLine("- totalDistance (number): total distance in meters across all journeys")
+            appendLine("- totalCalories (number): total estimated calories burned")
+            appendLine("- dominantActivity (string): the most frequent activity type this week")
+            appendLine("- weekSummary (string): 3-4 sentence summary covering overall activity level, consistency (how many days were active vs rest), notable achievements or concerns, and comparison between best and weakest sessions")
+            appendLine("- improvements (array of strings): 3-5 specific, data-backed improvement suggestions. Reference actual numbers from the data (e.g., 'Your Tuesday run averaged X km/h — try maintaining that pace on Thursday's shorter route'). Avoid generic advice like 'stay hydrated'.")
+            appendLine("- healthTrend (string or null): if heart rate data is available across multiple sessions, describe the trend (improving, stable, declining). Null if insufficient data.")
             appendLine()
 
             var totalDistance = 0.0
             var totalCalories = 0.0
             var totalDurationMs = 0L
+            val activitiesThisWeek = mutableListOf<String>()
 
             snapshots.forEachIndexed { i, twp ->
                 val track = twp.track
@@ -185,6 +231,7 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
                 totalDistance += track.distanceMeters
                 totalCalories += track.caloriesBurned
                 totalDurationMs += durationMs
+                activitiesThisWeek.add(track.activityType.toString())
 
                 val durationMin = TimeUnit.MILLISECONDS.toMinutes(durationMs)
                 val altitudes = points.mapNotNull { it.altitude }
@@ -192,6 +239,7 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
                 val heartRates = points.mapNotNull { it.heartRate } +
                         twp.healthData.mapNotNull { it.heartRate }
                 val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
+                val maxHr = heartRates.maxOrNull()
 
                 appendLine("--- Track ${i + 1} ---")
                 appendLine("Activity: ${track.activityType}")
@@ -200,7 +248,7 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
                 appendLine("Avg Speed: ${"%.1f".format(track.avgSpeedKmh)} km/h | Max: ${"%.1f".format(track.maxSpeedKmh)} km/h")
                 appendLine("Calories: ${"%.0f".format(track.caloriesBurned)} kcal")
                 if (elevGain > 0) appendLine("Elevation Gain: ${"%.0f".format(elevGain)} m")
-                if (avgHr != null) appendLine("Avg Heart Rate: $avgHr bpm")
+                if (avgHr != null) appendLine("Heart Rate: avg $avgHr bpm, max $maxHr bpm")
                 if (track.startPlaceName != null || track.endPlaceName != null) {
                     appendLine("Route: ${track.startPlaceName ?: "?"} → ${track.endPlaceName ?: "?"}")
                 }
@@ -208,13 +256,18 @@ class CloudProvider @Inject constructor() : AiAnalysisProvider {
             }
 
             val totalDurationMin = TimeUnit.MILLISECONDS.toMinutes(totalDurationMs)
+            val avgDistPerTrack = totalDistance / snapshots.size
+            val activityBreakdown = activitiesThisWeek.groupBy { it }.mapValues { it.value.size }
+
             appendLine("=== WEEKLY TOTALS ===")
             appendLine("Total Tracks: ${snapshots.size}")
             appendLine("Total Distance: ${"%.1f".format(totalDistance)}m (${"%.2f".format(totalDistance / 1000)}km)")
+            appendLine("Avg Distance per Track: ${"%.2f".format(avgDistPerTrack / 1000)}km")
             appendLine("Total Duration: $totalDurationMin min")
             appendLine("Total Calories: ${"%.0f".format(totalCalories)} kcal")
+            appendLine("Activity Breakdown: ${activityBreakdown.entries.joinToString { "${it.key}: ${it.value} sessions" }}")
             appendLine()
-            appendLine("Provide weekly trends, comparisons between journeys, and improvement suggestions. Return valid JSON only.")
+            appendLine("Important: Compare sessions against each other to identify the user's strongest and weakest performances. Suggest specific improvements based on the data, not generic wellness tips. Return valid JSON only.")
         }
     }
 

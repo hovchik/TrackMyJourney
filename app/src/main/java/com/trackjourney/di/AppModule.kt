@@ -177,12 +177,13 @@ object AppModule {
         carProfileDao: CarProfileDao,
         locationTracker: LocationTracker,
         aiEngine: LocalAiEngine,
+        aiProviderSelector: AiProviderSelector,
         settingsDataStore: SettingsDataStore,
         gpsSatelliteTracker: GpsSatelliteTracker,
         motionSensorManager: MotionSensorManager
     ) = TrackRepository(
         context, trackDao, trackPointDao, healthDataDao,
-        aiAnalysisDao, carProfileDao, locationTracker, aiEngine, settingsDataStore,
-        gpsSatelliteTracker, motionSensorManager
+        aiAnalysisDao, carProfileDao, locationTracker, aiEngine, aiProviderSelector,
+        settingsDataStore, gpsSatelliteTracker, motionSensorManager
     )
 }

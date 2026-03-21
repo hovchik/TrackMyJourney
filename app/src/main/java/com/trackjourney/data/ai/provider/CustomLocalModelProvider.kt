@@ -146,27 +146,39 @@ class CustomLocalModelProvider @Inject constructor(
         val batteryDrain = if (track.batteryStart != null && track.batteryEnd != null)
             track.batteryStart - track.batteryEnd else null
 
+        // Pace for walking/running
+        val paceMinPerKm = if (track.distanceMeters > 0 && durationMin > 0) {
+            (durationMin + durationSec / 60.0) / (track.distanceMeters / 1000.0)
+        } else null
+
         return buildString {
-            appendLine("You are a journey analysis AI. Analyze this track data and return a JSON object with keys: activity (string), summary (string), suggestions (array of strings), confidence (0.0-1.0), healthInsights (string or null).")
+            appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked activity and return a JSON object with these keys:")
+            appendLine("- activity (string): primary activity — WALKING, RUNNING, CYCLING, DRIVING, FLYING, or STATIONARY")
+            appendLine("- confidence (0.0-1.0): classification confidence based on speed and movement patterns")
+            appendLine("- summary (string): 2-3 sentences summarizing the journey with specific numbers from the data")
+            appendLine("- suggestions (array of strings): 2-3 actionable tips referencing the actual metrics below")
+            appendLine("- healthInsights (string or null): heart rate zone analysis if HR data present, otherwise null")
             appendLine()
             appendLine("Track Data:")
             appendLine("- Activity: ${track.activityType}")
-            appendLine("- Distance: ${"%.1f".format(track.distanceMeters)}m (${"%.2f".format(track.distanceMeters / 1000)}km)")
+            appendLine("- Distance: ${"%.2f".format(track.distanceMeters / 1000)}km (${"%.0f".format(track.distanceMeters)}m)")
             appendLine("- Duration: ${durationMin}m ${durationSec}s")
             appendLine("- Avg Speed: ${"%.1f".format(track.avgSpeedKmh)} km/h")
             appendLine("- Max Speed: ${"%.1f".format(track.maxSpeedKmh)} km/h")
             appendLine("- Median Speed: ${"%.1f".format(medianSpeed)} km/h")
-            appendLine("- GPS Points: ${points.size}")
+            if (paceMinPerKm != null && track.avgSpeedKmh < 20) {
+                appendLine("- Pace: ${"%.1f".format(paceMinPerKm)} min/km")
+            }
             appendLine("- Calories: ${"%.0f".format(track.caloriesBurned)} kcal")
 
             if (minAlt != null && maxAlt != null) {
                 appendLine("- Elevation: ${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m, gain: ${"%.0f".format(elevationGain)}m")
             }
             if (avgHr != null) {
-                appendLine("- Heart Rate: avg $avgHr, max $maxHr bpm")
+                appendLine("- Heart Rate: avg $avgHr bpm, max $maxHr bpm")
             }
             if (avgCadence != null) {
-                appendLine("- Avg Cadence: $avgCadence")
+                appendLine("- Cadence: $avgCadence spm")
             }
             if (track.startPlaceName != null || track.endPlaceName != null) {
                 appendLine("- Route: ${track.startPlaceName ?: "?"} → ${track.endPlaceName ?: "?"}")
@@ -182,13 +194,14 @@ class CustomLocalModelProvider @Inject constructor(
             }
 
             appendLine()
-            appendLine("Return valid JSON only.")
+            appendLine("Use the actual numbers in your summary and suggestions. If the activity type seems wrong for the speed, flag it. Return valid JSON only.")
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("You are a journey analysis AI. Analyze these ${snapshots.size} tracks from the past week. Return a JSON object with keys: totalDistance (number), totalCalories (number), dominantActivity (string), weekSummary (string), improvements (array of strings).")
+            appendLine("Analyze ${snapshots.size} GPS-tracked journeys from this week. Compare sessions and find trends.")
+            appendLine("Return JSON: totalDistance (meters), totalCalories (number), dominantActivity (string), weekSummary (3-4 sentences comparing sessions, noting best/weakest performance), improvements (3-4 specific suggestions referencing actual data).")
             appendLine()
 
             var totalDist = 0.0
@@ -209,7 +222,7 @@ class CustomLocalModelProvider @Inject constructor(
                         twp.healthData.mapNotNull { it.heartRate }
                 val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
 
-                append("${i + 1}. ${track.activityType}: ${"%.1f".format(track.distanceMeters)}m, ${durationMin}min, ${"%.1f".format(track.avgSpeedKmh)}km/h, ${"%.0f".format(track.caloriesBurned)}cal")
+                append("${i + 1}. ${track.activityType}: ${"%.2f".format(track.distanceMeters / 1000)}km, ${durationMin}min, ${"%.1f".format(track.avgSpeedKmh)}km/h, ${"%.0f".format(track.caloriesBurned)}cal")
                 if (elevGain > 0) append(", elev+${"%.0f".format(elevGain)}m")
                 if (avgHr != null) append(", hr:${avgHr}bpm")
                 if (track.startPlaceName != null) append(", from:${track.startPlaceName}")
@@ -218,9 +231,9 @@ class CustomLocalModelProvider @Inject constructor(
 
             val totalDurationMin = TimeUnit.MILLISECONDS.toMinutes(totalDurationMs)
             appendLine()
-            appendLine("Totals: ${"%.2f".format(totalDist / 1000)}km, ${totalDurationMin}min, ${"%.0f".format(totalCal)}cal")
+            appendLine("Totals: ${"%.2f".format(totalDist / 1000)}km, ${totalDurationMin}min, ${"%.0f".format(totalCal)}cal, avg ${"%.2f".format(totalDist / 1000 / snapshots.size)}km/session")
             appendLine()
-            appendLine("Return valid JSON only.")
+            appendLine("Compare best vs weakest session. Use actual numbers in suggestions. Return valid JSON only.")
         }
     }
 

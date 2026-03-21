@@ -71,16 +71,23 @@ class SystemAiProvider @Inject constructor(
             .mapValues { it.value.size }
             .entries.sortedByDescending { it.value }
 
+        // Pace for walking/running
+        val paceMinPerKm = if (track.distanceMeters > 0 && durationMin > 0) {
+            durationMin.toDouble() / (track.distanceMeters / 1000.0)
+        } else null
+
         return buildString {
-            appendLine("Analyze this journey track and provide insights as JSON with keys: activity, confidence, summary, suggestions (array), healthInsights.")
+            appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked journey data.")
+            appendLine("Return JSON with keys: activity (WALKING/RUNNING/CYCLING/DRIVING/FLYING/STATIONARY), confidence (0.0-1.0), summary (2-3 sentences with specific numbers from the data), suggestions (2-3 actionable tips referencing actual metrics), healthInsights (heart rate zone analysis if HR data present, else null).")
             appendLine()
-            appendLine("Track Data:")
+            appendLine("Journey:")
             appendLine("- Activity: ${track.activityType}")
-            appendLine("- Distance: ${"%.1f".format(track.distanceMeters)}m (${"%.2f".format(track.distanceMeters / 1000)}km)")
+            appendLine("- Distance: ${"%.2f".format(track.distanceMeters / 1000)}km")
             appendLine("- Duration: ${durationMin} min")
-            appendLine("- Avg Speed: ${"%.1f".format(track.avgSpeedKmh)} km/h")
-            appendLine("- Max Speed: ${"%.1f".format(track.maxSpeedKmh)} km/h")
-            appendLine("- GPS Points: ${points.size}")
+            appendLine("- Avg Speed: ${"%.1f".format(track.avgSpeedKmh)} km/h, Max: ${"%.1f".format(track.maxSpeedKmh)} km/h")
+            if (paceMinPerKm != null && track.avgSpeedKmh < 20) {
+                appendLine("- Pace: ${"%.1f".format(paceMinPerKm)} min/km")
+            }
             appendLine("- Calories: ${"%.0f".format(track.caloriesBurned)} kcal")
 
             if (minAlt != null && maxAlt != null) {
@@ -90,7 +97,7 @@ class SystemAiProvider @Inject constructor(
                 appendLine("- Heart Rate: avg $avgHr, max $maxHr bpm")
             }
             if (avgCadence != null) {
-                appendLine("- Avg Cadence: $avgCadence")
+                appendLine("- Cadence: $avgCadence spm")
             }
             if (track.startPlaceName != null || track.endPlaceName != null) {
                 appendLine("- Route: ${track.startPlaceName ?: "?"} → ${track.endPlaceName ?: "?"}")
@@ -103,25 +110,27 @@ class SystemAiProvider @Inject constructor(
             }
 
             appendLine()
-            appendLine("Return valid JSON only.")
+            appendLine("Be specific — reference the actual numbers. If the activity type seems wrong for the speed, note it. Return valid JSON only.")
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("Analyze these ${snapshots.size} journey tracks from the past week. Return JSON with keys: totalDistance, totalCalories, dominantActivity, weekSummary, improvements (array).")
+            appendLine("Analyze ${snapshots.size} GPS-tracked journeys from this week. Compare sessions, identify trends, and suggest improvements.")
+            appendLine("Return JSON: totalDistance (meters), totalCalories, dominantActivity, weekSummary (3-4 sentences comparing sessions and noting patterns), improvements (3-4 specific data-backed suggestions).")
             appendLine()
 
             var totalDist = 0.0
             var totalCal = 0.0
+            var totalDurationMs = 0L
 
             snapshots.forEachIndexed { i, twp ->
                 val track = twp.track
-                val durationMin = TimeUnit.MILLISECONDS.toMinutes(
-                    (track.endTime ?: System.currentTimeMillis()) - track.startTime
-                )
+                val durationMs = (track.endTime ?: System.currentTimeMillis()) - track.startTime
+                val durationMin = TimeUnit.MILLISECONDS.toMinutes(durationMs)
                 totalDist += track.distanceMeters
                 totalCal += track.caloriesBurned
+                totalDurationMs += durationMs
 
                 val altitudes = twp.points.mapNotNull { it.altitude }
                 val elevGain = computeElevationGain(altitudes)
@@ -129,17 +138,18 @@ class SystemAiProvider @Inject constructor(
                         twp.healthData.mapNotNull { it.heartRate }
                 val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
 
-                append("${i + 1}. ${track.activityType}: ${"%.1f".format(track.distanceMeters)}m, ${durationMin}min, ${"%.1f".format(track.avgSpeedKmh)}km/h, ${"%.0f".format(track.caloriesBurned)}cal")
+                append("${i + 1}. ${track.activityType}: ${"%.2f".format(track.distanceMeters / 1000)}km, ${durationMin}min, ${"%.1f".format(track.avgSpeedKmh)}km/h, ${"%.0f".format(track.caloriesBurned)}cal")
                 if (elevGain > 0) append(", elev+${"%.0f".format(elevGain)}m")
                 if (avgHr != null) append(", hr:${avgHr}bpm")
                 if (track.startPlaceName != null) append(", from:${track.startPlaceName}")
                 appendLine()
             }
 
+            val totalDurationMin = TimeUnit.MILLISECONDS.toMinutes(totalDurationMs)
             appendLine()
-            appendLine("Totals: ${"%.1f".format(totalDist)}m distance, ${"%.0f".format(totalCal)} cal")
+            appendLine("Totals: ${"%.2f".format(totalDist / 1000)}km, ${totalDurationMin}min, ${"%.0f".format(totalCal)}cal")
             appendLine()
-            appendLine("Return valid JSON only.")
+            appendLine("Compare best vs weakest session. Suggest specific improvements using actual numbers. Return valid JSON only.")
         }
     }
 

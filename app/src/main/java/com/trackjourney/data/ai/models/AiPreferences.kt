@@ -105,5 +105,6 @@ class AiPreferences @Inject constructor(
 enum class CloudProviderType(val label: String, val description: String) {
     CLAUDE("Claude (Anthropic)", "Anthropic's Claude AI for intelligent analysis."),
     OPENAI("GPT (OpenAI)", "OpenAI's GPT models for analysis."),
-    GEMINI("Gemini (Google)", "Google's Gemini AI for analysis.")
+    GEMINI("Gemini (Google)", "Google's Gemini AI for analysis."),
+    DEEPSEEK("DeepSeek", "DeepSeek's AI models for analysis.")
 }

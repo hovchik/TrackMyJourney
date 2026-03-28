@@ -19,9 +19,6 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
 
     companion object {
         private const val TAG = "MediaPipeLlmRuntime"
-        // MediaPipe maxTokens = total context window (prompt + response).
-        // Must match the model's KV cache size. Safe default for smallest models.
-        private const val DEFAULT_MAX_TOKENS = 512
     }
 
     override val runtimeId: String = "mediapipe_llm"
@@ -31,35 +28,17 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
     private var llmInference: LlmInference? = null
     private var isLoaded: Boolean = false
 
-    /**
-     * Extracts the KV cache size from a string (path or URL).
-     * e.g. "...ekv1280.task" -> 1280, "...ekv4096..." -> 4096
-     */
-    private fun extractKvCacheSize(vararg sources: String?): Int {
-        for (source in sources) {
-            if (source == null) continue
-            val match = Regex("ekv(\\d+)").find(source)
-            val size = match?.groupValues?.get(1)?.toIntOrNull()
-            if (size != null) {
-                Log.i(TAG, "Detected KV cache size: $size tokens (from: ${source.takeLast(60)})")
-                return size
-            }
-        }
-        Log.i(TAG, "No KV cache size found, using safe default: $DEFAULT_MAX_TOKENS tokens")
-        return DEFAULT_MAX_TOKENS
-    }
-
     fun loadModel(path: String, downloadUrl: String? = null) {
         // Release previous model if any
         release()
 
         modelPath = path
-        val maxTokens = extractKvCacheSize(path, downloadUrl)
-        Log.i(TAG, "Loading model from: $path (maxTokens=$maxTokens)")
+        Log.i(TAG, "Loading model from: $path")
         try {
+            // Let MediaPipe auto-detect maxTokens from the .task file's
+            // built-in KV cache configuration. Only set the model path.
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(path)
-                .setMaxTokens(maxTokens)
                 .build()
 
             llmInference = LlmInference.createFromOptions(context, options)

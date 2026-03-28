@@ -123,202 +123,64 @@ class CustomLocalModelProvider @Inject constructor(
 
         val durationMs = (track.endTime ?: System.currentTimeMillis()) - track.startTime
         val durationMin = TimeUnit.MILLISECONDS.toMinutes(durationMs)
-        val durationSec = TimeUnit.MILLISECONDS.toSeconds(durationMs) % 60
 
-        // Time of day
-        val startCal = java.util.Calendar.getInstance().apply { timeInMillis = track.startTime }
-        val startHour = startCal.get(java.util.Calendar.HOUR_OF_DAY)
-        val timeOfDay = when (startHour) {
-            in 5..11 -> "Morning"
-            in 12..16 -> "Afternoon"
-            in 17..20 -> "Evening"
-            else -> "Night"
-        }
-        val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
-            .format(java.util.Date(track.startTime))
-
-        // Elevation stats
-        val altitudes = points.mapNotNull { it.altitude }
-        val elevationGain = computeElevationGain(altitudes)
-        val elevationLoss = computeElevationLoss(altitudes)
-        val minAlt = altitudes.minOrNull()
-        val maxAlt = altitudes.maxOrNull()
-
-        // Heart rate from points + health data
+        // Heart rate
         val heartRates = points.mapNotNull { it.heartRate } +
                 healthData.mapNotNull { it.heartRate }
         val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
         val maxHr = heartRates.maxOrNull()
-        val minHr = heartRates.minOrNull()
 
-        // Cadence
-        val cadences = points.mapNotNull { it.cadence }
-        val avgCadence = cadences.takeIf { it.isNotEmpty() }?.average()?.toInt()
-        val maxCadence = cadences.maxOrNull()
-
-        // Speed analysis
+        // Speed
         val speeds = points.map { it.speedKmh }.filter { it > 0 }
-        val sortedSpeeds = speeds.sorted()
-        val medianSpeed = if (sortedSpeeds.isNotEmpty()) sortedSpeeds[sortedSpeeds.size / 2] else 0f
-        val p10Speed = if (sortedSpeeds.size >= 10) sortedSpeeds[(sortedSpeeds.size * 0.1).toInt()] else null
-        val p90Speed = if (sortedSpeeds.size >= 10) sortedSpeeds[(sortedSpeeds.size * 0.9).toInt()] else null
-        val speedStdDev = if (speeds.size >= 2) {
-            val mean = speeds.map { it.toDouble() }.average()
-            val variance = speeds.map { (it - mean) * (it - mean) }.average()
-            kotlin.math.sqrt(variance)
-        } else null
+        val medianSpeed = speeds.sorted().let { if (it.isNotEmpty()) it[it.size / 2] else 0f }
 
-        // Stops detection (speed < 0.5 km/h for consecutive points)
+        // Stops
         var stopCount = 0
-        var totalStopDurationMs = 0L
         var inStop = false
-        var stopStartTime = 0L
         for (pt in points) {
-            if (pt.speedKmh < 0.5f) {
-                if (!inStop) {
-                    inStop = true
-                    stopStartTime = pt.timestamp
-                    stopCount++
-                }
-            } else {
-                if (inStop) {
-                    totalStopDurationMs += pt.timestamp - stopStartTime
-                    inStop = false
-                }
-            }
+            if (pt.speedKmh < 0.5f) { if (!inStop) { inStop = true; stopCount++ } }
+            else { inStop = false }
         }
-        if (inStop && points.isNotEmpty()) {
-            totalStopDurationMs += points.last().timestamp - stopStartTime
-        }
-        val stopDurationMin = TimeUnit.MILLISECONDS.toMinutes(totalStopDurationMs)
-        val movingTimeMs = durationMs - totalStopDurationMs
-        val movingTimeMin = TimeUnit.MILLISECONDS.toMinutes(movingTimeMs.coerceAtLeast(0))
 
-        // Activity segments
-        val activitySegments = points.groupBy { it.activityType }
-            .mapValues { it.value.size }
-            .entries.sortedByDescending { it.value }
+        // Elevation
+        val altitudes = points.mapNotNull { it.altitude }
+        val elevGain = computeElevationGain(altitudes)
 
-        // Battery
-        val batteryDrain = if (track.batteryStart != null && track.batteryEnd != null)
-            track.batteryStart - track.batteryEnd else null
-
-        // Pace for walking/running
-        val paceMinPerKm = if (track.distanceMeters > 0 && movingTimeMin > 0) {
-            movingTimeMin.toDouble() / (track.distanceMeters / 1000.0)
+        // Pace
+        val paceMinPerKm = if (track.distanceMeters > 0 && durationMin > 0) {
+            durationMin.toDouble() / (track.distanceMeters / 1000.0)
         } else null
 
-        // GPS accuracy stats
-        val accuracies = points.mapNotNull { it.accuracy }
-        val avgAccuracy = accuracies.takeIf { it.isNotEmpty() }?.average()
-
-        // GPS point count
-        val totalPoints = points.size
-
+        // Build a compact prompt that fits in small context windows (~200 tokens)
         return buildString {
-            appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked activity and return a JSON object with these keys:")
-            appendLine("- activity (string): primary activity — WALKING, RUNNING, CYCLING, DRIVING, FLYING, or STATIONARY")
-            appendLine("- confidence (0.0-1.0): classification confidence based on speed and movement patterns")
-            appendLine("- summary (string): 3-5 sentences summarizing the journey with specific numbers, performance assessment, and notable patterns from the data")
-            appendLine("- suggestions (array of strings): 3-5 actionable tips referencing the actual metrics below, covering performance, safety, and improvement areas")
-            appendLine("- healthInsights (string or null): heart rate zone analysis if HR data present (resting/fat-burn/cardio/peak zones), otherwise null")
+            appendLine("Analyze this GPS trip. Return JSON only: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"...\",\"suggestions\":[\"...\"],\"healthInsights\":\"...or null\"}")
             appendLine()
-            appendLine("Track Data:")
-            appendLine("- Started: $dateStr ($timeOfDay)")
-            appendLine("- Activity: ${track.activityType}")
-            appendLine("- Distance: ${"%.2f".format(track.distanceMeters / 1000)}km (${"%.0f".format(track.distanceMeters)}m)")
-            appendLine("- Total Duration: ${durationMin}m ${durationSec}s")
-            appendLine("- Moving Time: ${movingTimeMin}m (stopped: ${stopDurationMin}m across $stopCount stops)")
-            appendLine("- GPS Points: $totalPoints recorded")
-            appendLine()
-            appendLine("Speed Analysis:")
-            appendLine("- Avg Speed: ${"%.1f".format(track.avgSpeedKmh)} km/h")
-            appendLine("- Max Speed: ${"%.1f".format(track.maxSpeedKmh)} km/h")
-            appendLine("- Median Speed: ${"%.1f".format(medianSpeed)} km/h")
-            if (p10Speed != null && p90Speed != null) {
-                appendLine("- Speed Range (10th-90th percentile): ${"%.1f".format(p10Speed)}-${"%.1f".format(p90Speed)} km/h")
-            }
-            if (speedStdDev != null) {
-                appendLine("- Speed Variability (std dev): ${"%.1f".format(speedStdDev)} km/h")
-            }
-            if (paceMinPerKm != null && track.avgSpeedKmh < 20) {
-                appendLine("- Pace: ${"%.1f".format(paceMinPerKm)} min/km")
-            }
-            appendLine()
-            appendLine("Energy & Elevation:")
-            appendLine("- Calories: ${"%.0f".format(track.caloriesBurned)} kcal")
-            if (minAlt != null && maxAlt != null) {
-                appendLine("- Elevation: ${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m (range: ${"%.0f".format(maxAlt - minAlt)}m)")
-                appendLine("- Elevation Gain: ${"%.0f".format(elevationGain)}m, Loss: ${"%.0f".format(elevationLoss)}m")
-            }
-
-            if (avgHr != null) {
-                appendLine()
-                appendLine("Heart Rate:")
-                appendLine("- Avg: $avgHr bpm, Max: $maxHr bpm, Min: $minHr bpm")
-                appendLine("- Range: ${(maxHr ?: 0) - (minHr ?: 0)} bpm spread")
-            }
-            if (avgCadence != null) {
-                appendLine("- Cadence: avg $avgCadence spm, max $maxCadence spm")
-            }
+            append("${track.activityType} ${"%.1f".format(track.distanceMeters/1000)}km ${durationMin}min")
+            append(" avg${"%.1f".format(track.avgSpeedKmh)}km/h max${"%.1f".format(track.maxSpeedKmh)}km/h med${"%.1f".format(medianSpeed)}km/h")
+            append(" ${"%.0f".format(track.caloriesBurned)}cal ${points.size}pts ${stopCount}stops")
+            if (paceMinPerKm != null && track.avgSpeedKmh < 20) append(" ${"%.1f".format(paceMinPerKm)}min/km")
+            if (elevGain > 0) append(" +${"%.0f".format(elevGain)}m")
+            if (avgHr != null) append(" hr${avgHr}/${maxHr}bpm")
             if (track.startPlaceName != null || track.endPlaceName != null) {
-                appendLine()
-                appendLine("Route: ${track.startPlaceName ?: "?"} → ${track.endPlaceName ?: "?"}")
+                append(" ${track.startPlaceName ?: "?"}→${track.endPlaceName ?: "?"}")
             }
-            if (activitySegments.size > 1) {
-                appendLine("- Activity Segments: ${activitySegments.joinToString { "${it.key}(${if (points.isNotEmpty()) (it.value * 100) / points.size else 0}%)" }}")
-            }
-            if (batteryDrain != null) {
-                appendLine("- Battery Used: $batteryDrain%")
-            }
-            if (track.rideCost != null) {
-                appendLine("- Ride Cost: ${"%.2f".format(track.rideCost)}")
-            }
-            if (avgAccuracy != null) {
-                appendLine("- GPS Accuracy: ${"%.1f".format(avgAccuracy)}m avg")
-            }
-
             appendLine()
-            appendLine("Use the actual numbers in your summary and suggestions. Identify patterns like inconsistent pacing, long stops, unusual speed variations. If the activity type seems wrong for the speed, flag it. Return valid JSON only.")
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("Analyze ${snapshots.size} GPS-tracked journeys from this week. Compare sessions and find trends.")
-            appendLine("Return JSON: totalDistance (meters), totalCalories (number), dominantActivity (string), weekSummary (3-4 sentences comparing sessions, noting best/weakest performance), improvements (3-4 specific suggestions referencing actual data).")
-            appendLine()
+            appendLine("Analyze ${snapshots.size} trips. Return JSON: {\"totalDistance\":m,\"totalCalories\":n,\"dominantActivity\":\"...\",\"weekSummary\":\"...\",\"improvements\":[\"...\"]}")
 
             var totalDist = 0.0
             var totalCal = 0.0
-            var totalDurationMs = 0L
-
             snapshots.forEachIndexed { i, twp ->
-                val track = twp.track
-                val durationMs = (track.endTime ?: System.currentTimeMillis()) - track.startTime
-                val durationMin = TimeUnit.MILLISECONDS.toMinutes(durationMs)
-                totalDist += track.distanceMeters
-                totalCal += track.caloriesBurned
-                totalDurationMs += durationMs
-
-                val altitudes = twp.points.mapNotNull { it.altitude }
-                val elevGain = computeElevationGain(altitudes)
-                val heartRates = twp.points.mapNotNull { it.heartRate } +
-                        twp.healthData.mapNotNull { it.heartRate }
-                val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
-
-                append("${i + 1}. ${track.activityType}: ${"%.2f".format(track.distanceMeters / 1000)}km, ${durationMin}min, ${"%.1f".format(track.avgSpeedKmh)}km/h, ${"%.0f".format(track.caloriesBurned)}cal")
-                if (elevGain > 0) append(", elev+${"%.0f".format(elevGain)}m")
-                if (avgHr != null) append(", hr:${avgHr}bpm")
-                if (track.startPlaceName != null) append(", from:${track.startPlaceName}")
-                appendLine()
+                val t = twp.track
+                val dur = TimeUnit.MILLISECONDS.toMinutes((t.endTime ?: System.currentTimeMillis()) - t.startTime)
+                totalDist += t.distanceMeters; totalCal += t.caloriesBurned
+                appendLine("${i+1}.${t.activityType} ${"%.1f".format(t.distanceMeters/1000)}km ${dur}m ${"%.1f".format(t.avgSpeedKmh)}km/h ${"%.0f".format(t.caloriesBurned)}cal")
             }
-
-            val totalDurationMin = TimeUnit.MILLISECONDS.toMinutes(totalDurationMs)
-            appendLine()
-            appendLine("Totals: ${"%.2f".format(totalDist / 1000)}km, ${totalDurationMin}min, ${"%.0f".format(totalCal)}cal, avg ${"%.2f".format(totalDist / 1000 / snapshots.size)}km/session")
-            appendLine()
-            appendLine("Compare best vs weakest session. Use actual numbers in suggestions. Return valid JSON only.")
+            appendLine("Total:${"%.1f".format(totalDist/1000)}km ${"%.0f".format(totalCal)}cal")
         }
     }
 

@@ -19,8 +19,8 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
 
     companion object {
         private const val TAG = "MediaPipeLlmRuntime"
-        // Safe default — must be lower than smallest model's KV cache (ekv1280).
-        // MediaPipe maxTokens = total context (prompt + response), not just response.
+        // MediaPipe maxTokens = total context window (prompt + response).
+        // Must match the model's KV cache size. Safe default for smallest models.
         private const val DEFAULT_MAX_TOKENS = 512
     }
 

@@ -21,7 +21,6 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
     companion object {
         private const val TAG = "MediaPipeLlmRuntime"
         private const val MAX_OUTPUT_TOKENS = 2048
-        private const val TEMPERATURE = 0.3f
     }
 
     override val runtimeId: String = "mediapipe_llm"
@@ -46,12 +45,11 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(path)
                 .setMaxTokens(MAX_OUTPUT_TOKENS)
-                .setTemperature(TEMPERATURE)
                 .build()
 
             llmInference = LlmInference.createFromOptions(context, options)
             isLoaded = true
-            Log.i(TAG, "Model loaded successfully from: $path (maxTokens=$MAX_OUTPUT_TOKENS, temp=$TEMPERATURE)")
+            Log.i(TAG, "Model loaded successfully from: $path (maxTokens=$MAX_OUTPUT_TOKENS)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load model from: $path", e)
             isLoaded = false

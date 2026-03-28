@@ -44,24 +44,25 @@ class CloudProvider @Inject constructor(
 
     private var apiKey: String? = null
     private var providerType: CloudProviderType = CloudProviderType.CLAUDE
+    private var customEndpoint: String = ""
+    private var customModel: String = ""
 
     /**
-     * Loads cloud AI config. SettingsDataStore is the primary source of truth
-     * (written by the Settings screen's Cloud AI wizard). Falls back to
-     * AiPreferences for backward compatibility.
+     * Loads cloud AI config from SettingsDataStore (the source of truth,
+     * written by the Settings screen's Cloud AI wizard).
+     * Always reloads to pick up any changes the user made.
      */
     suspend fun ensureConfigLoaded() {
         val settings = settingsDataStore.settings.first()
 
-        // Load API key: SettingsDataStore first, then AiPreferences
-        if (apiKey == null) {
-            apiKey = settings.cloudAiApiKey.takeIf { it.isNotBlank() }
-                ?: aiPreferences.getCloudApiKey()
-        }
+        // Always reload from SettingsDataStore to pick up provider/key changes
+        apiKey = settings.cloudAiApiKey.takeIf { it.isNotBlank() }
+            ?: aiPreferences.getCloudApiKey()
 
-        // Load provider type: map from SettingsDataStore's CloudAiProvider
         providerType = mapSettingsProvider(settings.cloudAiProvider)
-        Log.d(TAG, "Config loaded: provider=${providerType.label}, keySet=${apiKey != null}")
+        customEndpoint = settings.cloudAiEndpoint
+        customModel = settings.cloudAiModel
+        Log.d(TAG, "Config loaded: provider=${providerType.label}, keySet=${!apiKey.isNullOrBlank()}")
     }
 
     /**
@@ -111,18 +112,24 @@ class CloudProvider @Inject constructor(
 
     // ── API call logic ──────────────────────────────────────────────────────
 
-    private fun getBaseUrl(): String = when (providerType) {
-        CloudProviderType.OPENAI -> "https://api.openai.com/v1/chat/completions"
-        CloudProviderType.DEEPSEEK -> "https://api.deepseek.com/v1/chat/completions"
-        CloudProviderType.GEMINI -> "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-        CloudProviderType.CLAUDE -> "https://api.anthropic.com/v1/messages"
+    private fun getBaseUrl(): String {
+        if (customEndpoint.isNotBlank()) return customEndpoint
+        return when (providerType) {
+            CloudProviderType.OPENAI -> "https://api.openai.com/v1/chat/completions"
+            CloudProviderType.DEEPSEEK -> "https://api.deepseek.com/v1/chat/completions"
+            CloudProviderType.GEMINI -> "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+            CloudProviderType.CLAUDE -> "https://api.anthropic.com/v1/messages"
+        }
     }
 
-    private fun getModel(): String = when (providerType) {
-        CloudProviderType.OPENAI -> "gpt-4o-mini"
-        CloudProviderType.DEEPSEEK -> "deepseek-chat"
-        CloudProviderType.GEMINI -> "gemini-2.0-flash"
-        CloudProviderType.CLAUDE -> "claude-sonnet-4-20250514"
+    private fun getModel(): String {
+        if (customModel.isNotBlank()) return customModel
+        return when (providerType) {
+            CloudProviderType.OPENAI -> "gpt-4o-mini"
+            CloudProviderType.DEEPSEEK -> "deepseek-chat"
+            CloudProviderType.GEMINI -> "gemini-2.0-flash"
+            CloudProviderType.CLAUDE -> "claude-sonnet-4-20250514"
+        }
     }
 
     private suspend fun callApi(prompt: String): String = withContext(Dispatchers.IO) {

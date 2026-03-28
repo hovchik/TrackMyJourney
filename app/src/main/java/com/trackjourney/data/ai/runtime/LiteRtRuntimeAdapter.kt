@@ -26,7 +26,6 @@ class LiteRtRuntimeAdapter @Inject constructor(
     companion object {
         private const val TAG = "LiteRtRuntime"
         private const val MAX_TOKENS = 512
-        private const val TEMPERATURE = 0.7f
     }
 
     override val runtimeId: String = "litert"
@@ -47,7 +46,6 @@ class LiteRtRuntimeAdapter @Inject constructor(
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(path)
                 .setMaxTokens(MAX_TOKENS)
-                .setTemperature(TEMPERATURE)
                 .build()
 
             llmInference = LlmInference.createFromOptions(context, options)

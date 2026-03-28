@@ -127,7 +127,7 @@ class CloudProvider @Inject constructor(
         return when (providerType) {
             CloudProviderType.OPENAI -> "gpt-4o-mini"
             CloudProviderType.DEEPSEEK -> "deepseek-chat"
-            CloudProviderType.GEMINI -> "gemini-2.0-flash"
+            CloudProviderType.GEMINI -> "gemini-2.5-flash"
             CloudProviderType.CLAUDE -> "claude-sonnet-4-20250514"
         }
     }

@@ -67,6 +67,7 @@ class CustomLocalModelProvider @Inject constructor(
     }
 
     private fun validateJsonResponse(json: String, requiredKeys: List<String>): String {
+        // 1. Try parsing as-is
         try {
             val jsonObj = JSONObject(json)
             val missingKeys = requiredKeys.filter { !jsonObj.has(it) }
@@ -74,12 +75,114 @@ class CustomLocalModelProvider @Inject constructor(
                 Log.w(TAG, "AI response missing keys: $missingKeys")
             }
             return json
-        } catch (e: Exception) {
-            Log.e(TAG, "AI response is not valid JSON: ${e.message}")
-            if (BuildConfig.DEBUG) Log.d(TAG, "Raw response: $json")
-            // Model returned plain text instead of JSON — build a fallback JSON from the raw text
-            return buildFallbackJson(json)
+        } catch (_: Exception) { /* fall through to repair */ }
+
+        // 2. Try repairing truncated JSON (local models often hit output token limits)
+        val repaired = repairTruncatedJson(json)
+        if (repaired != null) {
+            try {
+                val jsonObj = JSONObject(repaired)
+                Log.i(TAG, "Repaired truncated JSON successfully")
+                val missingKeys = requiredKeys.filter { !jsonObj.has(it) }
+                if (missingKeys.isNotEmpty()) {
+                    Log.w(TAG, "Repaired JSON missing keys: $missingKeys")
+                }
+                return repaired
+            } catch (_: Exception) { /* fall through to fallback */ }
         }
+
+        // 3. Last resort: build fallback from raw text
+        Log.e(TAG, "AI response is not valid JSON: cannot parse or repair")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Raw response: $json")
+        return buildFallbackJson(json)
+    }
+
+    /**
+     * Attempts to repair JSON that was truncated mid-output by the local model.
+     * Closes any open strings, arrays, and objects to make it parseable.
+     * Preserves all the valid data that was generated before truncation.
+     */
+    private fun repairTruncatedJson(json: String): String? {
+        // Only attempt repair if it starts like JSON but doesn't end properly
+        val trimmed = json.trim()
+        if (!trimmed.startsWith("{")) return null
+        if (trimmed.endsWith("}")) return null // already closed, problem is elsewhere
+
+        val sb = StringBuilder(trimmed)
+
+        // Track nesting state
+        var inString = false
+        var escaped = false
+        var braceDepth = 0
+        var bracketDepth = 0
+
+        for (ch in trimmed) {
+            if (escaped) { escaped = false; continue }
+            if (ch == '\\' && inString) { escaped = true; continue }
+            if (ch == '"') { inString = !inString; continue }
+            if (inString) continue
+            when (ch) {
+                '{' -> braceDepth++
+                '}' -> braceDepth--
+                '[' -> bracketDepth++
+                ']' -> bracketDepth--
+            }
+        }
+
+        // Close open string (truncated mid-value)
+        if (inString) {
+            sb.append("\"")
+        }
+
+        // Close open arrays
+        repeat(bracketDepth) { sb.append("]") }
+
+        // Close open objects
+        repeat(braceDepth) { sb.append("}") }
+
+        val result = sb.toString()
+        // Verify it actually parses now
+        return try {
+            JSONObject(result)
+            result
+        } catch (_: Exception) {
+            // Try removing a trailing partial key-value (e.g. truncated after comma + key)
+            // Find the last complete key-value pair
+            val lastGoodEnd = findLastCompleteValue(result)
+            if (lastGoodEnd != null) lastGoodEnd else null
+        }
+    }
+
+    /**
+     * Attempts to find a valid JSON by trimming back to the last complete value.
+     */
+    private fun findLastCompleteValue(json: String): String? {
+        // Try progressively removing trailing content until we get valid JSON
+        var candidate = json
+        for (i in 0 until 5) {
+            // Remove trailing partial content after last comma or colon
+            val lastComma = candidate.lastIndexOf(',')
+            val lastColon = candidate.lastIndexOf(':')
+            val cutPoint = maxOf(lastComma, lastColon)
+            if (cutPoint <= 0) return null
+            candidate = candidate.substring(0, cutPoint)
+            // Re-close brackets/braces
+            var braces = 0; var brackets = 0; var inStr = false; var esc = false
+            for (ch in candidate) {
+                if (esc) { esc = false; continue }
+                if (ch == '\\' && inStr) { esc = true; continue }
+                if (ch == '"') { inStr = !inStr; continue }
+                if (inStr) continue
+                when (ch) { '{' -> braces++; '}' -> braces--; '[' -> brackets++; ']' -> brackets-- }
+            }
+            val closed = candidate + "]".repeat(brackets) + "}".repeat(braces)
+            try {
+                JSONObject(closed)
+                Log.i(TAG, "Recovered truncated JSON by trimming $i trailing fragments")
+                return closed
+            } catch (_: Exception) { /* try trimming more */ }
+        }
+        return null
     }
 
     /**
@@ -229,8 +332,8 @@ class CustomLocalModelProvider @Inject constructor(
         // IMPORTANT: instruct model to output ONLY a JSON object, no prose
         return buildString {
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Analyze this GPS trip and return: {\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\",\"lifetimeInsights\":\"comparison vs history or null\"}")
-            appendLine("Activity speed guide: STATIONARY <0.5, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h")
+            appendLine("Return: {\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0-1.0,\"summary\":\"2-3 short sentences\",\"suggestions\":[\"1-2 tips\"],\"healthInsights\":\"1 sentence or null\",\"lifetimeInsights\":\"1 sentence or null\"}")
+            appendLine("Speed guide: STATIONARY<0.5 WALKING<7 RUNNING<15 CYCLING<40 DRIVING<200 FLYING>200 km/h")
             appendLine("---")
             // Show user's manual override if set
             if (track.customActivityType != null) {

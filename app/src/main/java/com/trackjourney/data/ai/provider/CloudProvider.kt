@@ -113,7 +113,6 @@ class CloudProvider @Inject constructor(
     // ── API call logic ──────────────────────────────────────────────────────
 
     private fun getBaseUrl(): String {
-        if (customEndpoint.isNotBlank()) return customEndpoint
         return when (providerType) {
             CloudProviderType.OPENAI -> "https://api.openai.com/v1/chat/completions"
             CloudProviderType.DEEPSEEK -> "https://api.deepseek.com/v1/chat/completions"
@@ -123,7 +122,6 @@ class CloudProvider @Inject constructor(
     }
 
     private fun getModel(): String {
-        if (customModel.isNotBlank()) return customModel
         return when (providerType) {
             CloudProviderType.OPENAI -> "gpt-4o-mini"
             CloudProviderType.DEEPSEEK -> "deepseek-chat"

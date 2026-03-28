@@ -332,7 +332,7 @@ class CustomLocalModelProvider @Inject constructor(
         // IMPORTANT: instruct model to output ONLY a JSON object, no prose
         return buildString {
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Return: {\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0-1.0,\"summary\":\"2-3 short sentences\",\"suggestions\":[\"1-2 tips\"],\"healthInsights\":\"1 sentence or null\",\"lifetimeInsights\":\"1 sentence or null\"}")
+            appendLine("Return: {\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\",\"lifetimeInsights\":\"comparison vs history or null\"}")
             appendLine("Speed guide: STATIONARY<0.5 WALKING<7 RUNNING<15 CYCLING<40 DRIVING<200 FLYING>200 km/h")
             appendLine("---")
             // Show user's manual override if set

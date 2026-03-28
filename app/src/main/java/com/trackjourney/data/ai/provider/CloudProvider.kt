@@ -116,7 +116,7 @@ class CloudProvider @Inject constructor(
         if (customEndpoint.isNotBlank()) return customEndpoint
         return when (providerType) {
             CloudProviderType.OPENAI -> "https://api.openai.com/v1/chat/completions"
-            CloudProviderType.DEEPSEEK -> "https://api.deepseek.com/chat/completions"
+            CloudProviderType.DEEPSEEK -> "https://api.deepseek.com/v1/chat/completions"
             CloudProviderType.GEMINI -> "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
             CloudProviderType.CLAUDE -> "https://api.anthropic.com/v1/messages"
         }
@@ -208,11 +208,13 @@ class CloudProvider @Inject constructor(
         body: String,
         headers: Map<String, String>
     ): String {
+        Log.d(TAG, "API request: POST $url (${providerType.label})")
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             doOutput = true
+            instanceFollowRedirects = true
             headers.forEach { (k, v) -> setRequestProperty(k, v) }
         }
 

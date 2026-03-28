@@ -198,7 +198,7 @@ class CustomLocalModelProvider @Inject constructor(
         // IMPORTANT: instruct model to output ONLY a JSON object, no prose
         return buildString {
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Analyze this GPS trip and return: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"3-4 sentences analyzing performance, terrain, and patterns with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\"}")
+            appendLine("Analyze this GPS trip and return: {\"activity\":\"STATIONARY(<0.5km/h)|WALKING(<7)|RUNNING(7-15)|CYCLING(15-40)|DRIVING(40-200)|FLYING(>200km/h)\",\"confidence\":0.0-1.0,\"summary\":\"3-4 sentences analyzing performance, terrain, and patterns with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\"}")
             appendLine("---")
             appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size}")
             append("spd avg:${"%.1f".format(track.avgSpeedKmh)} max:${"%.1f".format(track.maxSpeedKmh)} med:${"%.1f".format(medianSpeed)}")

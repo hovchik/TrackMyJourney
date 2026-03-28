@@ -824,7 +824,7 @@ private fun TrackCard(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Action buttons
+                    // Action buttons — two rows to prevent overflow on narrow screens
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -841,7 +841,7 @@ private fun TrackCard(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export", fontSize = 13.sp)
+                            Text("Export", fontSize = 13.sp, maxLines = 1)
                         }
                         OutlinedButton(
                             onClick = onReanalyze,
@@ -855,8 +855,14 @@ private fun TrackCard(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Re-analyze", fontSize = 13.sp)
+                            Text("Re-analyze", fontSize = 13.sp, maxLines = 1)
                         }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         OutlinedButton(
                             onClick = onInsight,
                             modifier = Modifier.weight(1f),
@@ -869,10 +875,11 @@ private fun TrackCard(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Insight", fontSize = 13.sp)
+                            Text("Insight", fontSize = 13.sp, maxLines = 1)
                         }
                         FilledTonalButton(
                             onClick = { showDeleteDialog = true },
+                            modifier = Modifier.weight(1f),
                             enabled = !(isTrackingActive && track.isActive),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
@@ -883,8 +890,14 @@ private fun TrackCard(
                         ) {
                             Icon(
                                 Icons.Filled.Delete,
-                                contentDescription = if (isTrackingActive && track.isActive) "Stop tracking to delete" else "Delete",
+                                contentDescription = null,
                                 modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                if (isTrackingActive && track.isActive) "Stop to delete" else "Delete",
+                                fontSize = 13.sp,
+                                maxLines = 1
                             )
                         }
                     }

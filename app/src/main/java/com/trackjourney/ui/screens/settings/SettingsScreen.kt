@@ -1864,13 +1864,14 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            AiMode.entries.forEach { mode ->
+                            AiMode.entries
+                                .filter { it != AiMode.RULE_BASED && it != AiMode.TFLITE_MODEL }
+                                .forEach { mode ->
                                 val icon = when (mode) {
-                                    AiMode.RULE_BASED -> Icons.Filled.Speed
-                                    AiMode.TFLITE_MODEL -> Icons.Filled.Psychology
                                     AiMode.LOCAL_MODEL -> Icons.Filled.PhoneAndroid
                                     AiMode.CLOUD_AI -> Icons.Filled.Cloud
                                     AiMode.OFF -> Icons.Filled.PowerSettingsNew
+                                    else -> Icons.Filled.Speed
                                 }
                                 val isLocalModelDisabled = mode == AiMode.LOCAL_MODEL &&
                                     !localModelChecking && !localModelReachable

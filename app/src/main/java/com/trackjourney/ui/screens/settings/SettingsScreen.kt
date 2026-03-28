@@ -1796,6 +1796,7 @@ fun SettingsScreen(
             var aiSectionExpanded by remember { mutableStateOf(false) }
             val localModelReachable by viewModel.localModelReachable.collectAsState()
             val localModelChecking by viewModel.localModelChecking.collectAsState()
+            val installedLocalModels by viewModel.installedModels.collectAsState()
             Card(
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -1824,7 +1825,11 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                "Engine: ${settings.aiMode.label}",
+                                when (settings.aiMode) {
+                                    AiMode.CLOUD_AI -> "Cloud: ${settings.cloudAiProvider.label}"
+                                    AiMode.OFF -> "AI Off"
+                                    else -> "Local Model"
+                                },
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1841,173 +1846,184 @@ fun SettingsScreen(
                         @Suppress("DEPRECATION")
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         Column(modifier = Modifier.padding(16.dp)) {
-                            // Auto detection switch
-                            SettingsSwitch(
-                                icon = Icons.Filled.Sensors,
-                                title = "Auto Activity Detection",
-                                subtitle = "Classify walking, driving, flying in real-time",
-                                checked = settings.autoDetectActivity,
-                                onCheckedChange = { viewModel.updateAutoDetect(it) }
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                "AI Engine",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "Choose how activities are classified during tracking",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            AiMode.entries.forEach { mode ->
-                                val icon = when (mode) {
-                                    AiMode.RULE_BASED -> Icons.Filled.Speed
-                                    AiMode.TFLITE_MODEL -> Icons.Filled.Psychology
-                                    AiMode.LOCAL_MODEL -> Icons.Filled.PhoneAndroid
-                                    AiMode.CLOUD_AI -> Icons.Filled.Cloud
-                                    AiMode.OFF -> Icons.Filled.PowerSettingsNew
+                            // Active AI Provider display
+                            val activeProviderText = when (settings.aiMode) {
+                                AiMode.LOCAL_MODEL -> {
+                                    val activeModel = installedLocalModels.find { it.isActive }
+                                    if (activeModel != null) "Local: ${activeModel.displayName}"
+                                    else "Local Model (none downloaded)"
                                 }
-                                val isLocalModelDisabled = mode == AiMode.LOCAL_MODEL &&
-                                    !localModelChecking && !localModelReachable
-                                val contentAlpha = if (isLocalModelDisabled) 0.38f else 1f
+                                AiMode.CLOUD_AI -> "Cloud: ${settings.cloudAiProvider.label}"
+                                AiMode.OFF -> "Off"
+                                else -> "Local Model"
+                            }
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .then(
-                                            if (isLocalModelDisabled) Modifier
-                                            else Modifier.clickable {
-                                                if (mode == AiMode.CLOUD_AI) {
-                                                    viewModel.openCloudAiWizard()
-                                                } else {
-                                                    viewModel.updateAiMode(mode)
-                                                }
-                                            }
-                                        )
-                                        .padding(vertical = 8.dp),
+                                    modifier = Modifier.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    RadioButton(
-                                        selected = settings.aiMode == mode,
-                                        onClick = {
-                                            if (!isLocalModelDisabled) {
-                                                if (mode == AiMode.CLOUD_AI) {
-                                                    viewModel.openCloudAiWizard()
-                                                } else {
-                                                    viewModel.updateAiMode(mode)
-                                                }
-                                            }
-                                        },
-                                        enabled = !isLocalModelDisabled
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
                                     Icon(
-                                        icon,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(22.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+                                        when (settings.aiMode) {
+                                            AiMode.CLOUD_AI -> Icons.Filled.Cloud
+                                            AiMode.OFF -> Icons.Filled.PowerSettingsNew
+                                            else -> Icons.Filled.Memory
+                                        },
+                                        null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Column {
+                                        Text("Active Provider", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(activeProviderText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // AI Mode selection — Local Model
+                            Text("Select AI Provider", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.updateAiMode(AiMode.LOCAL_MODEL) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = settings.aiMode == AiMode.LOCAL_MODEL,
+                                    onClick = { viewModel.updateAiMode(AiMode.LOCAL_MODEL) }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(Icons.Filled.Memory, null, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Local Model", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                    Text("On-device AI, private, no internet needed", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+
+                            // AI Mode selection — Cloud AI
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.updateAiMode(AiMode.CLOUD_AI)
+                                        viewModel.openCloudAiWizard()
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = settings.aiMode == AiMode.CLOUD_AI,
+                                    onClick = {
+                                        viewModel.updateAiMode(AiMode.CLOUD_AI)
+                                        viewModel.openCloudAiWizard()
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(Icons.Filled.Cloud, null, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Cloud AI", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                    Text("ChatGPT, DeepSeek, Gemini, Claude", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (settings.aiMode == AiMode.CLOUD_AI && settings.cloudAiApiKey.isNotBlank()) {
                                         Text(
-                                            mode.label,
-                                            fontWeight = FontWeight.Medium,
-                                            fontSize = 14.sp,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+                                            "${settings.cloudAiProvider.label} configured",
+                                            fontSize = 11.sp, color = Accent
                                         )
-                                        Text(
-                                            mode.description,
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
-                                        )
-                                        // Reachability status for Local Model
-                                        if (mode == AiMode.LOCAL_MODEL) {
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                if (localModelChecking) {
-                                                    CircularProgressIndicator(
-                                                        modifier = Modifier.size(12.dp),
-                                                        strokeWidth = 1.5.dp
-                                                    )
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        "Checking availability\u2026",
-                                                        fontSize = 11.sp,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                } else {
-                                                    Icon(
-                                                        if (localModelReachable) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(14.dp),
-                                                        tint = if (localModelReachable) Accent else Error
-                                                    )
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        if (localModelReachable) "Model available on device" else "Not available on this device",
-                                                        fontSize = 11.sp,
-                                                        color = if (localModelReachable) Accent else Error
-                                                    )
-                                                }
+                                    }
+                                }
+                            }
+
+                            // AI Mode selection — Off
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.updateAiMode(AiMode.OFF) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = settings.aiMode == AiMode.OFF,
+                                    onClick = { viewModel.updateAiMode(AiMode.OFF) }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(Icons.Filled.PowerSettingsNew, null, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Off", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                    Text("Disable AI analysis", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Local Model section — download/manage
+                            if (settings.aiMode == AiMode.LOCAL_MODEL) {
+                                OutlinedButton(
+                                    onClick = onNavigateToLocalAiWizard,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (installedLocalModels.isEmpty()) "Download Local Model" else "Download Another Model", fontSize = 13.sp)
+                                }
+
+                                // Installed models list with delete
+                                if (installedLocalModels.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Downloaded Models", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    installedLocalModels.forEach { model ->
+                                        var showDeleteConfirm by remember { mutableStateOf(false) }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                if (model.isActive) Icons.Filled.CheckCircle else Icons.Filled.Memory,
+                                                null,
+                                                tint = if (model.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(model.displayName, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                                Text("${model.sizeMb} MB", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(32.dp)) {
+                                                Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                                             }
                                         }
-                                        // Cloud AI configured status
-                                        if (mode == AiMode.CLOUD_AI && settings.aiMode == AiMode.CLOUD_AI) {
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(
-                                                    Icons.Filled.CheckCircle,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(14.dp),
-                                                    tint = Accent
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    "${settings.cloudAiProvider.label} \u2022 ${settings.cloudAiModel.ifBlank { "default" }}",
-                                                    fontSize = 11.sp,
-                                                    color = Accent
-                                                )
-                                            }
+                                        if (showDeleteConfirm) {
+                                            AlertDialog(
+                                                onDismissRequest = { showDeleteConfirm = false },
+                                                title = { Text("Remove Model") },
+                                                text = { Text("Remove ${model.displayName}? This will delete ${model.sizeMb} MB from your device.") },
+                                                confirmButton = { TextButton(onClick = { viewModel.deleteLocalModel(model.modelId); showDeleteConfirm = false }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
+                                                dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } }
+                                            )
                                         }
                                     }
                                 }
                             }
 
-                            // Recheck button and wizard for local model
-                            if (settings.aiMode == AiMode.LOCAL_MODEL) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedButton(
-                                    onClick = { viewModel.checkLocalModelReachability() },
-                                    enabled = !localModelChecking,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Re-check local model", fontSize = 13.sp)
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedButton(
-                                    onClick = onNavigateToLocalAiWizard,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Setup Local AI Model", fontSize = 13.sp)
-                                }
-                            }
-
-                            // Configure button for Cloud AI
+                            // Cloud AI section — configure
                             if (settings.aiMode == AiMode.CLOUD_AI) {
-                                Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedButton(
                                     onClick = { viewModel.openCloudAiWizard() },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Filled.Settings, null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Configure Cloud AI", fontSize = 13.sp)
                                 }

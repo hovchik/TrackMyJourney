@@ -361,14 +361,21 @@ class TrackRepository(
 
         val avgHr = healthDataDao.getAverageHeartRate(trackId)
 
-        // Determine dominant activity from latest points, excluding disabled types
+        // Determine dominant activity from ALL points, excluding disabled types and STATIONARY
         val currentSettings = settingsDataStore.settings.first()
-        val recentActivities = points.takeLast(20).map { it.activityType }
-        val dominant = recentActivities
+        val allActivities = points.map { it.activityType }
+        val dominant = allActivities
+            .filter { it != ActivityType.STATIONARY && it != ActivityType.UNKNOWN }
             .filter { ActivityType.isActive(it, currentSettings.activityConfigs) }
             .groupBy { it }
             .maxByOrNull { it.value.size }
-            ?.key ?: ActivityType.UNKNOWN
+            ?.key
+            ?: allActivities
+                .filter { ActivityType.isActive(it, currentSettings.activityConfigs) }
+                .groupBy { it }
+                .maxByOrNull { it.value.size }
+                ?.key
+            ?: ActivityType.UNKNOWN
 
         // Calculate calories based on activity, duration, and user weight
         val durationMs = points.last().timestamp - points.first().timestamp
@@ -543,6 +550,18 @@ class TrackRepository(
             Log.e(TAG, "Failed to parse provider response: ${e.message}")
             null
         }
+    }
+
+    suspend fun reAnalyzeRecentTracks(limit: Int = 5): Int {
+        var analyzed = 0
+        val tracks = trackDao.getAllTracks().first().take(limit)
+        for (track in tracks) {
+            if (!track.isActive) {
+                val result = analyzeTrack(track.id)
+                if (result != null) analyzed++
+            }
+        }
+        return analyzed
     }
 
     fun getAnalysisForTrack(trackId: String): Flow<AiAnalysis?> =

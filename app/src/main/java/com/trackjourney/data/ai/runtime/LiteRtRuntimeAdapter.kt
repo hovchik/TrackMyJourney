@@ -1,41 +1,75 @@
 package com.trackjourney.data.ai.runtime
 
 import android.content.Context
+import android.util.Log
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Runtime adapter for TensorFlow Lite / LiteRT models.
- * Loads .tflite format models for on-device inference.
+ * Runtime adapter for LiteRT / TFLite models.
+ *
+ * Note: Standard TFLite Interpreter does not support autoregressive text generation
+ * (LLM inference). For GGUF models, this adapter delegates to MediaPipe LLM Inference
+ * which provides proper token-by-token generation on device.
+ *
+ * This adapter exists for forward-compatibility if Google releases dedicated
+ * TFLite-based LLM runtimes, but currently uses the same MediaPipe backend.
  */
 @Singleton
 class LiteRtRuntimeAdapter @Inject constructor(
     private val context: Context
 ) : LocalModelRuntime {
 
+    companion object {
+        private const val TAG = "LiteRtRuntime"
+    }
+
     override val runtimeId: String = "litert"
     override val displayName: String = "LiteRT (TFLite)"
 
     private var modelPath: String? = null
+    private var llmInference: LlmInference? = null
     private var isLoaded: Boolean = false
 
-    fun loadModel(path: String) {
+    fun loadModel(path: String, downloadUrl: String? = null) {
+        release()
+
         modelPath = path
-        // TFLite Interpreter initialization would go here:
-        // val options = Interpreter.Options()
-        // options.setNumThreads(4)
-        // interpreter = Interpreter(File(path), options)
-        isLoaded = true
+        Log.i(TAG, "Loading model from: $path")
+        try {
+            val options = LlmInference.LlmInferenceOptions.builder()
+                .setModelPath(path)
+                .build()
+
+            llmInference = LlmInference.createFromOptions(context, options)
+            isLoaded = true
+            Log.i(TAG, "Model loaded successfully from: $path")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load model from: $path", e)
+            isLoaded = false
+            llmInference = null
+            throw e
+        }
     }
 
-    override fun isAvailable(): Boolean = isLoaded && modelPath != null
+    override fun isAvailable(): Boolean = isLoaded && llmInference != null
 
-    override suspend fun runPrompt(prompt: String): String {
-        if (!isAvailable()) {
-            throw IllegalStateException("LiteRT model not loaded. Call loadModel() first.")
+    override suspend fun runPrompt(prompt: String): String = withContext(Dispatchers.IO) {
+        val inference = llmInference
+            ?: throw IllegalStateException("LiteRT model not loaded. Call loadModel() first.")
+
+        Log.d(TAG, "Generating response for prompt (${prompt.length} chars)")
+        try {
+            val response = inference.generateResponse(prompt)
+            Log.d(TAG, "Generated response (${response.length} chars)")
+            response
+        } catch (e: Exception) {
+            Log.e(TAG, "Inference failed", e)
+            throw e
         }
-        // Placeholder for TFLite text generation inference
-        return "{\"status\": \"litert_placeholder\", \"message\": \"LiteRT inference placeholder for model at $modelPath\"}"
     }
 
     override fun supportsStructuredJson(): Boolean = false
@@ -43,7 +77,12 @@ class LiteRtRuntimeAdapter @Inject constructor(
     override fun supportsStreaming(): Boolean = false
 
     override fun release() {
-        // interpreter?.close()
+        try {
+            llmInference?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing LLM inference", e)
+        }
+        llmInference = null
         isLoaded = false
         modelPath = null
     }

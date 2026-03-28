@@ -7,12 +7,6 @@ import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.tensorflow.lite.Interpreter
-import java.io.FileInputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.MappedByteBuffer
-import java.nio.channels.FileChannel
 import kotlin.math.*
 
 /**
@@ -31,14 +25,15 @@ class LocalAiEngine(
 ) {
     companion object {
         private const val TAG = "LocalAiEngine"
-        private const val MODEL_FILE = "activity_classifier.tflite"
-
         // Speed thresholds (km/h) — tuned from real-world data
         private const val STATIONARY_MAX = 0.5f
         private const val WALK_MAX = 7.0f
         private const val RUN_MAX = 15.0f
         private const val CYCLE_MAX = 40.0f
         private const val DRIVE_MAX = 250.0f
+
+        // Hysteresis margins (km/h) — prevents oscillation at boundaries
+        private const val HYSTERESIS = 1.5f
 
         // Altitude change thresholds (meters per minute)
         private const val FLYING_ALTITUDE_RATE = 10.0f  // rapid altitude gain → flying
@@ -47,41 +42,10 @@ class LocalAiEngine(
         private const val SEGMENT_WINDOW_SIZE = 10  // points per analysis segment
     }
 
-    private var interpreter: Interpreter? = null
-    private var modelLoaded = false
+    private val modelLoaded = false // TFLite classifier removed; rule-based only
 
-    init {
-        loadModel()
-    }
-
-    private fun loadModel() {
-        try {
-            val modelBuffer = loadModelFile()
-            if (modelBuffer != null) {
-                interpreter = Interpreter(modelBuffer)
-                modelLoaded = true
-                Log.i(TAG, "TFLite model loaded successfully")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "TFLite model not found, using rule-based classifier: ${e.message}")
-            modelLoaded = false
-        }
-    }
-
-    private fun loadModelFile(): MappedByteBuffer? {
-        return try {
-            val assetFd = context.assets.openFd(MODEL_FILE)
-            val inputStream = FileInputStream(assetFd.fileDescriptor)
-            val fileChannel = inputStream.channel
-            fileChannel.map(
-                FileChannel.MapMode.READ_ONLY,
-                assetFd.startOffset,
-                assetFd.declaredLength
-            )
-        } catch (e: Exception) {
-            null
-        }
-    }
+    // Hysteresis: remember last detected activity to prevent oscillation at boundaries
+    private var lastDetectedActivity: ActivityType = ActivityType.STATIONARY
 
     // ═══════════════════════════════════════════════════════
     //  REAL-TIME ACTIVITY DETECTION (single point)
@@ -153,13 +117,66 @@ class LocalAiEngine(
             }
         }
 
-        return when {
-            speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
-            speedKmh < WALK_MAX       -> ActivityType.WALKING
-            speedKmh < RUN_MAX        -> ActivityType.RUNNING
-            speedKmh < CYCLE_MAX      -> ActivityType.CYCLING
-            speedKmh < DRIVE_MAX      -> ActivityType.DRIVING
-            else                       -> ActivityType.FLYING
+        // Apply hysteresis: require speed to cross threshold + margin to change activity
+        // This prevents oscillation at boundaries (e.g. 6.8-7.2 km/h flipping walk/run)
+        val detected = classifySpeedWithHysteresis(speedKmh, lastDetectedActivity)
+        lastDetectedActivity = detected
+        return detected
+    }
+
+    private fun classifySpeedWithHysteresis(speedKmh: Float, previous: ActivityType): ActivityType {
+        // To leave current activity, speed must cross threshold + hysteresis
+        // To enter new activity, speed must cross threshold - hysteresis (from the other side)
+        val h = HYSTERESIS
+        return when (previous) {
+            ActivityType.STATIONARY -> when {
+                speedKmh < STATIONARY_MAX + h -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX -> ActivityType.WALKING
+                speedKmh < RUN_MAX -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            ActivityType.WALKING -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX + h -> ActivityType.WALKING
+                speedKmh < RUN_MAX -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            ActivityType.RUNNING -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX - h -> ActivityType.WALKING
+                speedKmh < RUN_MAX + h -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            ActivityType.CYCLING -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX -> ActivityType.WALKING
+                speedKmh < RUN_MAX - h -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX + h -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            ActivityType.DRIVING -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX -> ActivityType.WALKING
+                speedKmh < RUN_MAX -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX - h -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX + h -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            else -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX -> ActivityType.WALKING
+                speedKmh < RUN_MAX -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
         }
     }
 
@@ -259,10 +276,7 @@ class LocalAiEngine(
         val maxSpeed = speeds.maxOrNull() ?: 0f
         val speedVariance = calculateVariance(speeds)
 
-        // Use TFLite model if available
-        if (modelLoaded && interpreter != null) {
-            return classifyWithModel(avgSpeed, maxSpeed, speedVariance, points)
-        }
+
 
         // Rule-based classification with confidence scoring
         return classifyWithRules(avgSpeed, maxSpeed, speedVariance, points)
@@ -323,46 +337,6 @@ class LocalAiEngine(
         }
 
         return ClassificationResult(activity, confidence.coerceIn(0f, 1f))
-    }
-
-    private fun classifyWithModel(
-        avgSpeed: Float,
-        maxSpeed: Float,
-        speedVariance: Float,
-        points: List<TrackPoint>
-    ): ClassificationResult {
-        try {
-            // Prepare input: [avgSpeed, maxSpeed, speedVariance, altitudeChange, pointCount]
-            val altitudes = points.mapNotNull { it.altitude }
-            val altitudeChange = if (altitudes.size >= 2) {
-                (altitudes.last() - altitudes.first()).toFloat()
-            } else 0f
-
-            val input = ByteBuffer.allocateDirect(5 * 4).apply {
-                order(ByteOrder.nativeOrder())
-                putFloat(avgSpeed)
-                putFloat(maxSpeed)
-                putFloat(speedVariance)
-                putFloat(altitudeChange)
-                putFloat(points.size.toFloat())
-            }
-
-            // Output: probabilities for each activity type
-            val output = Array(1) { FloatArray(ActivityType.entries.size) }
-            interpreter?.run(input, output)
-
-            val probabilities = output[0]
-            val maxIndex = probabilities.indices.maxByOrNull { probabilities[it] } ?: 0
-            val confidence = probabilities[maxIndex]
-
-            return ClassificationResult(
-                activity = ActivityType.entries[maxIndex],
-                confidence = confidence
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "TFLite inference failed, falling back to rules: ${e.message}")
-            return classifyWithRules(avgSpeed, maxSpeed, speedVariance, points)
-        }
     }
 
     /**
@@ -783,8 +757,4 @@ class LocalAiEngine(
         }
     }
 
-    fun close() {
-        interpreter?.close()
-        interpreter = null
-    }
 }

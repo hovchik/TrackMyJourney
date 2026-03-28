@@ -29,9 +29,9 @@ class AiPreferences @Inject constructor(
 
     fun observeSelectedMode(): Flow<AiExecutionMode> = context.aiDataStore.data.map { prefs ->
         try {
-            AiExecutionMode.valueOf(prefs[SELECTED_AI_MODE] ?: AiExecutionMode.AUTO.name)
+            AiExecutionMode.valueOf(prefs[SELECTED_AI_MODE] ?: AiExecutionMode.CUSTOM_LOCAL.name)
         } catch (e: Exception) {
-            AiExecutionMode.AUTO
+            AiExecutionMode.CUSTOM_LOCAL
         }
     }
 

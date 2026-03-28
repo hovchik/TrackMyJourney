@@ -26,7 +26,7 @@ class ModelInstaller @Inject constructor(
 ) {
     companion object {
         /** File extensions recognized as AI model files during device scan. */
-        val MODEL_FILE_EXTENSIONS = setOf("gguf", "bin", "tflite", "onnx")
+        val MODEL_FILE_EXTENSIONS = setOf("task", "litertlm", "gguf", "bin", "tflite", "onnx")
     }
 
     private val _installProgress = MutableStateFlow<InstallProgress?>(null)
@@ -315,8 +315,8 @@ class ModelInstaller @Inject constructor(
             if (existing != null) return@forEach
 
             val modelFile = subDir.listFiles()?.firstOrNull { file ->
-                file.name == "model.bin" || file.name == "model.tflite" ||
-                        file.extension == "gguf"
+                file.name.startsWith("model.") ||
+                        file.extension in MODEL_FILE_EXTENSIONS
             } ?: return@forEach
 
             val catalogModel = ModelCatalog.findById(modelId)
@@ -377,11 +377,13 @@ class ModelInstaller @Inject constructor(
 
         val matchedCatalogModel = matchAgainstCatalog(file.nameWithoutExtension)
 
-        val format = when (file.extension.lowercase()) {
+        val ext = file.extension.lowercase()
+        val format = when (ext) {
             "tflite" -> "tflite"
+            "task", "litertlm" -> "task"
             else -> "bin"
         }
-        val runtimeType = when (file.extension.lowercase()) {
+        val runtimeType = when (ext) {
             "tflite" -> "litert"
             else -> "mediapipe_llm"
         }

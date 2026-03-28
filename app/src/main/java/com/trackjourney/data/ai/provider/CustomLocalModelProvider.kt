@@ -4,6 +4,7 @@ import android.util.Log
 import com.trackjourney.BuildConfig
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.ai.models.LocalModelManager
+import com.trackjourney.data.ai.models.ModelCatalog
 import com.trackjourney.data.ai.runtime.LiteRtRuntimeAdapter
 import com.trackjourney.data.ai.runtime.LocalModelRuntime
 import com.trackjourney.data.ai.runtime.MediaPipeLlmRuntimeAdapter
@@ -32,8 +33,11 @@ class CustomLocalModelProvider @Inject constructor(
     override fun isAvailable(): Boolean {
         if (!isConfigured()) return false
         val activeModel = modelManager.getActiveModelSync() ?: return false
-        val runtime = resolveRuntime(activeModel.runtimeType)
-        return runtime?.isAvailable() == true
+        // Model is available if it's installed with a local path and has a compatible runtime
+        // The runtime will be loaded on first inference via ensureModelLoaded()
+        return activeModel.localPath != null &&
+                activeModel.installState == com.trackjourney.data.ai.models.ModelInstallState.INSTALLED &&
+                resolveRuntime(activeModel.runtimeType) != null
     }
 
     private fun resolveRuntime(runtimeType: String): LocalModelRuntime? {
@@ -44,15 +48,15 @@ class CustomLocalModelProvider @Inject constructor(
         }
     }
 
-    private fun ensureModelLoaded(runtime: LocalModelRuntime, runtimeType: String, localPath: String?) {
+    private fun ensureModelLoaded(runtime: LocalModelRuntime, runtimeType: String, localPath: String?, downloadUrl: String?) {
         if (!runtime.isAvailable()) {
             if (localPath == null) {
                 throw IllegalStateException("Model needs loading but no local path is available for runtime: $runtimeType")
             }
             Log.i(TAG, "Loading model from: $localPath (runtime: $runtimeType)")
             when (runtime) {
-                is MediaPipeLlmRuntimeAdapter -> runtime.loadModel(localPath)
-                is LiteRtRuntimeAdapter -> runtime.loadModel(localPath)
+                is MediaPipeLlmRuntimeAdapter -> runtime.loadModel(localPath, downloadUrl)
+                is LiteRtRuntimeAdapter -> runtime.loadModel(localPath, downloadUrl)
             }
             if (!runtime.isAvailable()) {
                 Log.e(TAG, "Model failed to load from: $localPath")
@@ -82,7 +86,9 @@ class CustomLocalModelProvider @Inject constructor(
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")
 
-        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath)
+        val downloadUrl = activeModel.downloadUrl
+            ?: ModelCatalog.findById(activeModel.modelId)?.downloadUrl
+        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, downloadUrl)
 
         val prompt = buildDailyPrompt(snapshot)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily] (model=${activeModel.displayName}):\n$prompt")
@@ -98,7 +104,9 @@ class CustomLocalModelProvider @Inject constructor(
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")
 
-        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath)
+        val downloadUrl = activeModel.downloadUrl
+            ?: ModelCatalog.findById(activeModel.modelId)?.downloadUrl
+        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, downloadUrl)
 
         val prompt = buildWeeklyPrompt(snapshots)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [weekly] (model=${activeModel.displayName}):\n$prompt")
@@ -115,125 +123,90 @@ class CustomLocalModelProvider @Inject constructor(
 
         val durationMs = (track.endTime ?: System.currentTimeMillis()) - track.startTime
         val durationMin = TimeUnit.MILLISECONDS.toMinutes(durationMs)
-        val durationSec = TimeUnit.MILLISECONDS.toSeconds(durationMs) % 60
 
-        // Elevation stats
-        val altitudes = points.mapNotNull { it.altitude }
-        val elevationGain = computeElevationGain(altitudes)
-        val minAlt = altitudes.minOrNull()
-        val maxAlt = altitudes.maxOrNull()
-
-        // Heart rate from points + health data
+        // Heart rate
         val heartRates = points.mapNotNull { it.heartRate } +
                 healthData.mapNotNull { it.heartRate }
         val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
         val maxHr = heartRates.maxOrNull()
+        val minHr = heartRates.minOrNull()
 
-        // Cadence
-        val avgCadence = points.mapNotNull { it.cadence }
-            .takeIf { it.isNotEmpty() }?.average()?.toInt()
-
-        // Speed analysis
+        // Speed
         val speeds = points.map { it.speedKmh }.filter { it > 0 }
         val medianSpeed = speeds.sorted().let { if (it.isNotEmpty()) it[it.size / 2] else 0f }
+        val speedP90 = speeds.sorted().let { if (it.size >= 5) it[(it.size * 0.9).toInt()] else null }
 
-        // Activity segments
-        val activitySegments = points.groupBy { it.activityType }
-            .mapValues { it.value.size }
-            .entries.sortedByDescending { it.value }
+        // Stops
+        var stopCount = 0
+        var totalStopMs = 0L
+        var inStop = false
+        var stopStartIdx = 0
+        for ((idx, pt) in points.withIndex()) {
+            if (pt.speedKmh < 0.5f) {
+                if (!inStop) { inStop = true; stopCount++; stopStartIdx = idx }
+            } else {
+                if (inStop && idx > 0 && stopStartIdx > 0) {
+                    totalStopMs += points[idx].timestamp - points[stopStartIdx].timestamp
+                }
+                inStop = false
+            }
+        }
+        val stopMin = TimeUnit.MILLISECONDS.toMinutes(totalStopMs)
 
-        // Battery
-        val batteryDrain = if (track.batteryStart != null && track.batteryEnd != null)
-            track.batteryStart - track.batteryEnd else null
+        // Elevation
+        val altitudes = points.mapNotNull { it.altitude }
+        val elevGain = computeElevationGain(altitudes)
+        val elevLoss = computeElevationLoss(altitudes)
+        val minAlt = altitudes.minOrNull()
+        val maxAlt = altitudes.maxOrNull()
 
-        // Pace for walking/running
+        // Pace
         val paceMinPerKm = if (track.distanceMeters > 0 && durationMin > 0) {
-            (durationMin + durationSec / 60.0) / (track.distanceMeters / 1000.0)
+            durationMin.toDouble() / (track.distanceMeters / 1000.0)
         } else null
 
+        // Build a compact structured prompt that fits in small context windows (~200 tokens)
         return buildString {
-            appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked activity and return a JSON object with these keys:")
-            appendLine("- activity (string): primary activity — WALKING, RUNNING, CYCLING, DRIVING, FLYING, or STATIONARY")
-            appendLine("- confidence (0.0-1.0): classification confidence based on speed and movement patterns")
-            appendLine("- summary (string): 2-3 sentences summarizing the journey with specific numbers from the data")
-            appendLine("- suggestions (array of strings): 2-3 actionable tips referencing the actual metrics below")
-            appendLine("- healthInsights (string or null): heart rate zone analysis if HR data present, otherwise null")
-            appendLine()
-            appendLine("Track Data:")
-            appendLine("- Activity: ${track.activityType}")
-            appendLine("- Distance: ${"%.2f".format(track.distanceMeters / 1000)}km (${"%.0f".format(track.distanceMeters)}m)")
-            appendLine("- Duration: ${durationMin}m ${durationSec}s")
-            appendLine("- Avg Speed: ${"%.1f".format(track.avgSpeedKmh)} km/h")
-            appendLine("- Max Speed: ${"%.1f".format(track.maxSpeedKmh)} km/h")
-            appendLine("- Median Speed: ${"%.1f".format(medianSpeed)} km/h")
-            if (paceMinPerKm != null && track.avgSpeedKmh < 20) {
-                appendLine("- Pace: ${"%.1f".format(paceMinPerKm)} min/km")
-            }
-            appendLine("- Calories: ${"%.0f".format(track.caloriesBurned)} kcal")
-
-            if (minAlt != null && maxAlt != null) {
-                appendLine("- Elevation: ${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m, gain: ${"%.0f".format(elevationGain)}m")
+            appendLine("Analyze GPS trip. JSON only: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"...\",\"suggestions\":[\"...\"],\"healthInsights\":\"...or null\"}")
+            appendLine("---")
+            appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size}")
+            append("spd avg:${"%.1f".format(track.avgSpeedKmh)} max:${"%.1f".format(track.maxSpeedKmh)} med:${"%.1f".format(medianSpeed)}")
+            if (speedP90 != null) append(" p90:${"%.1f".format(speedP90)}")
+            appendLine(" km/h")
+            if (paceMinPerKm != null && track.avgSpeedKmh < 20) appendLine("pace:${"%.1f".format(paceMinPerKm)}min/km")
+            append("stops:$stopCount")
+            if (stopMin > 0) append(" stopTime:${stopMin}min")
+            appendLine(" cal:${"%.0f".format(track.caloriesBurned)}")
+            if (elevGain > 0 || elevLoss > 0) {
+                append("elev +${"%.0f".format(elevGain)}m -${"%.0f".format(elevLoss)}m")
+                if (minAlt != null && maxAlt != null) append(" range:${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m")
+                appendLine()
             }
             if (avgHr != null) {
-                appendLine("- Heart Rate: avg $avgHr bpm, max $maxHr bpm")
-            }
-            if (avgCadence != null) {
-                appendLine("- Cadence: $avgCadence spm")
+                appendLine("hr avg:$avgHr max:$maxHr min:$minHr bpm")
             }
             if (track.startPlaceName != null || track.endPlaceName != null) {
-                appendLine("- Route: ${track.startPlaceName ?: "?"} → ${track.endPlaceName ?: "?"}")
+                appendLine("route:${track.startPlaceName ?: "?"}→${track.endPlaceName ?: "?"}")
             }
-            if (activitySegments.size > 1) {
-                appendLine("- Activity Segments: ${activitySegments.joinToString { "${it.key}(${if (points.isNotEmpty()) (it.value * 100) / points.size else 0}%)" }}")
-            }
-            if (batteryDrain != null) {
-                appendLine("- Battery Used: $batteryDrain%")
-            }
-            if (track.rideCost != null) {
-                appendLine("- Ride Cost: ${"%.2f".format(track.rideCost)}")
-            }
-
-            appendLine()
-            appendLine("Use the actual numbers in your summary and suggestions. If the activity type seems wrong for the speed, flag it. Return valid JSON only.")
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("Analyze ${snapshots.size} GPS-tracked journeys from this week. Compare sessions and find trends.")
-            appendLine("Return JSON: totalDistance (meters), totalCalories (number), dominantActivity (string), weekSummary (3-4 sentences comparing sessions, noting best/weakest performance), improvements (3-4 specific suggestions referencing actual data).")
-            appendLine()
+            appendLine("Analyze ${snapshots.size} trips. JSON only: {\"totalDistance\":m,\"totalCalories\":n,\"dominantActivity\":\"...\",\"weekSummary\":\"...\",\"improvements\":[\"...\"]}")
+            appendLine("---")
 
             var totalDist = 0.0
             var totalCal = 0.0
-            var totalDurationMs = 0L
-
+            var totalDurMin = 0L
             snapshots.forEachIndexed { i, twp ->
-                val track = twp.track
-                val durationMs = (track.endTime ?: System.currentTimeMillis()) - track.startTime
-                val durationMin = TimeUnit.MILLISECONDS.toMinutes(durationMs)
-                totalDist += track.distanceMeters
-                totalCal += track.caloriesBurned
-                totalDurationMs += durationMs
-
-                val altitudes = twp.points.mapNotNull { it.altitude }
-                val elevGain = computeElevationGain(altitudes)
-                val heartRates = twp.points.mapNotNull { it.heartRate } +
-                        twp.healthData.mapNotNull { it.heartRate }
-                val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
-
-                append("${i + 1}. ${track.activityType}: ${"%.2f".format(track.distanceMeters / 1000)}km, ${durationMin}min, ${"%.1f".format(track.avgSpeedKmh)}km/h, ${"%.0f".format(track.caloriesBurned)}cal")
-                if (elevGain > 0) append(", elev+${"%.0f".format(elevGain)}m")
-                if (avgHr != null) append(", hr:${avgHr}bpm")
-                if (track.startPlaceName != null) append(", from:${track.startPlaceName}")
-                appendLine()
+                val t = twp.track
+                val dur = TimeUnit.MILLISECONDS.toMinutes((t.endTime ?: System.currentTimeMillis()) - t.startTime)
+                totalDist += t.distanceMeters; totalCal += t.caloriesBurned; totalDurMin += dur
+                val hrPart = t.avgHeartRate?.let { " hr:${it}" } ?: ""
+                appendLine("${i+1}.${t.activityType} ${"%.1f".format(t.distanceMeters/1000)}km ${dur}m ${"%.1f".format(t.avgSpeedKmh)}km/h ${"%.0f".format(t.caloriesBurned)}cal$hrPart")
             }
-
-            val totalDurationMin = TimeUnit.MILLISECONDS.toMinutes(totalDurationMs)
-            appendLine()
-            appendLine("Totals: ${"%.2f".format(totalDist / 1000)}km, ${totalDurationMin}min, ${"%.0f".format(totalCal)}cal, avg ${"%.2f".format(totalDist / 1000 / snapshots.size)}km/session")
-            appendLine()
-            appendLine("Compare best vs weakest session. Use actual numbers in suggestions. Return valid JSON only.")
+            appendLine("Tot:${"%.1f".format(totalDist/1000)}km ${"%.0f".format(totalCal)}cal ${totalDurMin}min")
         }
     }
 
@@ -245,6 +218,16 @@ class CustomLocalModelProvider @Inject constructor(
             if (diff > 0) gain += diff
         }
         return gain
+    }
+
+    private fun computeElevationLoss(altitudes: List<Double>): Double {
+        if (altitudes.size < 2) return 0.0
+        var loss = 0.0
+        for (i in 1 until altitudes.size) {
+            val diff = altitudes[i] - altitudes[i - 1]
+            if (diff < 0) loss -= diff
+        }
+        return loss
     }
 
     private fun extractJson(output: String): String {

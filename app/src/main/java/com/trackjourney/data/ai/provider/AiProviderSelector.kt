@@ -1,8 +1,10 @@
 package com.trackjourney.data.ai.provider
 
+import android.util.Log
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.ai.models.AiPreferences
 import com.trackjourney.data.local.SettingsDataStore
+import com.trackjourney.data.model.AiMode
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,60 +18,60 @@ data class ProviderSelection(
 @Singleton
 class AiProviderSelector @Inject constructor(
     private val aiPreferences: AiPreferences,
-    private val systemAiProvider: SystemAiProvider,
     private val customLocalModelProvider: CustomLocalModelProvider,
     private val cloudProvider: CloudProvider,
     private val settingsDataStore: SettingsDataStore
 ) {
+    companion object {
+        private const val TAG = "AiProviderSelector"
+    }
+
+    /**
+     * Selects the AI provider based on the user's settings.
+     * Checks SettingsDataStore (AiMode) as the primary source of truth,
+     * since the Settings screen writes there. Falls back to AiPreferences.
+     */
     suspend fun selectProvider(): ProviderSelection {
-        val preferredMode = aiPreferences.getSelectedMode()
-        return selectForMode(preferredMode)
+        // Primary: check SettingsDataStore (what the Settings screen writes to)
+        val settingsMode = settingsDataStore.settings.first().aiMode
+        val resolvedMode = when (settingsMode) {
+            AiMode.CLOUD_AI -> AiExecutionMode.CLOUD
+            AiMode.OFF -> AiExecutionMode.CUSTOM_LOCAL // OFF falls back to rule-based
+            else -> AiExecutionMode.CUSTOM_LOCAL
+        }
+        Log.d(TAG, "Selecting provider: settingsAiMode=$settingsMode -> $resolvedMode")
+        return selectForMode(resolvedMode)
     }
 
     suspend fun selectForMode(mode: AiExecutionMode): ProviderSelection {
-        val isPremium = settingsDataStore.subscriptionStatus.first().isActive
         return when (mode) {
-            AiExecutionMode.AUTO -> selectAuto(isPremium)
-            AiExecutionMode.SYSTEM_LOCAL -> selectSystemLocal(isPremium)
-            AiExecutionMode.CUSTOM_LOCAL -> selectCustomLocal(isPremium)
             AiExecutionMode.CLOUD -> selectCloud()
+            else -> selectLocal()
         }
     }
 
-    private fun selectAuto(isPremium: Boolean): ProviderSelection {
-        // Priority: System AI -> Custom Local (premium) -> Cloud
-        if (systemAiProvider.isAvailable()) {
-            return ProviderSelection(systemAiProvider, AiExecutionMode.SYSTEM_LOCAL, "System AI is available")
-        }
-        if (isPremium && customLocalModelProvider.isAvailable()) {
-            return ProviderSelection(customLocalModelProvider, AiExecutionMode.CUSTOM_LOCAL, "Local model is available")
-        }
-        return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "Falling back to cloud AI")
-    }
-
-    private fun selectSystemLocal(isPremium: Boolean): ProviderSelection {
-        if (systemAiProvider.isAvailable()) {
-            return ProviderSelection(systemAiProvider, AiExecutionMode.SYSTEM_LOCAL, "System AI selected")
-        }
-        // Fallback chain: Custom Local (premium) -> Cloud
-        if (isPremium && customLocalModelProvider.isAvailable()) {
-            return ProviderSelection(customLocalModelProvider, AiExecutionMode.CUSTOM_LOCAL, "System AI unavailable, using local model")
-        }
-        return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "System AI unavailable, falling back to cloud")
-    }
-
-    private fun selectCustomLocal(isPremium: Boolean): ProviderSelection {
-        if (!isPremium) {
-            return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "Local AI models require Premium subscription, falling back to cloud")
-        }
-        if (customLocalModelProvider.isAvailable()) {
+    private fun selectLocal(): ProviderSelection {
+        if (customLocalModelProvider.isConfigured()) {
             return ProviderSelection(customLocalModelProvider, AiExecutionMode.CUSTOM_LOCAL, "Local model selected")
         }
-        // Fallback: Cloud
-        return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "Local model unavailable, falling back to cloud")
+        Log.w(TAG, "No local model installed, will use rule-based fallback")
+        return ProviderSelection(customLocalModelProvider, AiExecutionMode.CUSTOM_LOCAL, "No local model, using rule-based analysis")
     }
 
-    private fun selectCloud(): ProviderSelection {
-        return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "Cloud AI selected")
+    private suspend fun selectCloud(): ProviderSelection {
+        cloudProvider.ensureConfigLoaded()
+        // Also load API key from SettingsDataStore as fallback
+        if (!cloudProvider.isConfigured()) {
+            val settings = settingsDataStore.settings.first()
+            if (settings.cloudAiApiKey.isNotBlank()) {
+                cloudProvider.setApiKey(settings.cloudAiApiKey)
+                Log.d(TAG, "Loaded cloud API key from SettingsDataStore")
+            }
+        }
+        val providerName = cloudProvider.getProviderType().label
+        if (cloudProvider.isConfigured()) {
+            return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "Cloud AI selected ($providerName)")
+        }
+        return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "Cloud AI not configured — set API key in Settings")
     }
 }

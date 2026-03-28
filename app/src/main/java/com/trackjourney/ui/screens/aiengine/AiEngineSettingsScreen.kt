@@ -36,6 +36,7 @@ fun AiEngineSettingsScreen(
     viewModel: AiEngineSettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val isLocalMode = state.selectedMode != AiExecutionMode.CLOUD
 
     LazyColumn(
         modifier = Modifier
@@ -53,8 +54,8 @@ fun AiEngineSettingsScreen(
             Spacer(modifier = Modifier.height(4.dp))
         }
 
-        // Privacy callout
-        if (state.selectedMode == AiExecutionMode.CUSTOM_LOCAL || state.selectedMode == AiExecutionMode.SYSTEM_LOCAL) {
+        // Privacy callout for local mode
+        if (isLocalMode) {
             item {
                 Card(
                     colors = CardDefaults.cardColors(
@@ -78,24 +79,26 @@ fun AiEngineSettingsScreen(
             }
         }
 
-        // AI Mode selector
+        // AI Mode selector — only Local and Cloud
         item {
             Text("AI Mode", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
         }
-        items(AiExecutionMode.entries.toList()) { mode ->
+        item {
             AiModeCard(
-                mode = mode,
-                isSelected = state.selectedMode == mode,
-                systemAiAvailable = state.systemAiAvailable,
-                systemAiStatus = state.systemAiStatus,
-                isPremium = state.isPremium,
-                onClick = {
-                    if (mode == AiExecutionMode.CUSTOM_LOCAL && !state.isPremium) {
-                        onNavigateToSubscription()
-                    } else {
-                        viewModel.selectMode(mode)
-                    }
-                }
+                label = "Local Model",
+                description = "Runs a downloaded AI model directly on your device.",
+                icon = Icons.Filled.Memory,
+                isSelected = isLocalMode,
+                onClick = { viewModel.selectMode(AiExecutionMode.CUSTOM_LOCAL) }
+            )
+        }
+        item {
+            AiModeCard(
+                label = "Cloud AI",
+                description = "Sends summarized data to cloud AI for analysis.",
+                icon = Icons.Filled.Cloud,
+                isSelected = !isLocalMode,
+                onClick = { viewModel.selectMode(AiExecutionMode.CLOUD) }
             )
         }
 
@@ -108,12 +111,18 @@ fun AiEngineSettingsScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    StatusRow("Active Mode", state.selectedMode.label)
-                    StatusRow("System AI", state.systemAiStatus)
-                    state.activeModel?.let { model ->
-                        StatusRow("Active Model", model.displayName)
+                    if (isLocalMode) {
+                        StatusRow("Active Mode", "Local Model")
+                        state.activeModel?.let { model ->
+                            StatusRow("Active Model", model.displayName)
+                        }
+                        StatusRow("Storage Used", "${state.storageUsedMb} MB")
+                    } else {
+                        StatusRow("Active Mode", "Cloud AI")
+                        if (state.cloudProviderName.isNotEmpty()) {
+                            StatusRow("Provider", state.cloudProviderName)
+                        }
                     }
-                    StatusRow("Storage Used", "${state.storageUsedMb} MB")
                     state.performanceNote?.let { note ->
                         StatusRow("Performance", note)
                     }
@@ -121,7 +130,7 @@ fun AiEngineSettingsScreen(
             }
         }
 
-        // Installed models
+        // Installed models with delete
         if (state.installedModels.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(4.dp))
@@ -135,83 +144,81 @@ fun AiEngineSettingsScreen(
             }
         }
 
-        // Scan for models
-        item {
-            val scanContext = LocalContext.current
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Re-check storage permission every time the screen resumes (e.g. returning from Settings)
-            var hasStorageAccess by remember {
-                mutableStateOf(
-                    Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
-                )
-            }
-            val lifecycleOwner = LocalLifecycleOwner.current
-            DisposableEffect(lifecycleOwner) {
-                val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_RESUME) {
-                        hasStorageAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
-                                Environment.isExternalStorageManager()
-                    }
-                }
-                lifecycleOwner.lifecycle.addObserver(observer)
-                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-            }
-
-            if (!hasStorageAccess) {
-                OutlinedButton(
-                    onClick = {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                            Uri.parse("package:${scanContext.packageName}")
-                        )
-                        scanContext.startActivity(intent)
-                    },
+        // Setup / Download local model button
+        if (isLocalMode) {
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                Button(
+                    onClick = onNavigateToWizard,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Grant File Access to Scan Device")
-                }
-                Text(
-                    "Storage access is required to find model files on your device.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            } else {
-                OutlinedButton(
-                    onClick = { viewModel.scanForModels() },
-                    enabled = !state.isScanning,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (state.isScanning) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Scanning device...")
-                    } else {
-                        Icon(Icons.Filled.SearchOff, null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Scan Device for Models")
-                    }
+                    Text(if (state.installedModels.isEmpty()) "Setup Local Model" else "Download Another Model")
                 }
             }
 
-            state.scanResultMessage?.let { msg ->
-                Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            // Scan for models
+            item {
+                val scanContext = LocalContext.current
+
+                var hasStorageAccess by remember {
+                    mutableStateOf(
+                        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+                    )
+                }
+                val lifecycleOwner = LocalLifecycleOwner.current
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) {
+                            hasStorageAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+                                    Environment.isExternalStorageManager()
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+
+                if (!hasStorageAccess) {
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                Uri.parse("package:${scanContext.packageName}")
+                            )
+                            scanContext.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Grant File Access to Scan Device")
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = { viewModel.scanForModels() },
+                        enabled = !state.isScanning,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (state.isScanning) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Scanning device...")
+                        } else {
+                            Icon(Icons.Filled.SearchOff, null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Scan Device for Models")
+                        }
+                    }
+                }
+
+                state.scanResultMessage?.let { msg ->
+                    Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                }
             }
         }
 
-        // Run wizard again
         item {
-            TextButton(
-                onClick = onNavigateToWizard,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Filled.Tune, null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Run Setup Wizard Again")
-            }
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
@@ -219,36 +226,21 @@ fun AiEngineSettingsScreen(
 
 @Composable
 private fun AiModeCard(
-    mode: AiExecutionMode,
+    label: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     isSelected: Boolean,
-    systemAiAvailable: Boolean,
-    systemAiStatus: String,
-    isPremium: Boolean = true,
     onClick: () -> Unit
 ) {
-    val icon = when (mode) {
-        AiExecutionMode.AUTO -> Icons.Filled.AutoAwesome
-        AiExecutionMode.SYSTEM_LOCAL -> Icons.Filled.PhoneAndroid
-        AiExecutionMode.CUSTOM_LOCAL -> Icons.Filled.Memory
-        AiExecutionMode.CLOUD -> Icons.Filled.Cloud
-    }
-
-    val isSystemUnavailable = mode == AiExecutionMode.SYSTEM_LOCAL && !systemAiAvailable
-    val requiresPremium = mode == AiExecutionMode.CUSTOM_LOCAL && !isPremium
-    val isDisabled = isSystemUnavailable
-
     Card(
-        onClick = { if (!isDisabled) onClick() },
-        enabled = !isDisabled,
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = when {
-                isDisabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                isSelected && !requiresPremium -> MaterialTheme.colorScheme.primaryContainer
-                else -> MaterialTheme.colorScheme.surface
-            }
+            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surface
         ),
-        border = if (isSelected && !isDisabled && !requiresPremium) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -256,44 +248,15 @@ private fun AiModeCard(
         ) {
             Icon(
                 icon, null,
-                tint = when {
-                    isDisabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                    isSelected && !requiresPremium -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                }
+                tint = if (isSelected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        mode.label,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp,
-                        color = if (isDisabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else Color.Unspecified
-                    )
-                    if (requiresPremium) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(
-                            Icons.Filled.Lock,
-                            contentDescription = "Premium",
-                            tint = Color(0xFFFFA000),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-                Text(
-                    mode.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isDisabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (isDisabled) {
-                    Text(systemAiStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
-                }
-                if (requiresPremium) {
-                    Text("Premium required", style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFA000))
-                }
+                Text(label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (isSelected && !isDisabled && !requiresPremium) {
+            if (isSelected) {
                 Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             }
         }
@@ -368,13 +331,13 @@ private fun InstalledModelRow(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete Model") },
-            text = { Text("Delete ${model.displayName}? This will remove the model files from your device.") },
+            title = { Text("Remove Model") },
+            text = { Text("Remove ${model.displayName}? This will delete the model files (${model.sizeMb} MB) from your device.") },
             confirmButton = {
                 TextButton(onClick = {
                     onDelete()
                     showDeleteConfirm = false
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }

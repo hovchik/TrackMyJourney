@@ -1,5 +1,6 @@
 package com.trackjourney.ui.screens.analysis
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.ai.LocalAiEngine
@@ -19,13 +20,18 @@ data class AnalysisUiState(
     val recentTracks: List<TrackSession> = emptyList(),
     val activityBreakdown: List<ActivityBreakdown> = emptyList(),
     val recentAnalyses: List<Pair<TrackSession, AiAnalysis>> = emptyList(),
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+    val isAnalyzing: Boolean = false
 )
 
 @HiltViewModel
 class AnalysisViewModel @Inject constructor(
     private val repository: TrackRepository
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "AnalysisViewModel"
+    }
 
     private val _uiState = MutableStateFlow(AnalysisUiState())
     val uiState: StateFlow<AnalysisUiState> = _uiState.asStateFlow()
@@ -36,6 +42,21 @@ class AnalysisViewModel @Inject constructor(
 
     fun loadData() {
         observeData()
+    }
+
+    fun refreshWithAiAnalysis() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAnalyzing = true) }
+            try {
+                val count = repository.reAnalyzeRecentTracks(5)
+                Log.i(TAG, "AI re-analyzed $count tracks")
+            } catch (e: Exception) {
+                Log.e(TAG, "AI re-analysis failed: ${e.message}")
+            } finally {
+                _uiState.update { it.copy(isAnalyzing = false) }
+                observeData()
+            }
+        }
     }
 
     private fun observeData() {

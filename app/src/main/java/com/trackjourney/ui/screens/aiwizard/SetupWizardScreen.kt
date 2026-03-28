@@ -32,48 +32,35 @@ fun SetupWizardScreen(
     val state by viewModel.state.collectAsState()
     val progress by viewModel.installProgress.collectAsState()
 
+    LaunchedEffect(Unit) {
+        // Start by detecting device capabilities immediately
+        viewModel.detectCapabilities()
+    }
+
     LaunchedEffect(state.isComplete) {
         if (state.isComplete) onComplete()
     }
 
     AnimatedContent(targetState = state.currentStep, label = "wizard_step") { step ->
         when (step) {
-            SetupStep.INTRO -> IntroScreen(
-                onNext = {
-                    viewModel.detectCapabilities()
+            SetupStep.INTRO -> {
+                // Skip intro, go straight to device compatibility
+                LaunchedEffect(Unit) {
                     viewModel.goToStep(SetupStep.DEVICE_COMPATIBILITY)
                 }
-            )
+            }
             SetupStep.DEVICE_COMPATIBILITY -> DeviceCompatibilityScreen(
                 state = state,
-                onNext = { viewModel.goToStep(SetupStep.RECOMMENDED_MODE) },
-                onBack = { viewModel.goToStep(SetupStep.INTRO) }
+                onNext = { viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG) },
+                onBack = onComplete
             )
-            SetupStep.RECOMMENDED_MODE -> RecommendedAiModeScreen(
-                state = state,
-                onModeSelected = { mode ->
-                    if (mode == AiExecutionMode.CUSTOM_LOCAL && !state.isPremium) {
-                        onNavigateToSubscription()
-                    } else {
-                        viewModel.selectMode(mode)
-                    }
-                },
-                onNext = {
-                    val mode = state.selectedMode ?: state.recommendedMode
-                    when (mode) {
-                        AiExecutionMode.CUSTOM_LOCAL -> {
-                            if (!state.isPremium) {
-                                onNavigateToSubscription()
-                            } else {
-                                viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG)
-                            }
-                        }
-                        AiExecutionMode.CLOUD -> viewModel.goToStep(SetupStep.CLOUD_CONFIG)
-                        else -> viewModel.goToStep(SetupStep.READY)
-                    }
-                },
-                onBack = { viewModel.goToStep(SetupStep.DEVICE_COMPATIBILITY) }
-            )
+            SetupStep.RECOMMENDED_MODE -> {
+                // Skip mode selection, go straight to local model config
+                LaunchedEffect(Unit) {
+                    viewModel.selectMode(AiExecutionMode.CUSTOM_LOCAL)
+                    viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG)
+                }
+            }
             SetupStep.CLOUD_CONFIG -> CloudConfigScreen(
                 state = state,
                 onApiKeyChanged = { viewModel.setCloudApiKey(it) },
@@ -90,7 +77,7 @@ fun SetupWizardScreen(
                 onImport = { model, uri -> viewModel.importModel(model, uri) },
                 onScanDevice = { viewModel.scanForModels() },
                 onSkip = { viewModel.goToStep(SetupStep.READY) },
-                onBack = { viewModel.goToStep(SetupStep.RECOMMENDED_MODE) }
+                onBack = { viewModel.goToStep(SetupStep.DEVICE_COMPATIBILITY) }
             )
             SetupStep.MODEL_INSTALL_OPTIONS -> ModelInstallOptionsScreen(
                 state = state,
@@ -112,14 +99,7 @@ fun SetupWizardScreen(
                 state = state,
                 onBenchmark = { viewModel.runBenchmark() },
                 onDone = { viewModel.completeSetup() },
-                onBack = {
-                    val mode = state.selectedMode ?: state.recommendedMode
-                    when (mode) {
-                        AiExecutionMode.CLOUD -> viewModel.goToStep(SetupStep.CLOUD_CONFIG)
-                        AiExecutionMode.CUSTOM_LOCAL -> viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG)
-                        else -> viewModel.goToStep(SetupStep.RECOMMENDED_MODE)
-                    }
-                }
+                onBack = { viewModel.goToStep(SetupStep.LOCAL_MODEL_CONFIG) }
             )
         }
     }

@@ -42,8 +42,8 @@ data class InstallProgress(
 )
 
 enum class AiExecutionMode(val label: String, val description: String) {
-    AUTO("Auto (Recommended)", "Automatically selects the best available AI engine."),
-    SYSTEM_LOCAL("System AI", "Uses built-in on-device AI (e.g., Android AICore)."),
+    AUTO("Local Model", "Runs a downloaded AI model directly on your device."),
+    SYSTEM_LOCAL("Local Model", "Runs a downloaded AI model directly on your device."),
     CUSTOM_LOCAL("Local Model", "Runs a downloaded AI model directly on your device."),
     CLOUD("Cloud AI", "Sends summarized data to cloud AI for analysis.")
 }

@@ -39,8 +39,18 @@ fun AnalysisScreen(
             TopAppBar(
                 title = { Text("AI Insights", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { viewModel.loadData() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                    IconButton(
+                        onClick = { viewModel.refreshWithAiAnalysis() },
+                        enabled = !uiState.isAnalyzing
+                    ) {
+                        if (uiState.isAnalyzing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Re-analyze tracks")
+                        }
                     }
                 }
             )

@@ -1,55 +1,33 @@
 package com.trackjourney.data.ai.models
 
+/**
+ * Curated catalog of local AI models for on-device inference.
+ *
+ * All models are:
+ * - MediaPipe `.task` format (TFLite FlatBuffer bundles, compatible with MediaPipe LLM Inference)
+ * - Under 5 GB download size
+ * - Downloadable from Hugging Face without authentication
+ * - From the Qwen, DeepSeek, Phi, TinyLlama, or SmolLM model families
+ *
+ * Note: Gemma models require accepting Google's license on Hugging Face (gated access)
+ * and cannot be included for auth-free download.
+ */
 object ModelCatalog {
 
     val availableModels: List<LocalAiModel> = listOf(
-        // ── Small models (< 1 GB) ──────────────────────────────
+        // ── SmolLM 135M Instruct ──────────────────────────────
+        // Source: litert-community/SmolLM-135M-Instruct (Apache 2.0)
+        // Ultra-tiny model — blazing fast, basic quality
         LocalAiModel(
-            modelId = "tinyllama-1.1b-q4",
-            displayName = "TinyLlama 1.1B Q4",
+            modelId = "smollm-135m-instruct-q8",
+            displayName = "SmolLM 135M Q8 (Ultra Fast)",
             runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_0",
-            requiredRamMb = 1500,
-            recommendedRamMb = 2048,
-            sizeMb = 600,
-            downloadUrl = "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_0.gguf",
-            localPath = null,
-            installState = ModelInstallState.NOT_INSTALLED,
-            checksum = null,
-            version = "1.0",
-            supportsStructuredJson = false,
-            supportsStreaming = true,
-            supportsTextGeneration = true
-        ),
-        LocalAiModel(
-            modelId = "tinyllama-1.1b-q8-tflite",
-            displayName = "TinyLlama 1.1B Q8 (TFLite)",
-            runtimeType = "litert",
-            fileFormat = "tflite",
-            quantization = "Q8_0",
-            requiredRamMb = 1800,
-            recommendedRamMb = 2500,
-            sizeMb = 700,
-            downloadUrl = "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q8_0.gguf",
-            localPath = null,
-            installState = ModelInstallState.NOT_INSTALLED,
-            checksum = null,
-            version = "1.0",
-            supportsStructuredJson = false,
-            supportsStreaming = false,
-            supportsTextGeneration = true
-        ),
-        LocalAiModel(
-            modelId = "stablelm-zephyr-1.6b-q4",
-            displayName = "StableLM Zephyr 1.6B Q4",
-            runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_0",
-            requiredRamMb = 2048,
-            recommendedRamMb = 3072,
-            sizeMb = 950,
-            downloadUrl = "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF/resolve/main/stablelm-zephyr-3b.Q4_0.gguf",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 512,
+            recommendedRamMb = 1024,
+            sizeMb = 167,
+            downloadUrl = "https://huggingface.co/litert-community/SmolLM-135M-Instruct/resolve/main/SmolLM-135M-Instruct_multi-prefill-seq_q8_ekv1280.task",
             localPath = null,
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
@@ -59,17 +37,19 @@ object ModelCatalog {
             supportsTextGeneration = true
         ),
 
-        // ── Medium models (1–3 GB) — recommended tier ─────────
+        // ── Qwen 2.5 0.5B Instruct ───────────────────────────
+        // Source: litert-community/Qwen2.5-0.5B-Instruct (Apache 2.0)
+        // Small & fast — good for low-end devices
         LocalAiModel(
-            modelId = "qwen2.5-3b-instruct-q4",
-            displayName = "Qwen 2.5 3B Instruct Q4 (Recommended)",
+            modelId = "qwen2.5-0.5b-instruct-q8",
+            displayName = "Qwen 2.5 0.5B Instruct Q8 (Fast)",
             runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 3072,
-            recommendedRamMb = 4096,
-            sizeMb = 2100,
-            downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 1024,
+            recommendedRamMb = 1536,
+            sizeMb = 547,
+            downloadUrl = "https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task",
             localPath = null,
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
@@ -78,34 +58,20 @@ object ModelCatalog {
             supportsStreaming = true,
             supportsTextGeneration = true
         ),
+
+        // ── TinyLlama 1.1B Chat ───────────────────────────────
+        // Source: litert-community/TinyLlama-1.1B-Chat-v1.0 (Apache 2.0)
+        // Fast lightweight chat model
         LocalAiModel(
-            modelId = "phi-2-2.7b-q4",
-            displayName = "Phi-2 2.7B Q4",
+            modelId = "tinyllama-1.1b-chat-q8",
+            displayName = "TinyLlama 1.1B Chat Q8",
             runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 2800,
-            recommendedRamMb = 4096,
-            sizeMb = 1700,
-            downloadUrl = "https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf",
-            localPath = null,
-            installState = ModelInstallState.NOT_INSTALLED,
-            checksum = null,
-            version = "2.0",
-            supportsStructuredJson = false,
-            supportsStreaming = true,
-            supportsTextGeneration = true
-        ),
-        LocalAiModel(
-            modelId = "rocket-3b-q4",
-            displayName = "Rocket 3B Q4",
-            runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 3000,
-            recommendedRamMb = 4096,
-            sizeMb = 1900,
-            downloadUrl = "https://huggingface.co/TheBloke/rocket-3B-GGUF/resolve/main/rocket-3b.Q4_K_M.gguf",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 1500,
+            recommendedRamMb = 2048,
+            sizeMb = 1150,
+            downloadUrl = "https://huggingface.co/litert-community/TinyLlama-1.1B-Chat-v1.0/resolve/main/TinyLlama-1.1B-Chat-v1.0_multi-prefill-seq_q8_ekv1280.task",
             localPath = null,
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
@@ -115,58 +81,90 @@ object ModelCatalog {
             supportsTextGeneration = true
         ),
 
-        // ── Large models (3+ GB) ──────────────────────────────
+        // ── Qwen 2.5 1.5B Instruct ──────────────────────────
+        // Source: litert-community/Qwen2.5-1.5B-Instruct (Apache 2.0)
+        // Good balance of speed and quality
         LocalAiModel(
-            modelId = "mistral-7b-instruct-q4",
-            displayName = "Mistral 7B Instruct Q4",
+            modelId = "qwen2.5-1.5b-instruct-q8",
+            displayName = "Qwen 2.5 1.5B Instruct Q8",
             runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 5120,
-            recommendedRamMb = 6144,
-            sizeMb = 4100,
-            downloadUrl = "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 2048,
+            recommendedRamMb = 2560,
+            sizeMb = 1600,
+            downloadUrl = "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv1280.task",
             localPath = null,
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
-            version = "0.2",
+            version = "2.5",
             supportsStructuredJson = true,
             supportsStreaming = true,
             supportsTextGeneration = true
         ),
+
+        // ── DeepSeek R1 Distill Qwen 1.5B ────────────────────
+        // Source: litert-community/DeepSeek-R1-Distill-Qwen-1.5B (MIT license)
+        // Benchmarked on Samsung S24 Ultra
         LocalAiModel(
-            modelId = "zephyr-7b-beta-q4",
-            displayName = "Zephyr 7B Beta Q4",
+            modelId = "deepseek-r1-distill-qwen-1.5b-q8",
+            displayName = "DeepSeek R1 Distill 1.5B Q8 (Recommended)",
             runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 5120,
-            recommendedRamMb = 6144,
-            sizeMb = 4100,
-            downloadUrl = "https://huggingface.co/TheBloke/zephyr-7B-beta-GGUF/resolve/main/zephyr-7b-beta.Q4_K_M.gguf",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 2500,
+            recommendedRamMb = 3072,
+            sizeMb = 1860,
+            downloadUrl = "https://huggingface.co/litert-community/DeepSeek-R1-Distill-Qwen-1.5B/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv1280.task",
             localPath = null,
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
             version = "1.0",
-            supportsStructuredJson = false,
+            supportsStructuredJson = true,
             supportsStreaming = true,
             supportsTextGeneration = true
         ),
+
+        // ── Qwen3 4B Thinking ─────────────────────────────────
+        // Source: harithoppil/qwen3-4b-thinking-litert (Apache 2.0)
+        // Optimized for on-device inference with MediaPipe LLM Inference API
         LocalAiModel(
-            modelId = "openchat-3.5-7b-q4",
-            displayName = "OpenChat 3.5 7B Q4",
+            modelId = "qwen3-4b-thinking-q4",
+            displayName = "Qwen3 4B Thinking Q4",
             runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 5120,
-            recommendedRamMb = 6144,
-            sizeMb = 4100,
-            downloadUrl = "https://huggingface.co/TheBloke/openchat-3.5-0106-GGUF/resolve/main/openchat-3.5-0106.Q4_K_M.gguf",
+            fileFormat = "task",
+            quantization = "Q4_block128",
+            requiredRamMb = 3584,
+            recommendedRamMb = 4096,
+            sizeMb = 2100,
+            downloadUrl = "https://huggingface.co/harithoppil/qwen3-4b-thinking-litert/resolve/main/qwen3_thinking_4b_q4_block128_ekv2048.task",
             localPath = null,
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
-            version = "3.5",
-            supportsStructuredJson = false,
+            version = "3.0",
+            supportsStructuredJson = true,
+            supportsStreaming = true,
+            supportsTextGeneration = true
+        ),
+
+        // ── Phi-4 Mini Instruct ──────────────────────────────
+        // Source: litert-community/Phi-4-mini-instruct (MIT license)
+        // 3.8B params — most capable model in catalog, best JSON output
+        LocalAiModel(
+            modelId = "phi-4-mini-instruct-q8",
+            displayName = "Phi-4 Mini 3.8B Q8 (Best Quality)",
+            runtimeType = "mediapipe_llm",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 4608,
+            recommendedRamMb = 6144,
+            sizeMb = 3940,
+            downloadUrl = "https://huggingface.co/litert-community/Phi-4-mini-instruct/resolve/main/Phi-4-mini-instruct_multi-prefill-seq_q8_ekv1280.task",
+            localPath = null,
+            installState = ModelInstallState.NOT_INSTALLED,
+            checksum = null,
+            version = "4.0",
+            supportsStructuredJson = true,
             supportsStreaming = true,
             supportsTextGeneration = true
         )
@@ -175,6 +173,5 @@ object ModelCatalog {
     fun findById(modelId: String): LocalAiModel? = availableModels.find { it.modelId == modelId }
 
     fun getSmallModels(): List<LocalAiModel> = availableModels.filter { it.sizeMb < 1000 }
-    fun getMediumModels(): List<LocalAiModel> = availableModels.filter { it.sizeMb in 1000..3000 }
-    fun getLargeModels(): List<LocalAiModel> = availableModels.filter { it.sizeMb > 3000 }
+    fun getMediumModels(): List<LocalAiModel> = availableModels.filter { it.sizeMb >= 1000 }
 }

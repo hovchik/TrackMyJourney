@@ -1796,6 +1796,7 @@ fun SettingsScreen(
             var aiSectionExpanded by remember { mutableStateOf(false) }
             val localModelReachable by viewModel.localModelReachable.collectAsState()
             val localModelChecking by viewModel.localModelChecking.collectAsState()
+            val installedLocalModels by viewModel.installedModels.collectAsState()
             Card(
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -1998,6 +1999,70 @@ fun SettingsScreen(
                                     Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Setup Local AI Model", fontSize = 13.sp)
+                                }
+
+                                // Installed local models with delete buttons
+                                if (installedLocalModels.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        "Downloaded Models",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    installedLocalModels.forEach { model ->
+                                        var showDeleteConfirm by remember { mutableStateOf(false) }
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                if (model.isActive) Icons.Filled.CheckCircle else Icons.Filled.Memory,
+                                                null,
+                                                tint = if (model.isActive) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(model.displayName, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                                Text(
+                                                    "${model.sizeMb} MB",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { showDeleteConfirm = true },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Delete, null,
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        if (showDeleteConfirm) {
+                                            AlertDialog(
+                                                onDismissRequest = { showDeleteConfirm = false },
+                                                title = { Text("Remove Model") },
+                                                text = { Text("Remove ${model.displayName}? This will delete ${model.sizeMb} MB from your device.") },
+                                                confirmButton = {
+                                                    TextButton(onClick = {
+                                                        viewModel.deleteLocalModel(model.modelId)
+                                                        showDeleteConfirm = false
+                                                    }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                                                },
+                                                dismissButton = {
+                                                    TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
                             }
 

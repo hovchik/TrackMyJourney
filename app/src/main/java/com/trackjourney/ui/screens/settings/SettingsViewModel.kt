@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.bluetooth.WearableReading
+import com.trackjourney.data.ai.models.LocalAiModel
+import com.trackjourney.data.ai.models.LocalModelManager
 import com.trackjourney.data.local.SettingsDataStore
 import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.location.SatelliteInfo
@@ -22,11 +24,21 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val repository: TrackRepository,
     private val wearableManager: WearableManager,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val localModelManager: LocalModelManager
 ) : ViewModel() {
 
     val settings: StateFlow<TrackingSettings> = repository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TrackingSettings())
+
+    val installedModels: StateFlow<List<LocalAiModel>> = localModelManager.observeInstalledModels()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun deleteLocalModel(modelId: String) {
+        viewModelScope.launch {
+            localModelManager.deleteModel(modelId)
+        }
+    }
 
     val subscriptionStatus: StateFlow<SubscriptionStatus> = settingsDataStore.subscriptionStatus
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SubscriptionStatus())

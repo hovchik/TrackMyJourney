@@ -20,7 +20,6 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
     companion object {
         private const val TAG = "MediaPipeLlmRuntime"
         private const val MAX_TOKENS = 1024
-        private const val RANDOM_SEED = 42
     }
 
     override val runtimeId: String = "mediapipe_llm"
@@ -40,7 +39,6 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(path)
                 .setMaxTokens(MAX_TOKENS)
-                .setRandomSeed(RANDOM_SEED)
                 .build()
 
             llmInference = LlmInference.createFromOptions(context, options)

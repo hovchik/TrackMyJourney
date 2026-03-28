@@ -20,7 +20,6 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
     companion object {
         private const val TAG = "MediaPipeLlmRuntime"
         private const val MAX_TOKENS = 1024
-        private const val TOP_K = 40
         private const val TEMPERATURE = 0.7f
         private const val RANDOM_SEED = 42
     }
@@ -42,7 +41,6 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(path)
                 .setMaxTokens(MAX_TOKENS)
-                .setTopK(TOP_K)
                 .setTemperature(TEMPERATURE)
                 .setRandomSeed(RANDOM_SEED)
                 .build()

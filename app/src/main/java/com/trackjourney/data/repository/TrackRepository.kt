@@ -584,9 +584,13 @@ class TrackRepository(
             // Skip placeholder responses from unconfigured cloud provider
             if (json.optString("status") == "api_call_pending") return null
 
-            val activityStr = json.optString("activity", "UNKNOWN")
+            // Clean activity value — models may return "DRIVING(40-200km/h)" instead of "DRIVING"
+            val rawActivity = json.optString("activity", "UNKNOWN")
+                .uppercase()
+                .replace(Regex("\\(.*\\)"), "")  // strip parenthetical speed ranges
+                .trim()
             val activity = try {
-                ActivityType.valueOf(activityStr.uppercase())
+                ActivityType.valueOf(rawActivity)
             } catch (_: Exception) {
                 ActivityType.UNKNOWN
             }

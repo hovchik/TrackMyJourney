@@ -140,7 +140,8 @@ class SystemAiProvider @Inject constructor(
         return buildString {
             appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked journey data.")
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Return JSON with keys: activity (STATIONARY <0.5km/h, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h), confidence (0.0-1.0), summary (4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers), suggestions (3-5 actionable tips referencing actual metrics), healthInsights (heart rate zone analysis and fitness observations if HR data present, else null), lifetimeInsights (if lifetime data provided: 2-3 sentences comparing this trip to historical averages and personal bests, else null).")
+            appendLine("Return JSON with keys: activity (just the word: STATIONARY, WALKING, RUNNING, CYCLING, DRIVING, or FLYING — no speed ranges in the value), confidence (0.0-1.0), summary (4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers), suggestions (3-5 actionable tips referencing actual metrics), healthInsights (heart rate zone analysis and fitness observations if HR data present, else null), lifetimeInsights (if lifetime data provided: 2-3 sentences comparing this trip to historical averages and personal bests, else null).")
+            appendLine("Activity speed guide: STATIONARY <0.5, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h.")
             appendLine()
             appendLine("Journey:")
             if (track.customActivityType != null) {

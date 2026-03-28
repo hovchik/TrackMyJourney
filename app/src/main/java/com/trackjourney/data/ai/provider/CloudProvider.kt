@@ -454,7 +454,8 @@ class CloudProvider @Inject constructor(
 
         return buildString {
             appendLine("Analyze this GPS-tracked activity in detail. Return a JSON object with these keys:")
-            appendLine("- activity: one of WALKING (<7 km/h), RUNNING (7-15 km/h), CYCLING (15-40 km/h), DRIVING (40-200 km/h), FLYING (>200 km/h), STATIONARY (<0.5 km/h)")
+            appendLine("- activity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (just the word, no speed ranges)")
+            appendLine("  Speed guide: STATIONARY <0.5, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h")
             appendLine("- confidence: 0.0 to 1.0")
             appendLine("- summary: 4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers")
             appendLine("- suggestions: array of 3-5 actionable tips referencing actual metrics from this trip")

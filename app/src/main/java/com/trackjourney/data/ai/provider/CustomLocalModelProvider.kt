@@ -229,7 +229,8 @@ class CustomLocalModelProvider @Inject constructor(
         // IMPORTANT: instruct model to output ONLY a JSON object, no prose
         return buildString {
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Analyze this GPS trip and return: {\"activity\":\"STATIONARY(<0.5km/h)|WALKING(<7)|RUNNING(7-15)|CYCLING(15-40)|DRIVING(40-200)|FLYING(>200km/h)\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\",\"lifetimeInsights\":\"comparison vs history or null\"}")
+            appendLine("Analyze this GPS trip and return: {\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\",\"lifetimeInsights\":\"comparison vs history or null\"}")
+            appendLine("Activity speed guide: STATIONARY <0.5, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h")
             appendLine("---")
             // Show user's manual override if set
             if (track.customActivityType != null) {
@@ -275,7 +276,7 @@ class CustomLocalModelProvider @Inject constructor(
                 appendLine("history: ${lifetimeContext.totalTracks}trips avg:${"%.1f".format(lifetimeContext.avgDistanceKm)}km ${"%.1f".format(lifetimeContext.avgSpeedKmh)}km/h best:${"%.1f".format(lifetimeContext.bestDistanceKm)}km ${"%.1f".format(lifetimeContext.bestSpeedKmh)}km/h")
             }
             appendLine("---")
-            appendLine("IMPORTANT: Output ONLY valid JSON. No explanations, no markdown, no text before or after the JSON object.")
+            appendLine("IMPORTANT: Output ONLY valid JSON. No explanations, no markdown code blocks, no ``` wrapping, no text before or after the JSON object.")
         }
     }
 
@@ -319,13 +320,26 @@ class CustomLocalModelProvider @Inject constructor(
     }
 
     private fun extractJson(output: String): String {
-        // Try to extract JSON from output that may contain extra text
-        val jsonStart = output.indexOf('{')
-        val jsonEnd = output.lastIndexOf('}')
+        var cleaned = output.trim()
+        // Strip markdown code blocks: ```json ... ``` or ``` ... ```
+        if (cleaned.startsWith("```")) {
+            val firstNewline = cleaned.indexOf('\n')
+            if (firstNewline != -1) {
+                cleaned = cleaned.substring(firstNewline + 1)
+            }
+            val lastBackticks = cleaned.lastIndexOf("```")
+            if (lastBackticks != -1) {
+                cleaned = cleaned.substring(0, lastBackticks)
+            }
+            cleaned = cleaned.trim()
+        }
+        // Extract JSON object
+        val jsonStart = cleaned.indexOf('{')
+        val jsonEnd = cleaned.lastIndexOf('}')
         return if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            output.substring(jsonStart, jsonEnd + 1)
+            cleaned.substring(jsonStart, jsonEnd + 1)
         } else {
-            output
+            cleaned
         }
     }
 }

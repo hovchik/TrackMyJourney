@@ -6,14 +6,23 @@ import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.ai.models.AiPreferences
 import com.trackjourney.data.ai.models.CloudProviderType
 import com.trackjourney.data.model.TrackWithPoints
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.TimeUnit
-import kotlin.math.sqrt
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Cloud-based AI provider that sends summarized track data to a cloud API
- * for analysis. Loads the API key and provider type from AiPreferences.
+ * Cloud-based AI provider that sends summarized track data to cloud AI APIs
+ * for analysis. Supports OpenAI, DeepSeek, Gemini (all OpenAI-compatible format)
+ * and Claude (Anthropic Messages API).
  */
 @Singleton
 class CloudProvider @Inject constructor(
@@ -22,6 +31,8 @@ class CloudProvider @Inject constructor(
 
     companion object {
         private const val TAG = "CloudProvider"
+        private const val CONNECT_TIMEOUT_MS = 30_000
+        private const val READ_TIMEOUT_MS = 60_000
     }
 
     override val executionMode: AiExecutionMode = AiExecutionMode.CLOUD
@@ -63,9 +74,7 @@ class CloudProvider @Inject constructor(
         }
         val prompt = buildDailyPrompt(snapshot)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily] (${providerType.label}):\n$prompt")
-        // TODO: Replace with actual cloud API call using apiKey and providerType
-        val response = """{"source": "cloud_ai", "provider": "${providerType.name}", "status": "api_call_pending"}"""
-        return response
+        return callApi(prompt)
     }
 
     override suspend fun analyzeWeeklyBehavior(snapshots: List<TrackWithPoints>): String {
@@ -75,9 +84,209 @@ class CloudProvider @Inject constructor(
         }
         val prompt = buildWeeklyPrompt(snapshots)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [weekly] (${providerType.label}):\n$prompt")
-        val response = """{"source": "cloud_ai", "provider": "${providerType.name}", "status": "api_call_pending"}"""
-        return response
+        return callApi(prompt)
     }
+
+    // ── API call logic ──────────────────────────────────────────────────────
+
+    private fun getBaseUrl(): String = when (providerType) {
+        CloudProviderType.OPENAI -> "https://api.openai.com/v1/chat/completions"
+        CloudProviderType.DEEPSEEK -> "https://api.deepseek.com/v1/chat/completions"
+        CloudProviderType.GEMINI -> "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        CloudProviderType.CLAUDE -> "https://api.anthropic.com/v1/messages"
+    }
+
+    private fun getModel(): String = when (providerType) {
+        CloudProviderType.OPENAI -> "gpt-4o-mini"
+        CloudProviderType.DEEPSEEK -> "deepseek-chat"
+        CloudProviderType.GEMINI -> "gemini-2.0-flash"
+        CloudProviderType.CLAUDE -> "claude-sonnet-4-20250514"
+    }
+
+    private suspend fun callApi(prompt: String): String = withContext(Dispatchers.IO) {
+        val key = apiKey ?: throw IllegalStateException("API key not set.")
+        if (providerType == CloudProviderType.CLAUDE) {
+            callAnthropicApi(prompt, key)
+        } else {
+            callOpenAiCompatibleApi(prompt, key)
+        }
+    }
+
+    /**
+     * Calls an OpenAI-compatible /v1/chat/completions endpoint.
+     * Works for OpenAI, DeepSeek, and Gemini.
+     */
+    private fun callOpenAiCompatibleApi(prompt: String, key: String): String {
+        val requestBody = JSONObject().apply {
+            put("model", getModel())
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", "You are a fitness and activity analysis AI. Always respond with valid JSON only, no markdown.")
+                })
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", prompt)
+                })
+            })
+            put("temperature", 0.3)
+            put("max_tokens", 1024)
+        }
+
+        val response = executeHttpRequest(
+            url = getBaseUrl(),
+            body = requestBody.toString(),
+            headers = mapOf(
+                "Content-Type" to "application/json",
+                "Authorization" to "Bearer $key"
+            )
+        )
+
+        return parseOpenAiResponse(response)
+    }
+
+    /**
+     * Calls the Anthropic Messages API (different format from OpenAI).
+     */
+    private fun callAnthropicApi(prompt: String, key: String): String {
+        val requestBody = JSONObject().apply {
+            put("model", getModel())
+            put("max_tokens", 1024)
+            put("system", "You are a fitness and activity analysis AI. Always respond with valid JSON only, no markdown.")
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", prompt)
+                })
+            })
+        }
+
+        val response = executeHttpRequest(
+            url = getBaseUrl(),
+            body = requestBody.toString(),
+            headers = mapOf(
+                "Content-Type" to "application/json",
+                "x-api-key" to key,
+                "anthropic-version" to "2023-06-01"
+            )
+        )
+
+        return parseAnthropicResponse(response)
+    }
+
+    private fun executeHttpRequest(
+        url: String,
+        body: String,
+        headers: Map<String, String>
+    ): String {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            doOutput = true
+            headers.forEach { (k, v) -> setRequestProperty(k, v) }
+        }
+
+        try {
+            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
+                writer.write(body)
+                writer.flush()
+            }
+
+            val responseCode = connection.responseCode
+            val stream = if (responseCode in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream ?: connection.inputStream
+            }
+
+            val responseText = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
+                reader.readText()
+            }
+
+            if (responseCode !in 200..299) {
+                Log.e(TAG, "API error ($responseCode): $responseText")
+                val errorMsg = try {
+                    val errJson = JSONObject(responseText)
+                    errJson.optJSONObject("error")?.optString("message")
+                        ?: errJson.optString("message", responseText)
+                } catch (_: Exception) {
+                    responseText.take(300)
+                }
+                throw RuntimeException("${providerType.label} API error ($responseCode): $errorMsg")
+            }
+
+            return responseText
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /**
+     * Parses the OpenAI-compatible response format:
+     * { "choices": [{ "message": { "content": "..." } }] }
+     */
+    private fun parseOpenAiResponse(response: String): String {
+        return try {
+            val json = JSONObject(response)
+            val choices = json.getJSONArray("choices")
+            val content = choices.getJSONObject(0)
+                .getJSONObject("message")
+                .getString("content")
+                .trim()
+            extractJsonFromContent(content)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse OpenAI response: ${response.take(500)}", e)
+            throw RuntimeException("Failed to parse ${providerType.label} response: ${e.message}")
+        }
+    }
+
+    /**
+     * Parses the Anthropic Messages API response format:
+     * { "content": [{ "type": "text", "text": "..." }] }
+     */
+    private fun parseAnthropicResponse(response: String): String {
+        return try {
+            val json = JSONObject(response)
+            val content = json.getJSONArray("content")
+            val text = content.getJSONObject(0).getString("text").trim()
+            extractJsonFromContent(text)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse Anthropic response: ${response.take(500)}", e)
+            throw RuntimeException("Failed to parse Claude response: ${e.message}")
+        }
+    }
+
+    /**
+     * Extracts JSON from the AI response content. The model might wrap JSON
+     * in markdown code blocks or include extra text.
+     */
+    private fun extractJsonFromContent(content: String): String {
+        // Try to find JSON in a code block first
+        val codeBlockRegex = Regex("```(?:json)?\\s*\\n?(\\{[\\s\\S]*?})\\s*\\n?```")
+        codeBlockRegex.find(content)?.let { match ->
+            return match.groupValues[1].trim()
+        }
+
+        // Try to find a raw JSON object
+        val jsonStart = content.indexOf('{')
+        val jsonEnd = content.lastIndexOf('}')
+        if (jsonStart != -1 && jsonEnd > jsonStart) {
+            val candidate = content.substring(jsonStart, jsonEnd + 1)
+            // Validate it parses as JSON
+            try {
+                JSONObject(candidate)
+                return candidate
+            } catch (_: Exception) {
+                // Fall through
+            }
+        }
+
+        // Return as-is and let the caller handle it
+        return content
+    }
+
+    // ── Prompt builders ─────────────────────────────────────────────────────
 
     private fun buildDailyPrompt(snapshot: TrackWithPoints): String {
         val track = snapshot.track

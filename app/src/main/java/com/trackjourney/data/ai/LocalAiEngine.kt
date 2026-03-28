@@ -32,6 +32,9 @@ class LocalAiEngine(
         private const val CYCLE_MAX = 40.0f
         private const val DRIVE_MAX = 250.0f
 
+        // Hysteresis margins (km/h) — prevents oscillation at boundaries
+        private const val HYSTERESIS = 1.5f
+
         // Altitude change thresholds (meters per minute)
         private const val FLYING_ALTITUDE_RATE = 10.0f  // rapid altitude gain → flying
 
@@ -40,6 +43,9 @@ class LocalAiEngine(
     }
 
     private val modelLoaded = false // TFLite classifier removed; rule-based only
+
+    // Hysteresis: remember last detected activity to prevent oscillation at boundaries
+    private var lastDetectedActivity: ActivityType = ActivityType.STATIONARY
 
     // ═══════════════════════════════════════════════════════
     //  REAL-TIME ACTIVITY DETECTION (single point)
@@ -111,13 +117,66 @@ class LocalAiEngine(
             }
         }
 
-        return when {
-            speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
-            speedKmh < WALK_MAX       -> ActivityType.WALKING
-            speedKmh < RUN_MAX        -> ActivityType.RUNNING
-            speedKmh < CYCLE_MAX      -> ActivityType.CYCLING
-            speedKmh < DRIVE_MAX      -> ActivityType.DRIVING
-            else                       -> ActivityType.FLYING
+        // Apply hysteresis: require speed to cross threshold + margin to change activity
+        // This prevents oscillation at boundaries (e.g. 6.8-7.2 km/h flipping walk/run)
+        val detected = classifySpeedWithHysteresis(speedKmh, lastDetectedActivity)
+        lastDetectedActivity = detected
+        return detected
+    }
+
+    private fun classifySpeedWithHysteresis(speedKmh: Float, previous: ActivityType): ActivityType {
+        // To leave current activity, speed must cross threshold + hysteresis
+        // To enter new activity, speed must cross threshold - hysteresis (from the other side)
+        val h = HYSTERESIS
+        return when (previous) {
+            ActivityType.STATIONARY -> when {
+                speedKmh < STATIONARY_MAX + h -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX -> ActivityType.WALKING
+                speedKmh < RUN_MAX -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            ActivityType.WALKING -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX + h -> ActivityType.WALKING
+                speedKmh < RUN_MAX -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            ActivityType.RUNNING -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX - h -> ActivityType.WALKING
+                speedKmh < RUN_MAX + h -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            ActivityType.CYCLING -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX -> ActivityType.WALKING
+                speedKmh < RUN_MAX - h -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX + h -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            ActivityType.DRIVING -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX -> ActivityType.WALKING
+                speedKmh < RUN_MAX -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX - h -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX + h -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
+            else -> when {
+                speedKmh < STATIONARY_MAX -> ActivityType.STATIONARY
+                speedKmh < WALK_MAX -> ActivityType.WALKING
+                speedKmh < RUN_MAX -> ActivityType.RUNNING
+                speedKmh < CYCLE_MAX -> ActivityType.CYCLING
+                speedKmh < DRIVE_MAX -> ActivityType.DRIVING
+                else -> ActivityType.FLYING
+            }
         }
     }
 

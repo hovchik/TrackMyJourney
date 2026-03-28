@@ -38,6 +38,7 @@ import com.trackjourney.ui.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -113,6 +114,38 @@ class TracksViewModel @Inject constructor(
     fun reanalyzeTrack(trackId: String) {
         viewModelScope.launch { repository.analyzeTrack(trackId) }
     }
+
+    private val _insightAnalysis = MutableStateFlow<AiAnalysis?>(null)
+    val insightAnalysis: StateFlow<AiAnalysis?> = _insightAnalysis.asStateFlow()
+
+    private val _insightLoading = MutableStateFlow(false)
+    val insightLoading: StateFlow<Boolean> = _insightLoading.asStateFlow()
+
+    fun loadAnalysisForTrack(trackId: String) {
+        viewModelScope.launch {
+            _insightLoading.value = true
+            _insightAnalysis.value = null
+            // Observe the latest analysis; if none exists, trigger analysis first
+            repository.getAnalysisForTrack(trackId).first().let { existing ->
+                if (existing != null) {
+                    _insightAnalysis.value = existing
+                    _insightLoading.value = false
+                } else {
+                    // Trigger analysis, then wait for result
+                    repository.analyzeTrack(trackId)
+                    repository.getAnalysisForTrack(trackId).first()?.let {
+                        _insightAnalysis.value = it
+                    }
+                    _insightLoading.value = false
+                }
+            }
+        }
+    }
+
+    fun clearInsight() {
+        _insightAnalysis.value = null
+        _insightLoading.value = false
+    }
 }
 
 // ─── Sort options ────────────────────────────────────
@@ -145,6 +178,9 @@ fun TracksScreen(
     var sortOption by remember { mutableStateOf(TrackSortOption.DATE_DESC) }
     var showSortMenu by remember { mutableStateOf(false) }
     var exportTrackId by remember { mutableStateOf<String?>(null) }
+    var insightTrackId by remember { mutableStateOf<String?>(null) }
+    val insightAnalysis by viewModel.insightAnalysis.collectAsState()
+    val insightLoading by viewModel.insightLoading.collectAsState()
 
     // File picker for import
     val importLauncher = rememberLauncherForActivityResult(
@@ -359,6 +395,10 @@ fun TracksScreen(
                         onExport = { exportTrackId = track.id },
                         onDelete = { viewModel.deleteTrack(track.id) },
                         onReanalyze = { viewModel.reanalyzeTrack(track.id) },
+                        onInsight = {
+                            insightTrackId = track.id
+                            viewModel.loadAnalysisForTrack(track.id)
+                        },
                         isTrackingActive = isTracking
                     )
                 }
@@ -374,6 +414,19 @@ fun TracksScreen(
                 exportTrackId = null
             },
             onDismiss = { exportTrackId = null }
+        )
+    }
+
+    // AI Insight dialog
+    if (insightTrackId != null) {
+        AiInsightDialog(
+            analysis = insightAnalysis,
+            isLoading = insightLoading,
+            trackName = tracks.find { it.id == insightTrackId }?.name ?: "Track",
+            onDismiss = {
+                insightTrackId = null
+                viewModel.clearInsight()
+            }
         )
     }
 
@@ -523,6 +576,7 @@ private fun TrackCard(
     onExport: () -> Unit,
     onDelete: () -> Unit,
     onReanalyze: () -> Unit,
+    onInsight: () -> Unit,
     isTrackingActive: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -803,6 +857,20 @@ private fun TrackCard(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Re-analyze", fontSize = 13.sp)
                         }
+                        OutlinedButton(
+                            onClick = onInsight,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Lightbulb,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Insight", fontSize = 13.sp)
+                        }
                         FilledTonalButton(
                             onClick = { showDeleteDialog = true },
                             enabled = !(isTrackingActive && track.isActive),
@@ -1023,6 +1091,205 @@ private fun ExportFormatOption(
     }
 }
 
+// ─── AI INSIGHT DIALOG ──────────────────────────────
+
+@Composable
+private fun AiInsightDialog(
+    analysis: AiAnalysis?,
+    isLoading: Boolean,
+    trackName: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Filled.Lightbulb,
+                contentDescription = null,
+                tint = Accent,
+                modifier = Modifier.size(28.dp)
+            )
+        },
+        title = {
+            Text(
+                if (trackName.isNotEmpty()) "AI Insight" else "AI Insight",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            if (isLoading) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Analyzing track...",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else if (analysis != null) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Detected activity + confidence
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    "Detected Activity",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    analysis.detectedActivity.name.lowercase()
+                                        .replaceFirstChar { it.uppercase() },
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp
+                                )
+                            }
+                            Surface(
+                                color = when {
+                                    analysis.confidence >= 0.8f -> Primary.copy(alpha = 0.15f)
+                                    analysis.confidence >= 0.5f -> Accent.copy(alpha = 0.15f)
+                                    else -> Error.copy(alpha = 0.15f)
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    "${"%.0f".format(analysis.confidence * 100)}% conf.",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = when {
+                                        analysis.confidence >= 0.8f -> Primary
+                                        analysis.confidence >= 0.5f -> Accent
+                                        else -> Error
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Summary
+                    if (analysis.summary.isNotBlank()) {
+                        Column {
+                            Text(
+                                "Summary",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                analysis.summary,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp
+                            )
+                        }
+                    }
+
+                    // Suggestions
+                    if (analysis.suggestions.isNotBlank()) {
+                        Column {
+                            Text(
+                                "Suggestions",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val suggestions = try {
+                                val arr = JSONArray(analysis.suggestions)
+                                (0 until arr.length()).map { arr.getString(it) }
+                            } catch (_: Exception) {
+                                listOf(analysis.suggestions)
+                            }
+                            suggestions.forEach { suggestion ->
+                                Row(
+                                    modifier = Modifier.padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(
+                                        "\u2022 ",
+                                        fontSize = 14.sp,
+                                        color = Accent
+                                    )
+                                    Text(
+                                        suggestion,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Health insights
+                    if (!analysis.healthInsights.isNullOrBlank()) {
+                        Surface(
+                            color = Running.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    Icons.Filled.Favorite,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Running
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        "Health Insights",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Running
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        analysis.healthInsights,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    "No analysis available for this track.",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+}
+
 // ─── HELPERS ─────────────────────────────────────────
 
 private fun activityColor(type: ActivityType): Color = when (type) {
@@ -1066,4 +1333,80 @@ private fun relativeDay(timestamp: Long): String? {
         }
         else -> null
     }
+}
+
+// ─── AI INSIGHT DIALOG ──────────────────────────────
+
+@Composable
+private fun AiInsightDialog(
+    analysis: AiAnalysis?,
+    isLoading: Boolean,
+    trackName: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.AutoAwesome, null, tint = Accent, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("AI Insight", fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            if (isLoading) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Analyzing track...", style = MaterialTheme.typography.bodyMedium)
+                }
+            } else if (analysis != null) {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    item {
+                        Text(
+                            "${analysis.detectedActivity.name} (${(analysis.confidence * 100).toInt()}%)",
+                            fontWeight = FontWeight.SemiBold,
+                            color = activityColor(analysis.detectedActivity)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    if (analysis.summary.isNotBlank()) {
+                        item {
+                            Text("Summary", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(analysis.summary, fontSize = 13.sp, lineHeight = 18.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                    if (!analysis.suggestions.isNullOrBlank()) {
+                        item {
+                            Text("Suggestions", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            analysis.suggestions.split("|").forEach { suggestion ->
+                                if (suggestion.isNotBlank()) {
+                                    Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                        Text("  \u2022 ", fontSize = 13.sp)
+                                        Text(suggestion.trim(), fontSize = 13.sp, lineHeight = 18.sp)
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                    if (!analysis.healthInsights.isNullOrBlank()) {
+                        item {
+                            Text("Health", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(analysis.healthInsights, fontSize = 13.sp, lineHeight = 18.sp)
+                        }
+                    }
+                }
+            } else {
+                Text("No analysis available. Try re-analyzing the track.")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
 }

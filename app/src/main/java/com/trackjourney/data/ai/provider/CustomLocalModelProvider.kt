@@ -129,58 +129,84 @@ class CustomLocalModelProvider @Inject constructor(
                 healthData.mapNotNull { it.heartRate }
         val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
         val maxHr = heartRates.maxOrNull()
+        val minHr = heartRates.minOrNull()
 
         // Speed
         val speeds = points.map { it.speedKmh }.filter { it > 0 }
         val medianSpeed = speeds.sorted().let { if (it.isNotEmpty()) it[it.size / 2] else 0f }
+        val speedP90 = speeds.sorted().let { if (it.size >= 5) it[(it.size * 0.9).toInt()] else null }
 
         // Stops
         var stopCount = 0
+        var totalStopMs = 0L
         var inStop = false
-        for (pt in points) {
-            if (pt.speedKmh < 0.5f) { if (!inStop) { inStop = true; stopCount++ } }
-            else { inStop = false }
+        var stopStartIdx = 0
+        for ((idx, pt) in points.withIndex()) {
+            if (pt.speedKmh < 0.5f) {
+                if (!inStop) { inStop = true; stopCount++; stopStartIdx = idx }
+            } else {
+                if (inStop && idx > 0 && stopStartIdx > 0) {
+                    totalStopMs += points[idx].timestamp - points[stopStartIdx].timestamp
+                }
+                inStop = false
+            }
         }
+        val stopMin = TimeUnit.MILLISECONDS.toMinutes(totalStopMs)
 
         // Elevation
         val altitudes = points.mapNotNull { it.altitude }
         val elevGain = computeElevationGain(altitudes)
+        val elevLoss = computeElevationLoss(altitudes)
+        val minAlt = altitudes.minOrNull()
+        val maxAlt = altitudes.maxOrNull()
 
         // Pace
         val paceMinPerKm = if (track.distanceMeters > 0 && durationMin > 0) {
             durationMin.toDouble() / (track.distanceMeters / 1000.0)
         } else null
 
-        // Build a compact prompt that fits in small context windows (~200 tokens)
+        // Build a compact structured prompt that fits in small context windows (~200 tokens)
         return buildString {
-            appendLine("Analyze this GPS trip. Return JSON only: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"...\",\"suggestions\":[\"...\"],\"healthInsights\":\"...or null\"}")
-            appendLine()
-            append("${track.activityType} ${"%.1f".format(track.distanceMeters/1000)}km ${durationMin}min")
-            append(" avg${"%.1f".format(track.avgSpeedKmh)}km/h max${"%.1f".format(track.maxSpeedKmh)}km/h med${"%.1f".format(medianSpeed)}km/h")
-            append(" ${"%.0f".format(track.caloriesBurned)}cal ${points.size}pts ${stopCount}stops")
-            if (paceMinPerKm != null && track.avgSpeedKmh < 20) append(" ${"%.1f".format(paceMinPerKm)}min/km")
-            if (elevGain > 0) append(" +${"%.0f".format(elevGain)}m")
-            if (avgHr != null) append(" hr${avgHr}/${maxHr}bpm")
-            if (track.startPlaceName != null || track.endPlaceName != null) {
-                append(" ${track.startPlaceName ?: "?"}→${track.endPlaceName ?: "?"}")
+            appendLine("Analyze GPS trip. JSON only: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"...\",\"suggestions\":[\"...\"],\"healthInsights\":\"...or null\"}")
+            appendLine("---")
+            appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size}")
+            append("spd avg:${"%.1f".format(track.avgSpeedKmh)} max:${"%.1f".format(track.maxSpeedKmh)} med:${"%.1f".format(medianSpeed)}")
+            if (speedP90 != null) append(" p90:${"%.1f".format(speedP90)}")
+            appendLine(" km/h")
+            if (paceMinPerKm != null && track.avgSpeedKmh < 20) appendLine("pace:${"%.1f".format(paceMinPerKm)}min/km")
+            append("stops:$stopCount")
+            if (stopMin > 0) append(" stopTime:${stopMin}min")
+            appendLine(" cal:${"%.0f".format(track.caloriesBurned)}")
+            if (elevGain > 0 || elevLoss > 0) {
+                append("elev +${"%.0f".format(elevGain)}m -${"%.0f".format(elevLoss)}m")
+                if (minAlt != null && maxAlt != null) append(" range:${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m")
+                appendLine()
             }
-            appendLine()
+            if (avgHr != null) {
+                appendLine("hr avg:$avgHr max:$maxHr min:$minHr bpm")
+            }
+            if (track.startPlaceName != null || track.endPlaceName != null) {
+                appendLine("route:${track.startPlaceName ?: "?"}→${track.endPlaceName ?: "?"}")
+            }
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("Analyze ${snapshots.size} trips. Return JSON: {\"totalDistance\":m,\"totalCalories\":n,\"dominantActivity\":\"...\",\"weekSummary\":\"...\",\"improvements\":[\"...\"]}")
+            appendLine("Analyze ${snapshots.size} trips. JSON only: {\"totalDistance\":m,\"totalCalories\":n,\"dominantActivity\":\"...\",\"weekSummary\":\"...\",\"improvements\":[\"...\"]}")
+            appendLine("---")
 
             var totalDist = 0.0
             var totalCal = 0.0
+            var totalDurMin = 0L
             snapshots.forEachIndexed { i, twp ->
                 val t = twp.track
                 val dur = TimeUnit.MILLISECONDS.toMinutes((t.endTime ?: System.currentTimeMillis()) - t.startTime)
-                totalDist += t.distanceMeters; totalCal += t.caloriesBurned
-                appendLine("${i+1}.${t.activityType} ${"%.1f".format(t.distanceMeters/1000)}km ${dur}m ${"%.1f".format(t.avgSpeedKmh)}km/h ${"%.0f".format(t.caloriesBurned)}cal")
+                totalDist += t.distanceMeters; totalCal += t.caloriesBurned; totalDurMin += dur
+                val hrPart = t.avgHeartRate?.let { " hr:${it}" } ?: ""
+                appendLine("${i+1}.${t.activityType} ${"%.1f".format(t.distanceMeters/1000)}km ${dur}m ${"%.1f".format(t.avgSpeedKmh)}km/h ${"%.0f".format(t.caloriesBurned)}cal$hrPart")
             }
-            appendLine("Total:${"%.1f".format(totalDist/1000)}km ${"%.0f".format(totalCal)}cal")
+            appendLine("Tot:${"%.1f".format(totalDist/1000)}km ${"%.0f".format(totalCal)}cal ${totalDurMin}min")
         }
     }
 

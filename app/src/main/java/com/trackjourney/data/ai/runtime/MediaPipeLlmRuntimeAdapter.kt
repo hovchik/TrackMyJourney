@@ -30,27 +30,29 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
     private var isLoaded: Boolean = false
 
     /**
-     * Extracts the KV cache size from the model filename.
-     * e.g. "DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv1280.task" -> 1280
-     * Falls back to [DEFAULT_MAX_TOKENS] if not found.
+     * Extracts the KV cache size from a string (path or URL).
+     * e.g. "...ekv1280.task" -> 1280, "...ekv4096..." -> 4096
      */
-    private fun extractMaxTokensFromPath(path: String): Int {
-        val ekvMatch = Regex("ekv(\\d+)").find(path)
-        val ekvSize = ekvMatch?.groupValues?.get(1)?.toIntOrNull()
-        if (ekvSize != null) {
-            Log.i(TAG, "Detected KV cache size from filename: $ekvSize tokens")
-            return ekvSize
+    private fun extractKvCacheSize(vararg sources: String?): Int {
+        for (source in sources) {
+            if (source == null) continue
+            val match = Regex("ekv(\\d+)").find(source)
+            val size = match?.groupValues?.get(1)?.toIntOrNull()
+            if (size != null) {
+                Log.i(TAG, "Detected KV cache size: $size tokens (from: ${source.takeLast(60)})")
+                return size
+            }
         }
-        Log.i(TAG, "No KV cache size in filename, using default: $DEFAULT_MAX_TOKENS tokens")
+        Log.i(TAG, "No KV cache size found, using safe default: $DEFAULT_MAX_TOKENS tokens")
         return DEFAULT_MAX_TOKENS
     }
 
-    fun loadModel(path: String) {
+    fun loadModel(path: String, downloadUrl: String? = null) {
         // Release previous model if any
         release()
 
         modelPath = path
-        val maxTokens = extractMaxTokensFromPath(path)
+        val maxTokens = extractKvCacheSize(path, downloadUrl)
         Log.i(TAG, "Loading model from: $path (maxTokens=$maxTokens)")
         try {
             val options = LlmInference.LlmInferenceOptions.builder()

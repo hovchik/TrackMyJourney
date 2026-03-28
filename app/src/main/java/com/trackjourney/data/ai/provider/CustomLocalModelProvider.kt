@@ -47,15 +47,15 @@ class CustomLocalModelProvider @Inject constructor(
         }
     }
 
-    private fun ensureModelLoaded(runtime: LocalModelRuntime, runtimeType: String, localPath: String?) {
+    private fun ensureModelLoaded(runtime: LocalModelRuntime, runtimeType: String, localPath: String?, downloadUrl: String?) {
         if (!runtime.isAvailable()) {
             if (localPath == null) {
                 throw IllegalStateException("Model needs loading but no local path is available for runtime: $runtimeType")
             }
             Log.i(TAG, "Loading model from: $localPath (runtime: $runtimeType)")
             when (runtime) {
-                is MediaPipeLlmRuntimeAdapter -> runtime.loadModel(localPath)
-                is LiteRtRuntimeAdapter -> runtime.loadModel(localPath)
+                is MediaPipeLlmRuntimeAdapter -> runtime.loadModel(localPath, downloadUrl)
+                is LiteRtRuntimeAdapter -> runtime.loadModel(localPath, downloadUrl)
             }
             if (!runtime.isAvailable()) {
                 Log.e(TAG, "Model failed to load from: $localPath")
@@ -85,7 +85,7 @@ class CustomLocalModelProvider @Inject constructor(
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")
 
-        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath)
+        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, activeModel.downloadUrl)
 
         val prompt = buildDailyPrompt(snapshot)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily] (model=${activeModel.displayName}):\n$prompt")
@@ -101,7 +101,7 @@ class CustomLocalModelProvider @Inject constructor(
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")
 
-        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath)
+        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, activeModel.downloadUrl)
 
         val prompt = buildWeeklyPrompt(snapshots)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [weekly] (model=${activeModel.displayName}):\n$prompt")

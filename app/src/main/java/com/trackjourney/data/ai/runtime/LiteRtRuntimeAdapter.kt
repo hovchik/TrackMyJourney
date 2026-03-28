@@ -35,16 +35,21 @@ class LiteRtRuntimeAdapter @Inject constructor(
     private var llmInference: LlmInference? = null
     private var isLoaded: Boolean = false
 
-    private fun extractMaxTokensFromPath(path: String): Int {
-        val ekvMatch = Regex("ekv(\\d+)").find(path)
-        return ekvMatch?.groupValues?.get(1)?.toIntOrNull() ?: DEFAULT_MAX_TOKENS
+    private fun extractKvCacheSize(vararg sources: String?): Int {
+        for (source in sources) {
+            if (source == null) continue
+            val match = Regex("ekv(\\d+)").find(source)
+            val size = match?.groupValues?.get(1)?.toIntOrNull()
+            if (size != null) return size
+        }
+        return DEFAULT_MAX_TOKENS
     }
 
-    fun loadModel(path: String) {
+    fun loadModel(path: String, downloadUrl: String? = null) {
         release()
 
         modelPath = path
-        val maxTokens = extractMaxTokensFromPath(path)
+        val maxTokens = extractKvCacheSize(path, downloadUrl)
         Log.i(TAG, "Loading model from: $path (maxTokens=$maxTokens)")
         try {
             val options = LlmInference.LlmInferenceOptions.builder()

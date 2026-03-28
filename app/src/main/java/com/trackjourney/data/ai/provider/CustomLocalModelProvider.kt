@@ -4,6 +4,7 @@ import android.util.Log
 import com.trackjourney.BuildConfig
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.ai.models.LocalModelManager
+import com.trackjourney.data.ai.models.ModelCatalog
 import com.trackjourney.data.ai.runtime.LiteRtRuntimeAdapter
 import com.trackjourney.data.ai.runtime.LocalModelRuntime
 import com.trackjourney.data.ai.runtime.MediaPipeLlmRuntimeAdapter
@@ -85,7 +86,9 @@ class CustomLocalModelProvider @Inject constructor(
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")
 
-        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, activeModel.downloadUrl)
+        val downloadUrl = activeModel.downloadUrl
+            ?: ModelCatalog.findById(activeModel.modelId)?.downloadUrl
+        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, downloadUrl)
 
         val prompt = buildDailyPrompt(snapshot)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily] (model=${activeModel.displayName}):\n$prompt")
@@ -101,7 +104,9 @@ class CustomLocalModelProvider @Inject constructor(
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")
 
-        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, activeModel.downloadUrl)
+        val downloadUrl = activeModel.downloadUrl
+            ?: ModelCatalog.findById(activeModel.modelId)?.downloadUrl
+        ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, downloadUrl)
 
         val prompt = buildWeeklyPrompt(snapshots)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [weekly] (model=${activeModel.displayName}):\n$prompt")

@@ -25,7 +25,7 @@ class LiteRtRuntimeAdapter @Inject constructor(
 
     companion object {
         private const val TAG = "LiteRtRuntime"
-        private const val DEFAULT_MAX_TOKENS = 1024
+        private const val DEFAULT_MAX_TOKENS = 512
     }
 
     override val runtimeId: String = "litert"

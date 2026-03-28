@@ -9,7 +9,7 @@ package com.trackjourney.data.ai.models
  * - Downloadable from Hugging Face without authentication
  * - From the Gemma, Qwen, or DeepSeek model families
  *
- * Models are organized by size tier: Small (<1 GB), Medium (1-3 GB), Large (3-5 GB).
+ * Models are organized by size tier: Small (<1 GB) and Medium (1-3 GB).
  * Within each tier, the fastest (smallest) option is listed first.
  */
 object ModelCatalog {
@@ -125,68 +125,11 @@ object ModelCatalog {
             supportsStructuredJson = true,
             supportsStreaming = true,
             supportsTextGeneration = true
-        ),
-
-        // ── Large models (3–5 GB) — best quality ─────────────
-        LocalAiModel(
-            modelId = "qwen2.5-7b-instruct-q4",
-            displayName = "Qwen 2.5 7B Instruct Q4",
-            runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 5120,
-            recommendedRamMb = 6144,
-            sizeMb = 4700,
-            downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf",
-            localPath = null,
-            installState = ModelInstallState.NOT_INSTALLED,
-            checksum = null,
-            version = "2.5",
-            supportsStructuredJson = true,
-            supportsStreaming = true,
-            supportsTextGeneration = true
-        ),
-        LocalAiModel(
-            modelId = "deepseek-r1-distill-qwen-7b-q3",
-            displayName = "DeepSeek R1 Distill 7B Q3",
-            runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q3_K_M",
-            requiredRamMb = 4608,
-            recommendedRamMb = 6144,
-            sizeMb = 3600,
-            downloadUrl = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q3_K_M.gguf",
-            localPath = null,
-            installState = ModelInstallState.NOT_INSTALLED,
-            checksum = null,
-            version = "1.0",
-            supportsStructuredJson = true,
-            supportsStreaming = true,
-            supportsTextGeneration = true
-        ),
-        LocalAiModel(
-            modelId = "gemma-3-4b-it-q4",
-            displayName = "Gemma 3 4B Instruct Q4",
-            runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 4096,
-            recommendedRamMb = 5120,
-            sizeMb = 2900,
-            downloadUrl = "https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/resolve/main/google_gemma-3-4b-it-Q4_K_M.gguf",
-            localPath = null,
-            installState = ModelInstallState.NOT_INSTALLED,
-            checksum = null,
-            version = "3.0",
-            supportsStructuredJson = true,
-            supportsStreaming = true,
-            supportsTextGeneration = true
         )
     )
 
     fun findById(modelId: String): LocalAiModel? = availableModels.find { it.modelId == modelId }
 
     fun getSmallModels(): List<LocalAiModel> = availableModels.filter { it.sizeMb < 1000 }
-    fun getMediumModels(): List<LocalAiModel> = availableModels.filter { it.sizeMb in 1000..3000 }
-    fun getLargeModels(): List<LocalAiModel> = availableModels.filter { it.sizeMb > 3000 }
+    fun getMediumModels(): List<LocalAiModel> = availableModels.filter { it.sizeMb >= 1000 }
 }

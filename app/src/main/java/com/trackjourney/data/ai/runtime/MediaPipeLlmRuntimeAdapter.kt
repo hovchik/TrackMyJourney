@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,8 +36,11 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
         modelPath = path
         Log.i(TAG, "Loading model from: $path")
         try {
-            // Let MediaPipe auto-detect maxTokens from the .task file's
-            // built-in KV cache configuration. Only set the model path.
+            // Clear stale XNNPACK weight cache that may have been built with
+            // different parameters. A corrupt/mismatched cache causes
+            // "Cannot reserve space in a cache that isn't building" SIGABRT.
+            clearXnnpackCache()
+
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(path)
                 .build()
@@ -72,6 +76,27 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
     override fun supportsStructuredJson(): Boolean = true
 
     override fun supportsStreaming(): Boolean = true
+
+    /**
+     * Deletes any XNNPACK weight cache files from the app's cache directory.
+     * MediaPipe caches compiled XNNPACK weights as `*.xnnpack_cache` files.
+     * A stale cache (from a different model or different config) causes a
+     * native SIGABRT: "Cannot reserve space in a cache that isn't building."
+     */
+    private fun clearXnnpackCache() {
+        try {
+            val cacheDir = context.cacheDir
+            val cacheFiles = cacheDir.listFiles { file ->
+                file.name.endsWith(".xnnpack_cache")
+            }
+            cacheFiles?.forEach { file ->
+                Log.i(TAG, "Deleting stale XNNPACK cache: ${file.name} (${file.length() / 1024}KB)")
+                file.delete()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clear XNNPACK cache: ${e.message}")
+        }
+    }
 
     override fun release() {
         try {

@@ -4,46 +4,30 @@ package com.trackjourney.data.ai.models
  * Curated catalog of local AI models for on-device inference.
  *
  * All models are:
- * - GGUF format (compatible with MediaPipe LLM Inference)
+ * - MediaPipe `.task` format (TFLite FlatBuffer bundles, compatible with MediaPipe LLM Inference)
  * - Under 5 GB download size
  * - Downloadable from Hugging Face without authentication
- * - From the Gemma, Qwen, or DeepSeek model families
+ * - From the Qwen or DeepSeek model families
  *
- * Models are organized by size tier: Small (<1 GB) and Medium (1-3 GB).
- * Within each tier, the fastest (smallest) option is listed first.
+ * Note: Gemma models require accepting Google's license on Hugging Face (gated access)
+ * and cannot be included for auth-free download.
  */
 object ModelCatalog {
 
     val availableModels: List<LocalAiModel> = listOf(
-        // ── Small models (< 1 GB) — fastest on device ─────────
+        // ── DeepSeek R1 Distill Qwen 1.5B ────────────────────
+        // Source: litert-community/DeepSeek-R1-Distill-Qwen-1.5B (MIT license)
+        // Benchmarked on Samsung S24 Ultra
         LocalAiModel(
-            modelId = "qwen2.5-0.5b-instruct-q4",
-            displayName = "Qwen 2.5 0.5B Q4 (Fastest)",
+            modelId = "deepseek-r1-distill-qwen-1.5b-q8",
+            displayName = "DeepSeek R1 Distill 1.5B Q8 (Recommended)",
             runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 1024,
-            recommendedRamMb = 1536,
-            sizeMb = 400,
-            downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
-            localPath = null,
-            installState = ModelInstallState.NOT_INSTALLED,
-            checksum = null,
-            version = "2.5",
-            supportsStructuredJson = true,
-            supportsStreaming = true,
-            supportsTextGeneration = true
-        ),
-        LocalAiModel(
-            modelId = "deepseek-r1-distill-qwen-1.5b-q4",
-            displayName = "DeepSeek R1 Distill 1.5B Q4",
-            runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 1500,
-            recommendedRamMb = 2048,
-            sizeMb = 950,
-            downloadUrl = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 2500,
+            recommendedRamMb = 3072,
+            sizeMb = 1860,
+            downloadUrl = "https://huggingface.co/litert-community/DeepSeek-R1-Distill-Qwen-1.5B/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv1280.task",
             localPath = null,
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
@@ -53,75 +37,41 @@ object ModelCatalog {
             supportsTextGeneration = true
         ),
         LocalAiModel(
-            modelId = "qwen2.5-1.5b-instruct-q4",
-            displayName = "Qwen 2.5 1.5B Q4",
+            modelId = "deepseek-r1-distill-qwen-1.5b-q8-4k",
+            displayName = "DeepSeek R1 Distill 1.5B Q8 (4K context)",
             runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 1500,
-            recommendedRamMb = 2048,
-            sizeMb = 990,
-            downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 2500,
+            recommendedRamMb = 3072,
+            sizeMb = 1830,
+            downloadUrl = "https://huggingface.co/litert-community/DeepSeek-R1-Distill-Qwen-1.5B/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv4096.task",
             localPath = null,
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
-            version = "2.5",
+            version = "1.0",
             supportsStructuredJson = true,
             supportsStreaming = true,
             supportsTextGeneration = true
         ),
 
-        // ── Medium models (1–3 GB) — recommended tier ─────────
+        // ── Qwen3 4B Thinking ─────────────────────────────────
+        // Source: harithoppil/qwen3-4b-thinking-litert (Apache 2.0)
+        // Optimized for on-device inference with MediaPipe LLM Inference API
         LocalAiModel(
-            modelId = "gemma-2-2b-it-q4",
-            displayName = "Gemma 2 2B Instruct Q4",
+            modelId = "qwen3-4b-thinking-q4",
+            displayName = "Qwen3 4B Thinking Q4",
             runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 2048,
-            recommendedRamMb = 3072,
-            sizeMb = 1600,
-            downloadUrl = "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf",
-            localPath = null,
-            installState = ModelInstallState.NOT_INSTALLED,
-            checksum = null,
-            version = "2.0",
-            supportsStructuredJson = true,
-            supportsStreaming = true,
-            supportsTextGeneration = true
-        ),
-        LocalAiModel(
-            modelId = "qwen2.5-3b-instruct-q4",
-            displayName = "Qwen 2.5 3B Instruct Q4 (Recommended)",
-            runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q4_K_M",
-            requiredRamMb = 3072,
+            fileFormat = "task",
+            quantization = "Q4_block128",
+            requiredRamMb = 3584,
             recommendedRamMb = 4096,
             sizeMb = 2100,
-            downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf",
+            downloadUrl = "https://huggingface.co/harithoppil/qwen3-4b-thinking-litert/resolve/main/qwen3_thinking_4b_q4_block128_ekv2048.task",
             localPath = null,
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
-            version = "2.5",
-            supportsStructuredJson = true,
-            supportsStreaming = true,
-            supportsTextGeneration = true
-        ),
-        LocalAiModel(
-            modelId = "gemma-2-2b-it-q8",
-            displayName = "Gemma 2 2B Instruct Q8 (Higher Quality)",
-            runtimeType = "mediapipe_llm",
-            fileFormat = "bin",
-            quantization = "Q8_0",
-            requiredRamMb = 3072,
-            recommendedRamMb = 4096,
-            sizeMb = 2800,
-            downloadUrl = "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q8_0.gguf",
-            localPath = null,
-            installState = ModelInstallState.NOT_INSTALLED,
-            checksum = null,
-            version = "2.0",
+            version = "3.0",
             supportsStructuredJson = true,
             supportsStreaming = true,
             supportsTextGeneration = true

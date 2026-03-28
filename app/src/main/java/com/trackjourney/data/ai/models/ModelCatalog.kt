@@ -7,7 +7,7 @@ package com.trackjourney.data.ai.models
  * - MediaPipe `.task` format (TFLite FlatBuffer bundles, compatible with MediaPipe LLM Inference)
  * - Under 5 GB download size
  * - Downloadable from Hugging Face without authentication
- * - From the Qwen or DeepSeek model families
+ * - From the Qwen, DeepSeek, Phi, TinyLlama, or SmolLM model families
  *
  * Note: Gemma models require accepting Google's license on Hugging Face (gated access)
  * and cannot be included for auth-free download.
@@ -15,12 +15,34 @@ package com.trackjourney.data.ai.models
 object ModelCatalog {
 
     val availableModels: List<LocalAiModel> = listOf(
+        // ── SmolLM 135M Instruct ──────────────────────────────
+        // Source: litert-community/SmolLM-135M-Instruct (Apache 2.0)
+        // Ultra-tiny model — blazing fast, basic quality
+        LocalAiModel(
+            modelId = "smollm-135m-instruct-q8",
+            displayName = "SmolLM 135M Q8 (Ultra Fast)",
+            runtimeType = "mediapipe_llm",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 512,
+            recommendedRamMb = 1024,
+            sizeMb = 167,
+            downloadUrl = "https://huggingface.co/litert-community/SmolLM-135M-Instruct/resolve/main/SmolLM-135M-Instruct_multi-prefill-seq_q8_ekv1280.task",
+            localPath = null,
+            installState = ModelInstallState.NOT_INSTALLED,
+            checksum = null,
+            version = "1.0",
+            supportsStructuredJson = false,
+            supportsStreaming = true,
+            supportsTextGeneration = true
+        ),
+
         // ── Qwen 2.5 0.5B Instruct ───────────────────────────
         // Source: litert-community/Qwen2.5-0.5B-Instruct (Apache 2.0)
-        // Smallest & fastest model — good for low-end devices
+        // Small & fast — good for low-end devices
         LocalAiModel(
             modelId = "qwen2.5-0.5b-instruct-q8",
-            displayName = "Qwen 2.5 0.5B Instruct Q8 (Fastest)",
+            displayName = "Qwen 2.5 0.5B Instruct Q8 (Fast)",
             runtimeType = "mediapipe_llm",
             fileFormat = "task",
             quantization = "Q8",
@@ -33,6 +55,28 @@ object ModelCatalog {
             checksum = null,
             version = "2.5",
             supportsStructuredJson = true,
+            supportsStreaming = true,
+            supportsTextGeneration = true
+        ),
+
+        // ── TinyLlama 1.1B Chat ───────────────────────────────
+        // Source: litert-community/TinyLlama-1.1B-Chat-v1.0 (Apache 2.0)
+        // Fast lightweight chat model
+        LocalAiModel(
+            modelId = "tinyllama-1.1b-chat-q8",
+            displayName = "TinyLlama 1.1B Chat Q8",
+            runtimeType = "mediapipe_llm",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 1500,
+            recommendedRamMb = 2048,
+            sizeMb = 1150,
+            downloadUrl = "https://huggingface.co/litert-community/TinyLlama-1.1B-Chat-v1.0/resolve/main/TinyLlama-1.1B-Chat-v1.0_multi-prefill-seq_q8_ekv1280.task",
+            localPath = null,
+            installState = ModelInstallState.NOT_INSTALLED,
+            checksum = null,
+            version = "1.0",
+            supportsStructuredJson = false,
             supportsStreaming = true,
             supportsTextGeneration = true
         ),
@@ -98,6 +142,28 @@ object ModelCatalog {
             installState = ModelInstallState.NOT_INSTALLED,
             checksum = null,
             version = "3.0",
+            supportsStructuredJson = true,
+            supportsStreaming = true,
+            supportsTextGeneration = true
+        ),
+
+        // ── Phi-4 Mini Instruct ──────────────────────────────
+        // Source: litert-community/Phi-4-mini-instruct (MIT license)
+        // 3.8B params — most capable model in catalog, best JSON output
+        LocalAiModel(
+            modelId = "phi-4-mini-instruct-q8",
+            displayName = "Phi-4 Mini 3.8B Q8 (Best Quality)",
+            runtimeType = "mediapipe_llm",
+            fileFormat = "task",
+            quantization = "Q8",
+            requiredRamMb = 4608,
+            recommendedRamMb = 6144,
+            sizeMb = 3940,
+            downloadUrl = "https://huggingface.co/litert-community/Phi-4-mini-instruct/resolve/main/Phi-4-mini-instruct_multi-prefill-seq_q8_ekv1280.task",
+            localPath = null,
+            installState = ModelInstallState.NOT_INSTALLED,
+            checksum = null,
+            version = "4.0",
             supportsStructuredJson = true,
             supportsStreaming = true,
             supportsTextGeneration = true

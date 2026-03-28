@@ -5,8 +5,11 @@ import com.trackjourney.BuildConfig
 import com.trackjourney.data.ai.models.AiExecutionMode
 import com.trackjourney.data.ai.models.AiPreferences
 import com.trackjourney.data.ai.models.CloudProviderType
+import com.trackjourney.data.local.SettingsDataStore
+import com.trackjourney.data.model.CloudAiProvider
 import com.trackjourney.data.model.TrackWithPoints
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,7 +29,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class CloudProvider @Inject constructor(
-    private val aiPreferences: AiPreferences
+    private val aiPreferences: AiPreferences,
+    private val settingsDataStore: SettingsDataStore
 ) : AiAnalysisProvider {
 
     companion object {
@@ -41,16 +45,34 @@ class CloudProvider @Inject constructor(
     private var apiKey: String? = null
     private var providerType: CloudProviderType = CloudProviderType.CLAUDE
 
+    /**
+     * Loads cloud AI config. SettingsDataStore is the primary source of truth
+     * (written by the Settings screen's Cloud AI wizard). Falls back to
+     * AiPreferences for backward compatibility.
+     */
     suspend fun ensureConfigLoaded() {
+        val settings = settingsDataStore.settings.first()
+
+        // Load API key: SettingsDataStore first, then AiPreferences
         if (apiKey == null) {
-            apiKey = aiPreferences.getCloudApiKey()
-            val type = aiPreferences.getCloudProviderType()
-            providerType = try {
-                CloudProviderType.valueOf(type)
-            } catch (_: Exception) {
-                CloudProviderType.CLAUDE
-            }
+            apiKey = settings.cloudAiApiKey.takeIf { it.isNotBlank() }
+                ?: aiPreferences.getCloudApiKey()
         }
+
+        // Load provider type: map from SettingsDataStore's CloudAiProvider
+        providerType = mapSettingsProvider(settings.cloudAiProvider)
+        Log.d(TAG, "Config loaded: provider=${providerType.label}, keySet=${apiKey != null}")
+    }
+
+    /**
+     * Maps the Settings screen's CloudAiProvider enum to our CloudProviderType.
+     */
+    private fun mapSettingsProvider(provider: CloudAiProvider): CloudProviderType = when (provider) {
+        CloudAiProvider.OPENAI -> CloudProviderType.OPENAI
+        CloudAiProvider.ANTHROPIC -> CloudProviderType.CLAUDE
+        CloudAiProvider.GEMINI -> CloudProviderType.GEMINI
+        CloudAiProvider.DEEPSEEK -> CloudProviderType.DEEPSEEK
+        CloudAiProvider.CUSTOM -> CloudProviderType.OPENAI // custom endpoint uses OpenAI format
     }
 
     fun setApiKey(key: String) {

@@ -94,7 +94,7 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideCloudProvider(aiPreferences: AiPreferences) = CloudProvider(aiPreferences)
+    fun provideCloudProvider(aiPreferences: AiPreferences, settingsDataStore: SettingsDataStore) = CloudProvider(aiPreferences, settingsDataStore)
 
     @Provides
     @Singleton

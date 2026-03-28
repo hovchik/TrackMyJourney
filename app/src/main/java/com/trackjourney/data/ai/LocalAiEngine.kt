@@ -40,11 +40,6 @@ class LocalAiEngine(
     }
 
     private val modelLoaded = false // TFLite classifier removed; rule-based only
-            )
-        } catch (e: Exception) {
-            null
-        }
-    }
 
     // ═══════════════════════════════════════════════════════
     //  REAL-TIME ACTIVITY DETECTION (single point)

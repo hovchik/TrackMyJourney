@@ -112,11 +112,10 @@ object AppModule {
     @Singleton
     fun provideAiProviderSelector(
         aiPreferences: AiPreferences,
-        systemAiProvider: SystemAiProvider,
         customLocalModelProvider: CustomLocalModelProvider,
         cloudProvider: CloudProvider,
         settingsDataStore: SettingsDataStore
-    ) = AiProviderSelector(aiPreferences, systemAiProvider, customLocalModelProvider, cloudProvider, settingsDataStore)
+    ) = AiProviderSelector(aiPreferences, customLocalModelProvider, cloudProvider, settingsDataStore)
 
     @Provides
     @Singleton

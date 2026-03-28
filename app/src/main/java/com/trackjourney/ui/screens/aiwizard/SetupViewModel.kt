@@ -33,7 +33,7 @@ enum class SetupStep {
 data class LocalAiSetupState(
     val currentStep: SetupStep = SetupStep.INTRO,
     val deviceCapability: DeviceCapabilityResult? = null,
-    val recommendedMode: AiExecutionMode = AiExecutionMode.AUTO,
+    val recommendedMode: AiExecutionMode = AiExecutionMode.CUSTOM_LOCAL,
     val selectedMode: AiExecutionMode? = null,
     val catalogModels: List<LocalAiModel> = emptyList(),
     val compatibility: Map<String, CompatibilityReport> = emptyMap(),
@@ -249,11 +249,6 @@ class SetupViewModel @Inject constructor(
     fun completeSetup() {
         viewModelScope.launch {
             val mode = _state.value.selectedMode ?: _state.value.recommendedMode
-            // Re-check premium status before saving CUSTOM_LOCAL mode
-            if (mode == AiExecutionMode.CUSTOM_LOCAL && !_state.value.isPremium) {
-                _state.update { it.copy(error = "Local AI models require a Premium subscription") }
-                return@launch
-            }
             aiPreferences.setSelectedMode(mode)
             aiPreferences.setSetupCompleted(true)
             _state.update { it.copy(isComplete = true) }

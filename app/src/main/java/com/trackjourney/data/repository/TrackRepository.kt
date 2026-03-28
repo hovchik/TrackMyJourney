@@ -457,9 +457,15 @@ class TrackRepository(
             if (providerAnalysis != null) {
                 aiAnalysisDao.insert(providerAnalysis)
                 trackDao.getTrackById(trackId)?.let { track ->
+                    // Preserve customActivityType if user manually set it
+                    val newActivity = if (track.customActivityType != null) {
+                        track.customActivityType
+                    } else {
+                        providerAnalysis.detectedActivity
+                    }
                     trackDao.update(track.copy(
                         aiSummary = providerAnalysis.summary,
-                        activityType = providerAnalysis.detectedActivity
+                        activityType = newActivity
                     ))
                 }
                 return@withContext providerAnalysis
@@ -471,9 +477,15 @@ class TrackRepository(
             aiAnalysisDao.insert(finalAnalysis)
 
             trackDao.getTrackById(trackId)?.let { track ->
+                // Preserve customActivityType if user manually set it
+                val newActivity = if (track.customActivityType != null) {
+                    track.customActivityType
+                } else {
+                    finalAnalysis.detectedActivity
+                }
                 trackDao.update(track.copy(
                     aiSummary = finalAnalysis.summary,
-                    activityType = finalAnalysis.detectedActivity
+                    activityType = newActivity
                 ))
             }
 

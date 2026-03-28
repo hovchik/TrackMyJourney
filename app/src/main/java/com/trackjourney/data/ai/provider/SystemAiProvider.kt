@@ -53,6 +53,7 @@ class SystemAiProvider @Inject constructor(
         // Elevation
         val altitudes = points.mapNotNull { it.altitude }
         val elevationGain = computeElevationGain(altitudes)
+        val elevationLoss = computeElevationLoss(altitudes)
         val minAlt = altitudes.minOrNull()
         val maxAlt = altitudes.maxOrNull()
 
@@ -61,10 +62,21 @@ class SystemAiProvider @Inject constructor(
                 healthData.mapNotNull { it.heartRate }
         val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
         val maxHr = heartRates.maxOrNull()
+        val minHr = heartRates.minOrNull()
+
+        // Speed
+        val speeds = points.map { it.speedKmh }.filter { it > 0 }
+        val medianSpeed = speeds.sorted().let { if (it.isNotEmpty()) it[it.size / 2] else 0f }
+
+        // Speed consistency
+        val speedStdDev = if (speeds.size >= 2) {
+            val mean = speeds.average()
+            kotlin.math.sqrt(speeds.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else 0f
 
         // Cadence
-        val avgCadence = points.mapNotNull { it.cadence }
-            .takeIf { it.isNotEmpty() }?.average()?.toInt()
+        val cadences = points.mapNotNull { it.cadence }
+        val avgCadence = cadences.takeIf { it.isNotEmpty() }?.average()?.toInt()
 
         // Activity segments
         val activitySegments = points.groupBy { it.activityType }
@@ -76,29 +88,89 @@ class SystemAiProvider @Inject constructor(
             durationMin.toDouble() / (track.distanceMeters / 1000.0)
         } else null
 
+        // Stops
+        var stopCount = 0
+        var totalStopMs = 0L
+        var inStop = false
+        var stopStartIdx = 0
+        for ((idx, pt) in points.withIndex()) {
+            if (pt.speedKmh < 0.5f) {
+                if (!inStop) { inStop = true; stopCount++; stopStartIdx = idx }
+            } else {
+                if (inStop && idx > 0 && stopStartIdx > 0) {
+                    totalStopMs += points[idx].timestamp - points[stopStartIdx].timestamp
+                }
+                inStop = false
+            }
+        }
+        val stopMin = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(totalStopMs)
+
+        // Time of day
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = track.startTime
+        val startHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+
+        // GPS accuracy
+        val accuracies = points.mapNotNull { it.accuracy }
+        val avgAccuracy = accuracies.takeIf { it.isNotEmpty() }?.average()
+        val satellites = points.mapNotNull { it.satellitesUsed }
+        val avgSatellites = satellites.takeIf { it.isNotEmpty() }?.average()?.toInt()
+        val inaccuratePoints = points.count { !it.isAccurate }
+
+        // Bearing
+        val bearings = points.mapNotNull { it.bearing }
+        val bearingStdDev = if (bearings.size >= 2) {
+            val mean = bearings.average()
+            kotlin.math.sqrt(bearings.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else null
+
+        // Wearable device
+        val wearableDevice = healthData.firstOrNull { it.deviceName != null }
+
+        // HR zones
+        val hrZones = if (heartRates.size >= 5) {
+            val z1 = heartRates.count { it < 100 } * 100 / heartRates.size
+            val z2 = heartRates.count { it in 100..119 } * 100 / heartRates.size
+            val z3 = heartRates.count { it in 120..139 } * 100 / heartRates.size
+            val z4 = heartRates.count { it in 140..159 } * 100 / heartRates.size
+            val z5 = heartRates.count { it >= 160 } * 100 / heartRates.size
+            "Z1(<100):${z1}% Z2(100-119):${z2}% Z3(120-139):${z3}% Z4(140-159):${z4}% Z5(160+):${z5}%"
+        } else null
+
         return buildString {
             appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked journey data.")
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
             appendLine("Return JSON with keys: activity (STATIONARY <0.5km/h, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h), confidence (0.0-1.0), summary (4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers), suggestions (3-5 actionable tips referencing actual metrics), healthInsights (heart rate zone analysis and fitness observations if HR data present, else null), lifetimeInsights (if lifetime data provided: 2-3 sentences comparing this trip to historical averages and personal bests, else null).")
             appendLine()
             appendLine("Journey:")
-            appendLine("- Activity: ${track.activityType}")
-            appendLine("- Distance: ${"%.2f".format(track.distanceMeters / 1000)}km")
-            appendLine("- Duration: ${durationMin} min")
-            appendLine("- Avg Speed: ${"%.1f".format(track.avgSpeedKmh)} km/h, Max: ${"%.1f".format(track.maxSpeedKmh)} km/h")
+            if (track.customActivityType != null) {
+                appendLine("- User-set activity: ${track.customActivityType} (treat this as the correct activity type)")
+                appendLine("- Auto-detected activity: ${track.activityType}")
+            } else {
+                appendLine("- Activity: ${track.activityType}")
+            }
+            appendLine("- Time: ${startHour}:00 start, Duration: ${durationMin} min")
+            appendLine("- Distance: ${"%.2f".format(track.distanceMeters / 1000)}km, GPS points: ${points.size}")
+            appendLine("- Speed: avg ${"%.1f".format(track.avgSpeedKmh)}, max ${"%.1f".format(track.maxSpeedKmh)}, median ${"%.1f".format(medianSpeed)}, stdDev ${"%.1f".format(speedStdDev)} km/h")
             if (paceMinPerKm != null && track.avgSpeedKmh < 20) {
                 appendLine("- Pace: ${"%.1f".format(paceMinPerKm)} min/km")
             }
             appendLine("- Calories: ${"%.0f".format(track.caloriesBurned)} kcal")
 
             if (minAlt != null && maxAlt != null) {
-                appendLine("- Elevation: ${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m, gain: ${"%.0f".format(elevationGain)}m")
+                appendLine("- Elevation: ${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m, gain: ${"%.0f".format(elevationGain)}m, loss: ${"%.0f".format(elevationLoss)}m")
             }
             if (avgHr != null) {
-                appendLine("- Heart Rate: avg $avgHr, max $maxHr bpm")
+                appendLine("- Heart Rate: avg $avgHr, max $maxHr, min $minHr bpm")
+                if (hrZones != null) appendLine("- HR Zones: $hrZones")
             }
             if (avgCadence != null) {
-                appendLine("- Cadence: $avgCadence spm")
+                appendLine("- Cadence: avg $avgCadence, min ${cadences.minOrNull()}, max ${cadences.maxOrNull()} spm")
+            }
+            if (stopCount > 0) {
+                append("- Stops: $stopCount")
+                if (stopMin > 0) append(", total stop time: ${stopMin}min")
+                appendLine()
             }
             if (track.startPlaceName != null || track.endPlaceName != null) {
                 appendLine("- Route: ${track.startPlaceName ?: "?"} → ${track.endPlaceName ?: "?"}")
@@ -108,6 +180,18 @@ class SystemAiProvider @Inject constructor(
             }
             if (track.rideCost != null) {
                 appendLine("- Ride Cost: ${"%.2f".format(track.rideCost)}")
+            }
+            if (bearingStdDev != null) {
+                appendLine("- Bearing variability: ${"%.0f".format(bearingStdDev)}° (low = straight, high = turns)")
+            }
+            if (avgAccuracy != null) appendLine("- GPS accuracy: avg ${"%.1f".format(avgAccuracy)}m")
+            if (avgSatellites != null) appendLine("- GPS satellites: avg $avgSatellites")
+            if (inaccuratePoints > 0) appendLine("- Inaccurate GPS points: $inaccuratePoints of ${points.size}")
+            if (track.batteryStart != null || track.batteryEnd != null) {
+                appendLine("- Phone battery: ${track.batteryStart ?: "?"}% → ${track.batteryEnd ?: "?"}%")
+            }
+            if (wearableDevice?.deviceName != null) {
+                appendLine("- Wearable: ${wearableDevice.deviceName} (${wearableDevice.deviceType.name})")
             }
 
             // Lifetime context
@@ -175,5 +259,15 @@ class SystemAiProvider @Inject constructor(
             if (diff > 0) gain += diff
         }
         return gain
+    }
+
+    private fun computeElevationLoss(altitudes: List<Double>): Double {
+        if (altitudes.size < 2) return 0.0
+        var loss = 0.0
+        for (i in 1 until altitudes.size) {
+            val diff = altitudes[i] - altitudes[i - 1]
+            if (diff < 0) loss -= diff
+        }
+        return loss
     }
 }

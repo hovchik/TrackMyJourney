@@ -435,6 +435,23 @@ class CloudProvider @Inject constructor(
             }.joinToString(" → ")
         } else null
 
+        // Bearing analysis
+        val bearings = points.mapNotNull { it.bearing }
+        val avgBearing = bearings.takeIf { it.isNotEmpty() }?.average()
+        val bearingStdDev = if (bearings.size >= 2) {
+            val mean = bearings.average()
+            kotlin.math.sqrt(bearings.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else null
+
+        // Satellite data
+        val satellites = points.mapNotNull { it.satellitesUsed }
+        val avgSatellites = satellites.takeIf { it.isNotEmpty() }?.average()?.toInt()
+        val inaccuratePoints = points.count { !it.isAccurate }
+
+        // Wearable device info
+        val wearableDevice = healthData.firstOrNull { it.deviceName != null }
+        val wearableInfo = wearableDevice?.let { "${it.deviceName} (${it.deviceType.name})" }
+
         return buildString {
             appendLine("Analyze this GPS-tracked activity in detail. Return a JSON object with these keys:")
             appendLine("- activity: one of WALKING (<7 km/h), RUNNING (7-15 km/h), CYCLING (15-40 km/h), DRIVING (40-200 km/h), FLYING (>200 km/h), STATIONARY (<0.5 km/h)")
@@ -445,7 +462,13 @@ class CloudProvider @Inject constructor(
             appendLine("- lifetimeInsights: if lifetime data is provided, 2-3 sentences comparing this trip to the user's historical averages and personal bests (otherwise null)")
             appendLine()
             appendLine("=== TRACK DATA ===")
-            appendLine("Activity: ${track.activityType}")
+            // Show user's manual override if set
+            if (track.customActivityType != null) {
+                appendLine("User-set activity: ${track.customActivityType} (treat this as the correct activity type)")
+                appendLine("Auto-detected activity: ${track.activityType}")
+            } else {
+                appendLine("Activity: ${track.activityType}")
+            }
             appendLine("Time: $timeOfDay start (${startHour}:00), Duration: ${durationMin}m ${durationSec}s")
             appendLine("Distance: ${"%.2f".format(track.distanceMeters / 1000)}km")
             appendLine("Speed: avg ${"%.1f".format(track.avgSpeedKmh)}, max ${"%.1f".format(track.maxSpeedKmh)}, median ${"%.1f".format(medianSpeed)}, stdDev ${"%.1f".format(speedStdDev)} km/h")
@@ -479,6 +502,19 @@ class CloudProvider @Inject constructor(
             if (track.rideCost != null) {
                 appendLine("Ride Cost: ${"%.2f".format(track.rideCost)}")
             }
+            // Bearing / direction consistency
+            if (avgBearing != null && bearingStdDev != null) {
+                appendLine("Bearing: avg ${"%.0f".format(avgBearing)}°, variability ${"%.0f".format(bearingStdDev)}° (low = straight route, high = many turns)")
+            }
+            // GPS quality
+            if (avgSatellites != null) appendLine("GPS satellites: avg $avgSatellites")
+            if (inaccuratePoints > 0) appendLine("Inaccurate GPS points: $inaccuratePoints of ${points.size}")
+            // Battery
+            if (track.batteryStart != null || track.batteryEnd != null) {
+                appendLine("Phone battery: ${track.batteryStart ?: "?"}% → ${track.batteryEnd ?: "?"}%")
+            }
+            // Wearable device
+            if (wearableInfo != null) appendLine("Wearable: $wearableInfo")
 
             // Lifetime context for comparative analysis
             if (lifetimeContext != null && lifetimeContext.totalTracks >= 2) {

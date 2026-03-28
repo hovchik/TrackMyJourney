@@ -209,13 +209,34 @@ class CustomLocalModelProvider @Inject constructor(
         val cadences = points.mapNotNull { it.cadence }
         val avgCadence = cadences.takeIf { it.isNotEmpty() }?.average()?.toInt()
 
+        // GPS accuracy
+        val accuracies = points.mapNotNull { it.accuracy }
+        val avgAccuracy = accuracies.takeIf { it.isNotEmpty() }?.average()
+        val satellites = points.mapNotNull { it.satellitesUsed }
+        val avgSatellites = satellites.takeIf { it.isNotEmpty() }?.average()?.toInt()
+
+        // Bearing variability
+        val bearings = points.mapNotNull { it.bearing }
+        val bearingStdDev = if (bearings.size >= 2) {
+            val mean = bearings.average()
+            kotlin.math.sqrt(bearings.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else null
+
+        // Wearable
+        val wearableDevice = snapshot.healthData.firstOrNull { it.deviceName != null }
+
         // Build a compact structured prompt that fits in small context windows
         // IMPORTANT: instruct model to output ONLY a JSON object, no prose
         return buildString {
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
             appendLine("Analyze this GPS trip and return: {\"activity\":\"STATIONARY(<0.5km/h)|WALKING(<7)|RUNNING(7-15)|CYCLING(15-40)|DRIVING(40-200)|FLYING(>200km/h)\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\",\"lifetimeInsights\":\"comparison vs history or null\"}")
             appendLine("---")
-            appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size} time:${startHour}h")
+            // Show user's manual override if set
+            if (track.customActivityType != null) {
+                appendLine("userType:${track.customActivityType} autoType:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size} time:${startHour}h")
+            } else {
+                appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size} time:${startHour}h")
+            }
             append("spd avg:${"%.1f".format(track.avgSpeedKmh)} max:${"%.1f".format(track.maxSpeedKmh)} med:${"%.1f".format(medianSpeed)}")
             if (speedP90 != null) append(" p90:${"%.1f".format(speedP90)}")
             append(" sd:${"%.1f".format(speedStdDev)}")
@@ -238,6 +259,16 @@ class CustomLocalModelProvider @Inject constructor(
             }
             if (track.rideCost != null) {
                 appendLine("cost:${"%.2f".format(track.rideCost)}")
+            }
+            if (avgAccuracy != null) append("gps:${"%.0f".format(avgAccuracy)}m")
+            if (avgSatellites != null) append(" sat:$avgSatellites")
+            if (avgAccuracy != null || avgSatellites != null) appendLine()
+            if (bearingStdDev != null) appendLine("turns:${"%.0f".format(bearingStdDev)}°")
+            if (track.batteryStart != null && track.batteryEnd != null) {
+                appendLine("bat:${track.batteryStart}→${track.batteryEnd}%")
+            }
+            if (wearableDevice?.deviceName != null) {
+                appendLine("wear:${wearableDevice.deviceName}")
             }
             // Compact lifetime context
             if (lifetimeContext != null && lifetimeContext.totalTracks >= 2) {

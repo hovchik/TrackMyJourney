@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.trackjourney.data.bluetooth.WearableConnectionState
 import com.trackjourney.data.bluetooth.WearableManager
 import com.trackjourney.data.bluetooth.WearableReading
+import com.trackjourney.data.ai.models.AiExecutionMode
+import com.trackjourney.data.ai.models.AiPreferences
 import com.trackjourney.data.ai.models.LocalAiModel
 import com.trackjourney.data.ai.models.LocalModelManager
 import com.trackjourney.data.local.SettingsDataStore
@@ -25,7 +27,8 @@ class SettingsViewModel @Inject constructor(
     private val repository: TrackRepository,
     private val wearableManager: WearableManager,
     private val settingsDataStore: SettingsDataStore,
-    private val localModelManager: LocalModelManager
+    private val localModelManager: LocalModelManager,
+    private val aiPreferences: AiPreferences
 ) : ViewModel() {
 
     val settings: StateFlow<TrackingSettings> = repository.settings
@@ -118,7 +121,13 @@ class SettingsViewModel @Inject constructor(
     fun updateAiMode(mode: AiMode) {
         viewModelScope.launch {
             repository.updateSettings { updateAiMode(mode) }
-            if (mode == AiMode.LOCAL_MODEL) checkLocalModelReachability()
+            // Sync with AiPreferences so AiProviderSelector picks the right provider
+            val executionMode = when (mode) {
+                AiMode.LOCAL_MODEL -> AiExecutionMode.CUSTOM_LOCAL
+                AiMode.CLOUD_AI -> AiExecutionMode.CLOUD
+                else -> AiExecutionMode.CUSTOM_LOCAL
+            }
+            aiPreferences.setSelectedMode(executionMode)
         }
     }
 
@@ -137,6 +146,16 @@ class SettingsViewModel @Inject constructor(
             repository.updateSettings { updateCloudAiEndpoint(endpoint) }
             repository.updateSettings { updateCloudAiModel(model) }
             repository.updateSettings { updateAiMode(AiMode.CLOUD_AI) }
+            // Sync with AiPreferences so AiProviderSelector uses Cloud
+            aiPreferences.setSelectedMode(AiExecutionMode.CLOUD)
+            aiPreferences.setCloudApiKey(apiKey)
+            // Map CloudAiProvider to CloudProviderType
+            val providerType = when (provider) {
+                CloudAiProvider.ANTHROPIC -> "CLAUDE"
+                CloudAiProvider.OPENAI -> "OPENAI"
+                else -> provider.name
+            }
+            aiPreferences.setCloudProviderType(providerType)
             _showCloudAiWizard.value = false
         }
     }

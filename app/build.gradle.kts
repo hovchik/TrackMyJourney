@@ -98,7 +98,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // MediaPipe LLM Inference (on-device model execution)
-    implementation("com.google.mediapipe:tasks-genai:0.10.22")
+    implementation("com.google.mediapipe:tasks-genai:0.10.24")
 
     // Google Play Billing
     implementation("com.android.billingclient:billing-ktx:6.1.0")

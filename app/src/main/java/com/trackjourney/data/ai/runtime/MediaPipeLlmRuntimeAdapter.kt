@@ -10,7 +10,7 @@ import javax.inject.Singleton
 
 /**
  * Runtime adapter for MediaPipe LLM Inference API.
- * Loads GGUF-format models for on-device text generation.
+ * Loads .task format models for on-device text generation.
  */
 @Singleton
 class MediaPipeLlmRuntimeAdapter @Inject constructor(
@@ -19,7 +19,7 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
 
     companion object {
         private const val TAG = "MediaPipeLlmRuntime"
-        private const val MAX_TOKENS = 4096
+        private const val DEFAULT_MAX_TOKENS = 1024
     }
 
     override val runtimeId: String = "mediapipe_llm"
@@ -29,16 +29,33 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
     private var llmInference: LlmInference? = null
     private var isLoaded: Boolean = false
 
+    /**
+     * Extracts the KV cache size from the model filename.
+     * e.g. "DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv1280.task" -> 1280
+     * Falls back to [DEFAULT_MAX_TOKENS] if not found.
+     */
+    private fun extractMaxTokensFromPath(path: String): Int {
+        val ekvMatch = Regex("ekv(\\d+)").find(path)
+        val ekvSize = ekvMatch?.groupValues?.get(1)?.toIntOrNull()
+        if (ekvSize != null) {
+            Log.i(TAG, "Detected KV cache size from filename: $ekvSize tokens")
+            return ekvSize
+        }
+        Log.i(TAG, "No KV cache size in filename, using default: $DEFAULT_MAX_TOKENS tokens")
+        return DEFAULT_MAX_TOKENS
+    }
+
     fun loadModel(path: String) {
         // Release previous model if any
         release()
 
         modelPath = path
-        Log.i(TAG, "Loading model from: $path")
+        val maxTokens = extractMaxTokensFromPath(path)
+        Log.i(TAG, "Loading model from: $path (maxTokens=$maxTokens)")
         try {
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(path)
-                .setMaxTokens(MAX_TOKENS)
+                .setMaxTokens(maxTokens)
                 .build()
 
             llmInference = LlmInference.createFromOptions(context, options)

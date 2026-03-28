@@ -25,7 +25,7 @@ class LiteRtRuntimeAdapter @Inject constructor(
 
     companion object {
         private const val TAG = "LiteRtRuntime"
-        private const val MAX_TOKENS = 4096
+        private const val DEFAULT_MAX_TOKENS = 1024
     }
 
     override val runtimeId: String = "litert"
@@ -35,17 +35,21 @@ class LiteRtRuntimeAdapter @Inject constructor(
     private var llmInference: LlmInference? = null
     private var isLoaded: Boolean = false
 
+    private fun extractMaxTokensFromPath(path: String): Int {
+        val ekvMatch = Regex("ekv(\\d+)").find(path)
+        return ekvMatch?.groupValues?.get(1)?.toIntOrNull() ?: DEFAULT_MAX_TOKENS
+    }
+
     fun loadModel(path: String) {
         release()
 
         modelPath = path
-        Log.i(TAG, "Loading model from: $path")
+        val maxTokens = extractMaxTokensFromPath(path)
+        Log.i(TAG, "Loading model from: $path (maxTokens=$maxTokens)")
         try {
-            // Use MediaPipe LLM Inference as the backend since standard TFLite
-            // Interpreter cannot do autoregressive text generation
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(path)
-                .setMaxTokens(MAX_TOKENS)
+                .setMaxTokens(maxTokens)
                 .build()
 
             llmInference = LlmInference.createFromOptions(context, options)

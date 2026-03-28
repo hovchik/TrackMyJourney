@@ -73,11 +73,40 @@ class CustomLocalModelProvider @Inject constructor(
             if (missingKeys.isNotEmpty()) {
                 Log.w(TAG, "AI response missing keys: $missingKeys")
             }
+            return json
         } catch (e: Exception) {
             Log.e(TAG, "AI response is not valid JSON: ${e.message}")
             if (BuildConfig.DEBUG) Log.d(TAG, "Raw response: $json")
+            // Model returned plain text instead of JSON — build a fallback JSON from the raw text
+            return buildFallbackJson(json)
         }
-        return json
+    }
+
+    /**
+     * Constructs a valid JSON response from plain-text AI output that failed JSON parsing.
+     * Attempts to extract activity type and uses the raw text as the summary.
+     */
+    private fun buildFallbackJson(rawText: String): String {
+        val upper = rawText.uppercase()
+        val activity = listOf("WALKING", "RUNNING", "CYCLING", "DRIVING", "FLYING", "STATIONARY")
+            .firstOrNull { it in upper } ?: "UNKNOWN"
+
+        // Clean up the raw text for use as summary (first 300 chars, single line)
+        val summary = rawText
+            .replace("\n", " ")
+            .replace("\\s+".toRegex(), " ")
+            .trim()
+            .take(300)
+
+        val fallback = JSONObject().apply {
+            put("activity", activity)
+            put("confidence", 0.3)
+            put("summary", summary)
+            put("suggestions", org.json.JSONArray())
+            put("healthInsights", JSONObject.NULL)
+        }
+        Log.w(TAG, "Built fallback JSON from plain-text response, detected activity: $activity")
+        return fallback.toString()
     }
 
     override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints): String {
@@ -165,9 +194,11 @@ class CustomLocalModelProvider @Inject constructor(
             durationMin.toDouble() / (track.distanceMeters / 1000.0)
         } else null
 
-        // Build a compact structured prompt that fits in small context windows (~200 tokens)
+        // Build a compact structured prompt that fits in small context windows
+        // IMPORTANT: instruct model to output ONLY a JSON object, no prose
         return buildString {
-            appendLine("Analyze GPS trip. JSON only: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"...\",\"suggestions\":[\"...\"],\"healthInsights\":\"...or null\"}")
+            appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
+            appendLine("Analyze this GPS trip and return: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"3-4 sentences analyzing performance, terrain, and patterns with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\"}")
             appendLine("---")
             appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size}")
             append("spd avg:${"%.1f".format(track.avgSpeedKmh)} max:${"%.1f".format(track.maxSpeedKmh)} med:${"%.1f".format(medianSpeed)}")
@@ -188,6 +219,11 @@ class CustomLocalModelProvider @Inject constructor(
             if (track.startPlaceName != null || track.endPlaceName != null) {
                 appendLine("route:${track.startPlaceName ?: "?"}→${track.endPlaceName ?: "?"}")
             }
+            if (track.rideCost != null) {
+                appendLine("cost:${"%.2f".format(track.rideCost)}")
+            }
+            appendLine("---")
+            appendLine("IMPORTANT: Output ONLY valid JSON. No explanations, no markdown, no text before or after the JSON object.")
         }
     }
 

@@ -521,7 +521,9 @@ class TrackRepository(
      */
     private fun parseProviderResponse(trackId: String, responseJson: String): AiAnalysis? {
         return try {
-            val json = org.json.JSONObject(responseJson)
+            // Try to extract JSON if the response contains extra text around it
+            val cleaned = extractJsonObject(responseJson)
+            val json = org.json.JSONObject(cleaned)
 
             // Skip placeholder responses from unconfigured cloud provider
             if (json.optString("status") == "api_call_pending") return null
@@ -535,7 +537,9 @@ class TrackRepository(
 
             val suggestionsArray = json.optJSONArray("suggestions")
             val suggestions = if (suggestionsArray != null) {
-                (0 until suggestionsArray.length()).map { suggestionsArray.getString(it) }
+                (0 until suggestionsArray.length()).mapNotNull { i ->
+                    try { suggestionsArray.getString(i) } catch (_: Exception) { suggestionsArray.get(i)?.toString() }
+                }
             } else emptyList()
 
             AiAnalysis(
@@ -550,6 +554,28 @@ class TrackRepository(
             Log.e(TAG, "Failed to parse provider response: ${e.message}")
             null
         }
+    }
+
+    /**
+     * Extracts a JSON object string from text that may contain surrounding prose or markdown.
+     */
+    private fun extractJsonObject(text: String): String {
+        var cleaned = text.trim()
+        // Strip markdown code blocks
+        if (cleaned.startsWith("```")) {
+            val firstNewline = cleaned.indexOf('\n')
+            if (firstNewline != -1) cleaned = cleaned.substring(firstNewline + 1)
+            val lastBackticks = cleaned.lastIndexOf("```")
+            if (lastBackticks != -1) cleaned = cleaned.substring(0, lastBackticks)
+            cleaned = cleaned.trim()
+        }
+        // Find JSON object boundaries
+        val jsonStart = cleaned.indexOf('{')
+        val jsonEnd = cleaned.lastIndexOf('}')
+        if (jsonStart != -1 && jsonEnd > jsonStart) {
+            return cleaned.substring(jsonStart, jsonEnd + 1)
+        }
+        return cleaned
     }
 
     suspend fun reAnalyzeRecentTracks(limit: Int = 5): Int {

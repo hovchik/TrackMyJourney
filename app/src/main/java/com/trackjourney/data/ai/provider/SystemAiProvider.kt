@@ -78,7 +78,8 @@ class SystemAiProvider @Inject constructor(
 
         return buildString {
             appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked journey data.")
-            appendLine("Return JSON with keys: activity (WALKING/RUNNING/CYCLING/DRIVING/FLYING/STATIONARY), confidence (0.0-1.0), summary (2-3 sentences with specific numbers from the data), suggestions (2-3 actionable tips referencing actual metrics), healthInsights (heart rate zone analysis if HR data present, else null).")
+            appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
+            appendLine("Return JSON with keys: activity (WALKING/RUNNING/CYCLING/DRIVING/FLYING/STATIONARY), confidence (0.0-1.0), summary (3-4 sentences analyzing performance, terrain, pace consistency, and patterns with specific numbers from the data), suggestions (3-5 actionable tips referencing actual metrics), healthInsights (heart rate zone analysis and fitness observations if HR data present, else null).")
             appendLine()
             appendLine("Journey:")
             appendLine("- Activity: ${track.activityType}")
@@ -110,7 +111,8 @@ class SystemAiProvider @Inject constructor(
             }
 
             appendLine()
-            appendLine("Be specific — reference the actual numbers. If the activity type seems wrong for the speed, note it. Return valid JSON only.")
+            appendLine("Be specific — reference the actual numbers. If the activity type seems wrong for the speed, note it.")
+            appendLine("IMPORTANT: Output ONLY valid JSON. No explanations, no markdown, no text before or after the JSON object.")
         }
     }
 

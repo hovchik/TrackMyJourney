@@ -157,7 +157,7 @@ class CloudProvider @Inject constructor(
                 })
             })
             put("temperature", 0.3)
-            put("max_tokens", 1024)
+            put("max_tokens", 2048)
         }
 
         val response = executeHttpRequest(
@@ -178,7 +178,7 @@ class CloudProvider @Inject constructor(
     private fun callAnthropicApi(prompt: String, key: String): String {
         val requestBody = JSONObject().apply {
             put("model", getModel())
-            put("max_tokens", 1024)
+            put("max_tokens", 2048)
             put("system", "You are a fitness and activity analysis AI. Always respond with valid JSON only, no markdown.")
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
@@ -346,21 +346,69 @@ class CloudProvider @Inject constructor(
             (durationMin + durationSec / 60.0) / (track.distanceMeters / 1000.0)
         } else null
 
+        val elevationLoss = computeElevationLoss(altitudes)
+        val minAlt = altitudes.minOrNull()
+        val maxAlt = altitudes.maxOrNull()
+
+        // Stops analysis
+        var stopCount = 0
+        var totalStopMs = 0L
+        var inStop = false
+        var stopStartIdx = 0
+        for ((idx, pt) in points.withIndex()) {
+            if (pt.speedKmh < 0.5f) {
+                if (!inStop) { inStop = true; stopCount++; stopStartIdx = idx }
+            } else {
+                if (inStop && idx > 0 && stopStartIdx > 0) {
+                    totalStopMs += points[idx].timestamp - points[stopStartIdx].timestamp
+                }
+                inStop = false
+            }
+        }
+        val stopMin = TimeUnit.MILLISECONDS.toMinutes(totalStopMs)
+
+        // Activity segments
+        val activitySegments = points.groupBy { it.activityType }
+            .mapValues { it.value.size }
+            .entries.sortedByDescending { it.value }
+
         return buildString {
-            appendLine("Analyze this GPS-tracked activity. Return JSON: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"2-3 sentences\",\"suggestions\":[\"2-4 tips\"],\"healthInsights\":\"or null\"}")
+            appendLine("Analyze this GPS-tracked activity in detail. Return a JSON object with these keys:")
+            appendLine("- activity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY")
+            appendLine("- confidence: 0.0 to 1.0")
+            appendLine("- summary: 3-4 sentences analyzing performance, terrain, pace consistency, and patterns with specific numbers from the data")
+            appendLine("- suggestions: array of 3-5 actionable tips referencing actual metrics from this trip")
+            appendLine("- healthInsights: heart rate zone analysis and fitness observations if HR data present, otherwise null")
             appendLine()
             appendLine("Activity: ${track.activityType}")
             appendLine("Distance: ${"%.2f".format(track.distanceMeters / 1000)}km, Duration: ${durationMin}m ${durationSec}s")
             appendLine("Speed: avg ${"%.1f".format(track.avgSpeedKmh)}, max ${"%.1f".format(track.maxSpeedKmh)}, median ${"%.1f".format(medianSpeed)} km/h")
             appendLine("Calories: ${"%.0f".format(track.caloriesBurned)} kcal")
+            appendLine("GPS points: ${points.size}")
             if (paceMinPerKm != null && track.avgSpeedKmh < 20) appendLine("Pace: ${"%.1f".format(paceMinPerKm)} min/km")
-            if (elevationGain > 0) appendLine("Elevation gain: ${"%.0f".format(elevationGain)}m")
+            if (elevationGain > 0 || elevationLoss > 0) {
+                append("Elevation: gain ${"%.0f".format(elevationGain)}m, loss ${"%.0f".format(elevationLoss)}m")
+                if (minAlt != null && maxAlt != null) append(", range ${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m")
+                appendLine()
+            }
             if (avgHr != null) appendLine("Heart Rate: avg $avgHr, max $maxHr bpm")
             if (avgCadence != null) appendLine("Cadence: $avgCadence spm")
+            if (stopCount > 0) {
+                append("Stops: $stopCount")
+                if (stopMin > 0) append(", total stop time: ${stopMin}min")
+                appendLine()
+            }
             if (track.startPlaceName != null || track.endPlaceName != null) {
                 appendLine("Route: ${track.startPlaceName ?: "?"} → ${track.endPlaceName ?: "?"}")
             }
-            appendLine("Return valid JSON only.")
+            if (activitySegments.size > 1) {
+                appendLine("Segments: ${activitySegments.joinToString { "${it.key}(${if (points.isNotEmpty()) (it.value * 100) / points.size else 0}%)" }}")
+            }
+            if (track.rideCost != null) {
+                appendLine("Ride Cost: ${"%.2f".format(track.rideCost)}")
+            }
+            appendLine()
+            appendLine("Be specific — reference the actual numbers. If the activity type seems wrong for the speed, note it. Return valid JSON only, no markdown.")
         }
     }
 
@@ -384,5 +432,15 @@ class CloudProvider @Inject constructor(
             if (diff > 0) gain += diff
         }
         return gain
+    }
+
+    private fun computeElevationLoss(altitudes: List<Double>): Double {
+        if (altitudes.size < 2) return 0.0
+        var loss = 0.0
+        for (i in 1 until altitudes.size) {
+            val diff = altitudes[i] - altitudes[i - 1]
+            if (diff < 0) loss -= diff
+        }
+        return loss
     }
 }

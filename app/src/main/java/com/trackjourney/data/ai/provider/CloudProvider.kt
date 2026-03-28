@@ -291,18 +291,27 @@ class CloudProvider @Inject constructor(
      * in markdown code blocks or include extra text.
      */
     private fun extractJsonFromContent(content: String): String {
-        // Try to find JSON in a code block first
-        val codeBlockRegex = Regex("```(?:json)?\\s*\\n?(\\{[\\s\\S]*?})\\s*\\n?```")
-        codeBlockRegex.find(content)?.let { match ->
-            return match.groupValues[1].trim()
+        // Strip markdown code blocks if present: ```json ... ``` or ``` ... ```
+        var cleaned = content.trim()
+        if (cleaned.startsWith("```")) {
+            // Remove opening ``` line (possibly with "json" label)
+            val firstNewline = cleaned.indexOf('\n')
+            if (firstNewline != -1) {
+                cleaned = cleaned.substring(firstNewline + 1)
+            }
+            // Remove closing ```
+            val lastBackticks = cleaned.lastIndexOf("```")
+            if (lastBackticks != -1) {
+                cleaned = cleaned.substring(0, lastBackticks)
+            }
+            cleaned = cleaned.trim()
         }
 
-        // Try to find a raw JSON object
-        val jsonStart = content.indexOf('{')
-        val jsonEnd = content.lastIndexOf('}')
+        // Find the JSON object
+        val jsonStart = cleaned.indexOf('{')
+        val jsonEnd = cleaned.lastIndexOf('}')
         if (jsonStart != -1 && jsonEnd > jsonStart) {
-            val candidate = content.substring(jsonStart, jsonEnd + 1)
-            // Validate it parses as JSON
+            val candidate = cleaned.substring(jsonStart, jsonEnd + 1)
             try {
                 JSONObject(candidate)
                 return candidate
@@ -311,8 +320,7 @@ class CloudProvider @Inject constructor(
             }
         }
 
-        // Return as-is and let the caller handle it
-        return content
+        return cleaned
     }
 
     // ── Prompt builders ─────────────────────────────────────────────────────

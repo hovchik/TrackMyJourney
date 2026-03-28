@@ -545,6 +545,18 @@ class TrackRepository(
         }
     }
 
+    suspend fun reAnalyzeRecentTracks(limit: Int = 5): Int {
+        var analyzed = 0
+        val tracks = trackDao.getAllTracks().first().take(limit)
+        for (track in tracks) {
+            if (!track.isActive) {
+                val result = analyzeTrack(track.id)
+                if (result != null) analyzed++
+            }
+        }
+        return analyzed
+    }
+
     fun getAnalysisForTrack(trackId: String): Flow<AiAnalysis?> =
         aiAnalysisDao.observeLatestAnalysis(trackId)
 

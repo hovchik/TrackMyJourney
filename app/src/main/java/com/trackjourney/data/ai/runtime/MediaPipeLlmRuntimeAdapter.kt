@@ -19,7 +19,7 @@ class MediaPipeLlmRuntimeAdapter @Inject constructor(
 
     companion object {
         private const val TAG = "MediaPipeLlmRuntime"
-        private const val MAX_TOKENS = 1024
+        private const val MAX_TOKENS = 2048
     }
 
     override val runtimeId: String = "mediapipe_llm"

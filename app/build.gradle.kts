@@ -101,6 +101,9 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 
+    // MediaPipe LLM Inference (on-device GGUF model execution)
+    implementation("com.google.mediapipe:tasks-genai:0.10.22")
+
     // Google Play Billing
     implementation("com.android.billingclient:billing-ktx:6.1.0")
 

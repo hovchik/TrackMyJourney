@@ -32,8 +32,11 @@ class CustomLocalModelProvider @Inject constructor(
     override fun isAvailable(): Boolean {
         if (!isConfigured()) return false
         val activeModel = modelManager.getActiveModelSync() ?: return false
-        val runtime = resolveRuntime(activeModel.runtimeType)
-        return runtime?.isAvailable() == true
+        // Model is available if it's installed with a local path and has a compatible runtime
+        // The runtime will be loaded on first inference via ensureModelLoaded()
+        return activeModel.localPath != null &&
+                activeModel.installState == com.trackjourney.data.ai.models.ModelInstallState.INSTALLED &&
+                resolveRuntime(activeModel.runtimeType) != null
     }
 
     private fun resolveRuntime(runtimeType: String): LocalModelRuntime? {

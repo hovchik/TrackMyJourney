@@ -146,6 +146,10 @@ class TracksViewModel @Inject constructor(
         _insightAnalysis.value = null
         _insightLoading.value = false
     }
+
+    fun updateTrackIcon(trackId: String, activityType: ActivityType) {
+        viewModelScope.launch { repository.updateTrackActivityType(trackId, activityType) }
+    }
 }
 
 // ─── Sort options ────────────────────────────────────
@@ -399,6 +403,7 @@ fun TracksScreen(
                             insightTrackId = track.id
                             viewModel.loadAnalysisForTrack(track.id)
                         },
+                        onChangeIcon = { type -> viewModel.updateTrackIcon(track.id, type) },
                         isTrackingActive = isTracking
                     )
                 }
@@ -577,10 +582,12 @@ private fun TrackCard(
     onDelete: () -> Unit,
     onReanalyze: () -> Unit,
     onInsight: () -> Unit,
+    onChangeIcon: (ActivityType) -> Unit,
     isTrackingActive: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showIconPicker by remember { mutableStateOf(false) }
 
     val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()) }
     val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
@@ -616,12 +623,14 @@ private fun TrackCard(
                     Surface(
                         color = color.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.size(48.dp)
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clickable { showIconPicker = true }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 icon,
-                                contentDescription = null,
+                                contentDescription = "Change activity icon",
                                 tint = color,
                                 modifier = Modifier.size(26.dp)
                             )
@@ -939,6 +948,17 @@ private fun TrackCard(
             }
         )
     }
+
+    if (showIconPicker) {
+        ActivityIconPickerDialog(
+            currentActivity = track.activityType,
+            onActivitySelected = { selectedType ->
+                onChangeIcon(selectedType)
+                showIconPicker = false
+            },
+            onDismiss = { showIconPicker = false }
+        )
+    }
 }
 
 // ─── STAT CHIP ───────────────────────────────────────
@@ -1230,7 +1250,8 @@ private fun AiInsightDialog(
                                 val arr = JSONArray(analysis.suggestions)
                                 (0 until arr.length()).map { arr.getString(it) }
                             } catch (_: Exception) {
-                                listOf(analysis.suggestions)
+                                // Suggestions are stored pipe-delimited
+                                analysis.suggestions.split("|").filter { it.isNotBlank() }
                             }
                             suggestions.forEach { suggestion ->
                                 Row(
@@ -1286,6 +1307,41 @@ private fun AiInsightDialog(
                             }
                         }
                     }
+
+                    // Lifetime insights
+                    if (!analysis.lifetimeInsights.isNullOrBlank()) {
+                        Surface(
+                            color = Primary.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    Icons.Filled.Timeline,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        "Lifetime Comparison",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Primary
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        analysis.lifetimeInsights,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 Text(
@@ -1298,6 +1354,101 @@ private fun AiInsightDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text("Close")
+            }
+        }
+    )
+}
+
+// ─── ACTIVITY ICON PICKER DIALOG ────────────────────
+
+@Composable
+private fun ActivityIconPickerDialog(
+    currentActivity: ActivityType,
+    onActivitySelected: (ActivityType) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val selectableTypes = listOf(
+        ActivityType.WALKING,
+        ActivityType.RUNNING,
+        ActivityType.CYCLING,
+        ActivityType.DRIVING,
+        ActivityType.FLYING,
+        ActivityType.HIKING,
+        ActivityType.STATIONARY
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Filled.SwapHoriz,
+                contentDescription = null,
+                tint = Primary,
+                modifier = Modifier.size(28.dp)
+            )
+        },
+        title = { Text("Change Activity Icon", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "Select the activity type for this track:",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                selectableTypes.forEach { type ->
+                    val color = activityColor(type)
+                    val isSelected = type == currentActivity
+                    Surface(
+                        color = if (isSelected) color.copy(alpha = 0.15f)
+                               else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onActivitySelected(type) }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = color.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        activityIcon(type),
+                                        contentDescription = null,
+                                        tint = color,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                type.name.lowercase().replaceFirstChar { it.uppercase() },
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 15.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = color,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
             }
         }
     )

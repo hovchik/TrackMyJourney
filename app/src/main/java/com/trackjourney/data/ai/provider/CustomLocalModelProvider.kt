@@ -109,7 +109,7 @@ class CustomLocalModelProvider @Inject constructor(
         return fallback.toString()
     }
 
-    override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints): String {
+    override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext?): String {
         val activeModel = modelManager.getActiveModelSync()
             ?: throw IllegalStateException("No active local model configured")
         val runtime = resolveRuntime(activeModel.runtimeType)
@@ -119,7 +119,7 @@ class CustomLocalModelProvider @Inject constructor(
             ?: ModelCatalog.findById(activeModel.modelId)?.downloadUrl
         ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, downloadUrl)
 
-        val prompt = buildDailyPrompt(snapshot)
+        val prompt = buildDailyPrompt(snapshot, lifetimeContext)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily] (model=${activeModel.displayName}):\n$prompt")
         val rawOutput = runtime.runPrompt(prompt)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Response [daily] (model=${activeModel.displayName}):\n$rawOutput")
@@ -145,7 +145,7 @@ class CustomLocalModelProvider @Inject constructor(
         return validateJsonResponse(json, listOf("totalDistance", "totalCalories", "dominantActivity", "weekSummary", "improvements"))
     }
 
-    private fun buildDailyPrompt(snapshot: TrackWithPoints): String {
+    private fun buildDailyPrompt(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext? = null): String {
         val track = snapshot.track
         val points = snapshot.points
         val healthData = snapshot.healthData
@@ -194,15 +194,31 @@ class CustomLocalModelProvider @Inject constructor(
             durationMin.toDouble() / (track.distanceMeters / 1000.0)
         } else null
 
+        // Speed consistency
+        val speedStdDev = if (speeds.size >= 2) {
+            val mean = speeds.average()
+            kotlin.math.sqrt(speeds.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else 0f
+
+        // Time of day
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = track.startTime
+        val startHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+
+        // Cadence
+        val cadences = points.mapNotNull { it.cadence }
+        val avgCadence = cadences.takeIf { it.isNotEmpty() }?.average()?.toInt()
+
         // Build a compact structured prompt that fits in small context windows
         // IMPORTANT: instruct model to output ONLY a JSON object, no prose
         return buildString {
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Analyze this GPS trip and return: {\"activity\":\"STATIONARY(<0.5km/h)|WALKING(<7)|RUNNING(7-15)|CYCLING(15-40)|DRIVING(40-200)|FLYING(>200km/h)\",\"confidence\":0.0-1.0,\"summary\":\"3-4 sentences analyzing performance, terrain, and patterns with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\"}")
+            appendLine("Analyze this GPS trip and return: {\"activity\":\"STATIONARY(<0.5km/h)|WALKING(<7)|RUNNING(7-15)|CYCLING(15-40)|DRIVING(40-200)|FLYING(>200km/h)\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\",\"lifetimeInsights\":\"comparison vs history or null\"}")
             appendLine("---")
-            appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size}")
+            appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size} time:${startHour}h")
             append("spd avg:${"%.1f".format(track.avgSpeedKmh)} max:${"%.1f".format(track.maxSpeedKmh)} med:${"%.1f".format(medianSpeed)}")
             if (speedP90 != null) append(" p90:${"%.1f".format(speedP90)}")
+            append(" sd:${"%.1f".format(speedStdDev)}")
             appendLine(" km/h")
             if (paceMinPerKm != null && track.avgSpeedKmh < 20) appendLine("pace:${"%.1f".format(paceMinPerKm)}min/km")
             append("stops:$stopCount")
@@ -216,11 +232,16 @@ class CustomLocalModelProvider @Inject constructor(
             if (avgHr != null) {
                 appendLine("hr avg:$avgHr max:$maxHr min:$minHr bpm")
             }
+            if (avgCadence != null) appendLine("cadence:$avgCadence spm")
             if (track.startPlaceName != null || track.endPlaceName != null) {
                 appendLine("route:${track.startPlaceName ?: "?"}→${track.endPlaceName ?: "?"}")
             }
             if (track.rideCost != null) {
                 appendLine("cost:${"%.2f".format(track.rideCost)}")
+            }
+            // Compact lifetime context
+            if (lifetimeContext != null && lifetimeContext.totalTracks >= 2) {
+                appendLine("history: ${lifetimeContext.totalTracks}trips avg:${"%.1f".format(lifetimeContext.avgDistanceKm)}km ${"%.1f".format(lifetimeContext.avgSpeedKmh)}km/h best:${"%.1f".format(lifetimeContext.bestDistanceKm)}km ${"%.1f".format(lifetimeContext.bestSpeedKmh)}km/h")
             }
             appendLine("---")
             appendLine("IMPORTANT: Output ONLY valid JSON. No explanations, no markdown, no text before or after the JSON object.")

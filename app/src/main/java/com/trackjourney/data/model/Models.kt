@@ -59,7 +59,10 @@ data class TrackSession(
     val isActive: Boolean = true,
 
     @ColumnInfo(name = "ride_cost")
-    val rideCost: Double? = null
+    val rideCost: Double? = null,
+
+    @ColumnInfo(name = "custom_activity_type")
+    val customActivityType: ActivityType? = null
 )
 
 // ─────────────────────────────────────────────────────────
@@ -206,7 +209,10 @@ data class AiAnalysis(
     val healthInsights: String? = null,
 
     @ColumnInfo(name = "segment_activities")
-    val segmentActivities: String? = null     // JSON: [{start, end, activity}]
+    val segmentActivities: String? = null,     // JSON: [{start, end, activity}]
+
+    @ColumnInfo(name = "lifetime_insights")
+    val lifetimeInsights: String? = null       // Comparison vs historical data
 )
 
 // ─────────────────────────────────────────────────────────

@@ -506,12 +506,56 @@ class TrackRepository(
             val track = trackDao.getTrackById(trackId) ?: return null
             val snapshot = TrackWithPoints(track, points, healthData)
 
+            // Build lifetime context from historical tracks
+            val lifetimeContext = buildLifetimeContext(track)
+
             Log.i(TAG, "Analyzing track with ${provider.displayName} (${selection.mode}): ${selection.reason}")
-            val responseJson = provider.analyzeDailyBehavior(snapshot)
+            val responseJson = provider.analyzeDailyBehavior(snapshot, lifetimeContext)
 
             parseProviderResponse(trackId, responseJson)
         } catch (e: Exception) {
             Log.w(TAG, "Provider analysis failed, will use local engine: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Builds lifetime context from all historical tracks for comparative AI analysis.
+     */
+    private suspend fun buildLifetimeContext(currentTrack: TrackSession): com.trackjourney.data.ai.provider.LifetimeContext? {
+        return try {
+            val stats = getStats()
+            if (stats.totalTracks < 2) return null
+
+            val allTracks = trackDao.getAllTracks().first().filter { !it.isActive && it.id != currentTrack.id }
+            if (allTracks.isEmpty()) return null
+
+            val avgDurationMs = allTracks.mapNotNull { t ->
+                val end = t.endTime ?: return@mapNotNull null
+                end - t.startTime
+            }.takeIf { it.isNotEmpty() }?.average()?.toLong() ?: 0L
+
+            val avgHr = allTracks.mapNotNull { it.avgHeartRate }.takeIf { it.isNotEmpty() }?.average()?.toInt()
+
+            val sameActivityTracks = allTracks.filter { it.activityType == currentTrack.activityType }
+
+            com.trackjourney.data.ai.provider.LifetimeContext(
+                totalTracks = stats.totalTracks,
+                totalDistanceKm = stats.totalDistanceKm,
+                avgDistanceKm = if (stats.totalTracks > 0) stats.totalDistanceKm / stats.totalTracks else 0.0,
+                avgSpeedKmh = stats.averageSpeedKmh,
+                avgDurationMin = avgDurationMs / 60_000,
+                totalCalories = stats.totalCalories,
+                avgCaloriesPerTrip = if (stats.totalTracks > 0) stats.totalCalories / stats.totalTracks else 0.0,
+                avgHeartRate = avgHr,
+                bestDistanceKm = (allTracks.maxOfOrNull { it.distanceMeters } ?: 0.0) / 1000.0,
+                bestSpeedKmh = allTracks.maxOfOrNull { it.maxSpeedKmh } ?: 0.0,
+                sameActivityCount = sameActivityTracks.size,
+                sameActivityAvgSpeedKmh = sameActivityTracks.takeIf { it.isNotEmpty() }?.map { it.avgSpeedKmh }?.average() ?: 0.0,
+                sameActivityAvgDistanceKm = sameActivityTracks.takeIf { it.isNotEmpty() }?.map { it.distanceMeters / 1000.0 }?.average() ?: 0.0
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to build lifetime context: ${e.message}")
             null
         }
     }
@@ -548,7 +592,8 @@ class TrackRepository(
                 confidence = json.optDouble("confidence", 0.0).toFloat(),
                 summary = json.optString("summary", ""),
                 suggestions = suggestions.joinToString("|"),
-                healthInsights = json.optString("healthInsights").takeIf { it.isNotEmpty() && it != "null" }
+                healthInsights = json.optString("healthInsights").takeIf { it.isNotEmpty() && it != "null" },
+                lifetimeInsights = json.optString("lifetimeInsights").takeIf { it.isNotEmpty() && it != "null" }
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse provider response: ${e.message}")
@@ -592,6 +637,15 @@ class TrackRepository(
 
     fun getAnalysisForTrack(trackId: String): Flow<AiAnalysis?> =
         aiAnalysisDao.observeLatestAnalysis(trackId)
+
+    suspend fun updateTrackActivityType(trackId: String, activityType: ActivityType) {
+        trackDao.getTrackById(trackId)?.let { track ->
+            trackDao.update(track.copy(
+                customActivityType = activityType,
+                activityType = activityType
+            ))
+        }
+    }
 
     suspend fun suggestBestTrips(): List<LocalAiEngine.TripSuggestion> {
         val tracks = trackDao.getAllTracksWithPoints().first()

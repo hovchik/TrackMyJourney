@@ -26,8 +26,8 @@ class SystemAiProvider @Inject constructor(
 
     fun getStatusMessage(): String = systemRuntime.getStatusMessage()
 
-    override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints): String {
-        val prompt = buildDailyPrompt(snapshot)
+    override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext?): String {
+        val prompt = buildDailyPrompt(snapshot, lifetimeContext)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily]:\n$prompt")
         val response = systemRuntime.runPrompt(prompt)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Response [daily]:\n$response")
@@ -42,7 +42,7 @@ class SystemAiProvider @Inject constructor(
         return response
     }
 
-    private fun buildDailyPrompt(snapshot: TrackWithPoints): String {
+    private fun buildDailyPrompt(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext? = null): String {
         val track = snapshot.track
         val points = snapshot.points
         val healthData = snapshot.healthData
@@ -79,7 +79,7 @@ class SystemAiProvider @Inject constructor(
         return buildString {
             appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked journey data.")
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Return JSON with keys: activity (STATIONARY <0.5km/h, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h), confidence (0.0-1.0), summary (3-4 sentences analyzing performance, terrain, pace consistency, and patterns with specific numbers from the data), suggestions (3-5 actionable tips referencing actual metrics), healthInsights (heart rate zone analysis and fitness observations if HR data present, else null).")
+            appendLine("Return JSON with keys: activity (STATIONARY <0.5km/h, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h), confidence (0.0-1.0), summary (4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers), suggestions (3-5 actionable tips referencing actual metrics), healthInsights (heart rate zone analysis and fitness observations if HR data present, else null), lifetimeInsights (if lifetime data provided: 2-3 sentences comparing this trip to historical averages and personal bests, else null).")
             appendLine()
             appendLine("Journey:")
             appendLine("- Activity: ${track.activityType}")
@@ -110,8 +110,20 @@ class SystemAiProvider @Inject constructor(
                 appendLine("- Ride Cost: ${"%.2f".format(track.rideCost)}")
             }
 
+            // Lifetime context
+            if (lifetimeContext != null && lifetimeContext.totalTracks >= 2) {
+                appendLine()
+                appendLine("Lifetime Stats (${lifetimeContext.totalTracks} total tracks):")
+                appendLine("- All-time: ${"%.1f".format(lifetimeContext.totalDistanceKm)}km total, avg ${"%.2f".format(lifetimeContext.avgDistanceKm)}km/trip, avg speed ${"%.1f".format(lifetimeContext.avgSpeedKmh)}km/h")
+                appendLine("- Bests: longest ${"%.2f".format(lifetimeContext.bestDistanceKm)}km, fastest ${"%.1f".format(lifetimeContext.bestSpeedKmh)}km/h")
+                appendLine("- Avg duration: ${lifetimeContext.avgDurationMin}min, avg calories: ${"%.0f".format(lifetimeContext.avgCaloriesPerTrip)}/trip")
+                if (lifetimeContext.sameActivityCount > 1) {
+                    appendLine("- Same activity (${track.activityType}): ${lifetimeContext.sameActivityCount} trips, avg ${"%.1f".format(lifetimeContext.sameActivityAvgSpeedKmh)}km/h, avg ${"%.2f".format(lifetimeContext.sameActivityAvgDistanceKm)}km")
+                }
+            }
+
             appendLine()
-            appendLine("Be specific — reference the actual numbers. If the activity type seems wrong for the speed, note it.")
+            appendLine("Be specific — reference the actual numbers. Identify nuances like pace drops, speed inconsistencies, or unusual patterns.")
             appendLine("IMPORTANT: Output ONLY valid JSON. No explanations, no markdown, no text before or after the JSON object.")
         }
     }

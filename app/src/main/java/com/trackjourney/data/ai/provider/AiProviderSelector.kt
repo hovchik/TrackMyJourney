@@ -46,7 +46,12 @@ class AiProviderSelector @Inject constructor(
         return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "No local model installed, falling back to cloud")
     }
 
-    private fun selectCloud(): ProviderSelection {
-        return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "Cloud AI selected")
+    private suspend fun selectCloud(): ProviderSelection {
+        cloudProvider.ensureConfigLoaded()
+        val providerName = cloudProvider.getProviderType().label
+        if (cloudProvider.isConfigured()) {
+            return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "Cloud AI selected ($providerName)")
+        }
+        return ProviderSelection(cloudProvider, AiExecutionMode.CLOUD, "Cloud AI selected but not configured — set API key")
     }
 }

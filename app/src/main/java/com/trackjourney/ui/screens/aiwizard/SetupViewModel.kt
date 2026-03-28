@@ -273,6 +273,7 @@ class SetupViewModel @Inject constructor(
             _state.update { it.copy(isValidatingApiKey = true, error = null) }
             try {
                 cloudProvider.setApiKey(currentState.cloudApiKey)
+                cloudProvider.setProviderType(currentState.cloudProviderType)
                 aiPreferences.setCloudApiKey(currentState.cloudApiKey)
                 aiPreferences.setCloudProviderType(currentState.cloudProviderType.name)
                 _state.update { it.copy(isValidatingApiKey = false, currentStep = SetupStep.READY) }

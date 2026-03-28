@@ -111,11 +111,18 @@ fun AiEngineSettingsScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    StatusRow("Active Mode", if (isLocalMode) "Local Model" else "Cloud AI")
-                    state.activeModel?.let { model ->
-                        StatusRow("Active Model", model.displayName)
+                    if (isLocalMode) {
+                        StatusRow("Active Mode", "Local Model")
+                        state.activeModel?.let { model ->
+                            StatusRow("Active Model", model.displayName)
+                        }
+                        StatusRow("Storage Used", "${state.storageUsedMb} MB")
+                    } else {
+                        StatusRow("Active Mode", "Cloud AI")
+                        if (state.cloudProviderName.isNotEmpty()) {
+                            StatusRow("Provider", state.cloudProviderName)
+                        }
                     }
-                    StatusRow("Storage Used", "${state.storageUsedMb} MB")
                     state.performanceNote?.let { note ->
                         StatusRow("Performance", note)
                     }

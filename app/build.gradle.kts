@@ -97,11 +97,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
-    // TensorFlow Lite
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
-
-    // MediaPipe LLM Inference (on-device GGUF model execution)
+    // MediaPipe LLM Inference (on-device model execution)
     implementation("com.google.mediapipe:tasks-genai:0.10.22")
 
     // Google Play Billing

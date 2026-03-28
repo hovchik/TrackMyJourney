@@ -7,12 +7,6 @@ import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.tensorflow.lite.Interpreter
-import java.io.FileInputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.MappedByteBuffer
-import java.nio.channels.FileChannel
 import kotlin.math.*
 
 /**
@@ -31,8 +25,6 @@ class LocalAiEngine(
 ) {
     companion object {
         private const val TAG = "LocalAiEngine"
-        private const val MODEL_FILE = "activity_classifier.tflite"
-
         // Speed thresholds (km/h) — tuned from real-world data
         private const val STATIONARY_MAX = 0.5f
         private const val WALK_MAX = 7.0f
@@ -47,36 +39,7 @@ class LocalAiEngine(
         private const val SEGMENT_WINDOW_SIZE = 10  // points per analysis segment
     }
 
-    private var interpreter: Interpreter? = null
-    private var modelLoaded = false
-
-    init {
-        loadModel()
-    }
-
-    private fun loadModel() {
-        try {
-            val modelBuffer = loadModelFile()
-            if (modelBuffer != null) {
-                interpreter = Interpreter(modelBuffer)
-                modelLoaded = true
-                Log.i(TAG, "TFLite model loaded successfully")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "TFLite model not found, using rule-based classifier: ${e.message}")
-            modelLoaded = false
-        }
-    }
-
-    private fun loadModelFile(): MappedByteBuffer? {
-        return try {
-            val assetFd = context.assets.openFd(MODEL_FILE)
-            val inputStream = FileInputStream(assetFd.fileDescriptor)
-            val fileChannel = inputStream.channel
-            fileChannel.map(
-                FileChannel.MapMode.READ_ONLY,
-                assetFd.startOffset,
-                assetFd.declaredLength
+    private val modelLoaded = false // TFLite classifier removed; rule-based only
             )
         } catch (e: Exception) {
             null
@@ -259,10 +222,7 @@ class LocalAiEngine(
         val maxSpeed = speeds.maxOrNull() ?: 0f
         val speedVariance = calculateVariance(speeds)
 
-        // Use TFLite model if available
-        if (modelLoaded && interpreter != null) {
-            return classifyWithModel(avgSpeed, maxSpeed, speedVariance, points)
-        }
+
 
         // Rule-based classification with confidence scoring
         return classifyWithRules(avgSpeed, maxSpeed, speedVariance, points)
@@ -323,46 +283,6 @@ class LocalAiEngine(
         }
 
         return ClassificationResult(activity, confidence.coerceIn(0f, 1f))
-    }
-
-    private fun classifyWithModel(
-        avgSpeed: Float,
-        maxSpeed: Float,
-        speedVariance: Float,
-        points: List<TrackPoint>
-    ): ClassificationResult {
-        try {
-            // Prepare input: [avgSpeed, maxSpeed, speedVariance, altitudeChange, pointCount]
-            val altitudes = points.mapNotNull { it.altitude }
-            val altitudeChange = if (altitudes.size >= 2) {
-                (altitudes.last() - altitudes.first()).toFloat()
-            } else 0f
-
-            val input = ByteBuffer.allocateDirect(5 * 4).apply {
-                order(ByteOrder.nativeOrder())
-                putFloat(avgSpeed)
-                putFloat(maxSpeed)
-                putFloat(speedVariance)
-                putFloat(altitudeChange)
-                putFloat(points.size.toFloat())
-            }
-
-            // Output: probabilities for each activity type
-            val output = Array(1) { FloatArray(ActivityType.entries.size) }
-            interpreter?.run(input, output)
-
-            val probabilities = output[0]
-            val maxIndex = probabilities.indices.maxByOrNull { probabilities[it] } ?: 0
-            val confidence = probabilities[maxIndex]
-
-            return ClassificationResult(
-                activity = ActivityType.entries[maxIndex],
-                confidence = confidence
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "TFLite inference failed, falling back to rules: ${e.message}")
-            return classifyWithRules(avgSpeed, maxSpeed, speedVariance, points)
-        }
     }
 
     /**
@@ -783,8 +703,4 @@ class LocalAiEngine(
         }
     }
 
-    fun close() {
-        interpreter?.close()
-        interpreter = null
-    }
 }

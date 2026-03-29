@@ -26,11 +26,12 @@ class LocalAiEngine(
     companion object {
         private const val TAG = "LocalAiEngine"
         // Speed thresholds (km/h) — tuned from real-world data
+        // Must stay consistent with ActivityConfig.defaults() in Models.kt
         private const val STATIONARY_MAX = 0.5f
         private const val WALK_MAX = 7.0f
         private const val RUN_MAX = 15.0f
         private const val CYCLE_MAX = 40.0f
-        private const val DRIVE_MAX = 250.0f
+        private const val DRIVE_MAX = 200.0f
 
         // Hysteresis margins (km/h) — prevents oscillation at boundaries
         private const val HYSTERESIS = 1.5f
@@ -289,18 +290,29 @@ class LocalAiEngine(
         points: List<TrackPoint>
     ): ClassificationResult {
         // Check altitude for flying detection
+        // Use a high altitude rate threshold to distinguish planes from cars on hills.
+        // Cars on mountain roads can easily gain 10 m/min; planes typically gain 300+ m/min.
         val altitudes = points.mapNotNull { it.altitude }
         val hasRapidAltitudeChange = if (altitudes.size >= 2) {
-            val altRate = abs(altitudes.last() - altitudes.first()) /
-                ((points.last().timestamp - points.first().timestamp) / 60000.0)
-            altRate > FLYING_ALTITUDE_RATE
+            val timeDiffMin = (points.last().timestamp - points.first().timestamp) / 60000.0
+            if (timeDiffMin > 0) {
+                val altRate = abs(altitudes.last() - altitudes.first()) / timeDiffMin
+                // 50 m/min is well above what cars achieve on steep roads (~15 m/min)
+                // but easily reached by aircraft during climb/descent
+                altRate > 50.0
+            } else false
         } else false
 
         val activity: ActivityType
         var confidence: Float
 
         when {
-            avgSpeed > DRIVE_MAX || (avgSpeed > 100 && hasRapidAltitudeChange) -> {
+            // FLYING: require speed above DRIVE_MAX (200 km/h).
+            // Altitude-assisted detection only applies at speeds above DRIVE_MAX,
+            // boosting confidence when rapid altitude change confirms flight.
+            // This prevents highway driving (e.g. 107 km/h) on hilly terrain
+            // from being misclassified as flying.
+            avgSpeed > DRIVE_MAX -> {
                 activity = ActivityType.FLYING
                 confidence = if (hasRapidAltitudeChange) 0.95f else 0.80f
             }

@@ -239,8 +239,8 @@ fun AnalysisScreen(
                     ActivityLegendItem("Walking", "< 7 km/h", Walking)
                     ActivityLegendItem("Running", "7 — 15 km/h", Running)
                     ActivityLegendItem("Cycling", "15 — 40 km/h", Cycling)
-                    ActivityLegendItem("Driving", "40 — 250 km/h", Driving)
-                    ActivityLegendItem("Flying", "> 250 km/h + altitude", Flying)
+                    ActivityLegendItem("Driving", "40 — 200 km/h", Driving)
+                    ActivityLegendItem("Flying", "> 200 km/h", Flying)
                 }
             }
         }
@@ -491,6 +491,16 @@ private fun RecentAnalysisCard(
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (!analysis.lifetimeInsights.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    analysis.lifetimeInsights.split("\n").first(),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }

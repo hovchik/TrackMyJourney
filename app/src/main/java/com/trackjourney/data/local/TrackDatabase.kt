@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [TrackSession::class, TrackPoint::class, HealthData::class, AiAnalysis::class, CarProfile::class, LocalAiModelEntity::class],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

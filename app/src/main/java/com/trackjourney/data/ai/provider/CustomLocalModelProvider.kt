@@ -67,20 +67,152 @@ class CustomLocalModelProvider @Inject constructor(
     }
 
     private fun validateJsonResponse(json: String, requiredKeys: List<String>): String {
+        // 1. Try parsing as-is
         try {
             val jsonObj = JSONObject(json)
             val missingKeys = requiredKeys.filter { !jsonObj.has(it) }
             if (missingKeys.isNotEmpty()) {
                 Log.w(TAG, "AI response missing keys: $missingKeys")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "AI response is not valid JSON: ${e.message}")
-            if (BuildConfig.DEBUG) Log.d(TAG, "Raw response: $json")
+            return json
+        } catch (_: Exception) { /* fall through to repair */ }
+
+        // 2. Try repairing truncated JSON (local models often hit output token limits)
+        val repaired = repairTruncatedJson(json)
+        if (repaired != null) {
+            try {
+                val jsonObj = JSONObject(repaired)
+                Log.i(TAG, "Repaired truncated JSON successfully")
+                val missingKeys = requiredKeys.filter { !jsonObj.has(it) }
+                if (missingKeys.isNotEmpty()) {
+                    Log.w(TAG, "Repaired JSON missing keys: $missingKeys")
+                }
+                return repaired
+            } catch (_: Exception) { /* fall through to fallback */ }
         }
-        return json
+
+        // 3. Last resort: build fallback from raw text
+        Log.e(TAG, "AI response is not valid JSON: cannot parse or repair")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Raw response: $json")
+        return buildFallbackJson(json)
     }
 
-    override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints): String {
+    /**
+     * Attempts to repair JSON that was truncated mid-output by the local model.
+     * Closes any open strings, arrays, and objects to make it parseable.
+     * Preserves all the valid data that was generated before truncation.
+     */
+    private fun repairTruncatedJson(json: String): String? {
+        // Only attempt repair if it starts like JSON but doesn't end properly
+        val trimmed = json.trim()
+        if (!trimmed.startsWith("{")) return null
+        if (trimmed.endsWith("}")) return null // already closed, problem is elsewhere
+
+        val sb = StringBuilder(trimmed)
+
+        // Track nesting state
+        var inString = false
+        var escaped = false
+        var braceDepth = 0
+        var bracketDepth = 0
+
+        for (ch in trimmed) {
+            if (escaped) { escaped = false; continue }
+            if (ch == '\\' && inString) { escaped = true; continue }
+            if (ch == '"') { inString = !inString; continue }
+            if (inString) continue
+            when (ch) {
+                '{' -> braceDepth++
+                '}' -> braceDepth--
+                '[' -> bracketDepth++
+                ']' -> bracketDepth--
+            }
+        }
+
+        // Close open string (truncated mid-value)
+        if (inString) {
+            sb.append("\"")
+        }
+
+        // Close open arrays
+        repeat(bracketDepth) { sb.append("]") }
+
+        // Close open objects
+        repeat(braceDepth) { sb.append("}") }
+
+        val result = sb.toString()
+        // Verify it actually parses now
+        return try {
+            JSONObject(result)
+            result
+        } catch (_: Exception) {
+            // Try removing a trailing partial key-value (e.g. truncated after comma + key)
+            // Find the last complete key-value pair
+            val lastGoodEnd = findLastCompleteValue(result)
+            if (lastGoodEnd != null) lastGoodEnd else null
+        }
+    }
+
+    /**
+     * Attempts to find a valid JSON by trimming back to the last complete value.
+     */
+    private fun findLastCompleteValue(json: String): String? {
+        // Try progressively removing trailing content until we get valid JSON
+        var candidate = json
+        for (i in 0 until 5) {
+            // Remove trailing partial content after last comma or colon
+            val lastComma = candidate.lastIndexOf(',')
+            val lastColon = candidate.lastIndexOf(':')
+            val cutPoint = maxOf(lastComma, lastColon)
+            if (cutPoint <= 0) return null
+            candidate = candidate.substring(0, cutPoint)
+            // Re-close brackets/braces
+            var braces = 0; var brackets = 0; var inStr = false; var esc = false
+            for (ch in candidate) {
+                if (esc) { esc = false; continue }
+                if (ch == '\\' && inStr) { esc = true; continue }
+                if (ch == '"') { inStr = !inStr; continue }
+                if (inStr) continue
+                when (ch) { '{' -> braces++; '}' -> braces--; '[' -> brackets++; ']' -> brackets-- }
+            }
+            val closed = candidate + "]".repeat(brackets) + "}".repeat(braces)
+            try {
+                JSONObject(closed)
+                Log.i(TAG, "Recovered truncated JSON by trimming $i trailing fragments")
+                return closed
+            } catch (_: Exception) { /* try trimming more */ }
+        }
+        return null
+    }
+
+    /**
+     * Constructs a valid JSON response from plain-text AI output that failed JSON parsing.
+     * Attempts to extract activity type and uses the raw text as the summary.
+     */
+    private fun buildFallbackJson(rawText: String): String {
+        val upper = rawText.uppercase()
+        val activity = listOf("WALKING", "RUNNING", "CYCLING", "DRIVING", "FLYING", "STATIONARY")
+            .firstOrNull { it in upper } ?: "UNKNOWN"
+
+        // Clean up the raw text for use as summary (first 300 chars, single line)
+        val summary = rawText
+            .replace("\n", " ")
+            .replace("\\s+".toRegex(), " ")
+            .trim()
+            .take(300)
+
+        val fallback = JSONObject().apply {
+            put("activity", activity)
+            put("confidence", 0.3)
+            put("summary", summary)
+            put("suggestions", org.json.JSONArray())
+            put("healthInsights", JSONObject.NULL)
+        }
+        Log.w(TAG, "Built fallback JSON from plain-text response, detected activity: $activity")
+        return fallback.toString()
+    }
+
+    override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext?): String {
         val activeModel = modelManager.getActiveModelSync()
             ?: throw IllegalStateException("No active local model configured")
         val runtime = resolveRuntime(activeModel.runtimeType)
@@ -90,7 +222,7 @@ class CustomLocalModelProvider @Inject constructor(
             ?: ModelCatalog.findById(activeModel.modelId)?.downloadUrl
         ensureModelLoaded(runtime, activeModel.runtimeType, activeModel.localPath, downloadUrl)
 
-        val prompt = buildDailyPrompt(snapshot)
+        val prompt = buildDailyPrompt(snapshot, lifetimeContext)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily] (model=${activeModel.displayName}):\n$prompt")
         val rawOutput = runtime.runPrompt(prompt)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Response [daily] (model=${activeModel.displayName}):\n$rawOutput")
@@ -116,7 +248,7 @@ class CustomLocalModelProvider @Inject constructor(
         return validateJsonResponse(json, listOf("totalDistance", "totalCalories", "dominantActivity", "weekSummary", "improvements"))
     }
 
-    private fun buildDailyPrompt(snapshot: TrackWithPoints): String {
+    private fun buildDailyPrompt(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext? = null): String {
         val track = snapshot.track
         val points = snapshot.points
         val healthData = snapshot.healthData
@@ -165,13 +297,53 @@ class CustomLocalModelProvider @Inject constructor(
             durationMin.toDouble() / (track.distanceMeters / 1000.0)
         } else null
 
-        // Build a compact structured prompt that fits in small context windows (~200 tokens)
+        // Speed consistency
+        val speedStdDev = if (speeds.size >= 2) {
+            val mean = speeds.average()
+            kotlin.math.sqrt(speeds.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else 0f
+
+        // Time of day
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = track.startTime
+        val startHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+
+        // Cadence
+        val cadences = points.mapNotNull { it.cadence }
+        val avgCadence = cadences.takeIf { it.isNotEmpty() }?.average()?.toInt()
+
+        // GPS accuracy
+        val accuracies = points.mapNotNull { it.accuracy }
+        val avgAccuracy = accuracies.takeIf { it.isNotEmpty() }?.average()
+        val satellites = points.mapNotNull { it.satellitesUsed }
+        val avgSatellites = satellites.takeIf { it.isNotEmpty() }?.average()?.toInt()
+
+        // Bearing variability
+        val bearings = points.mapNotNull { it.bearing }
+        val bearingStdDev = if (bearings.size >= 2) {
+            val mean = bearings.average()
+            kotlin.math.sqrt(bearings.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else null
+
+        // Wearable
+        val wearableDevice = snapshot.healthData.firstOrNull { it.deviceName != null }
+
+        // Build a compact structured prompt that fits in small context windows
+        // IMPORTANT: instruct model to output ONLY a JSON object, no prose
         return buildString {
-            appendLine("Analyze GPS trip. JSON only: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"...\",\"suggestions\":[\"...\"],\"healthInsights\":\"...or null\"}")
+            appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
+            appendLine("Return: {\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\",\"lifetimeInsights\":\"comparison vs history or null\"}")
+            appendLine("Speed guide: STATIONARY<0.5 WALKING<7 RUNNING<15 CYCLING<40 DRIVING<200 FLYING>200 km/h")
             appendLine("---")
-            appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size}")
+            // Show user's manual override if set
+            if (track.customActivityType != null) {
+                appendLine("userType:${track.customActivityType} autoType:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size} time:${startHour}h")
+            } else {
+                appendLine("type:${track.activityType} dist:${"%.1f".format(track.distanceMeters/1000)}km dur:${durationMin}min pts:${points.size} time:${startHour}h")
+            }
             append("spd avg:${"%.1f".format(track.avgSpeedKmh)} max:${"%.1f".format(track.maxSpeedKmh)} med:${"%.1f".format(medianSpeed)}")
             if (speedP90 != null) append(" p90:${"%.1f".format(speedP90)}")
+            append(" sd:${"%.1f".format(speedStdDev)}")
             appendLine(" km/h")
             if (paceMinPerKm != null && track.avgSpeedKmh < 20) appendLine("pace:${"%.1f".format(paceMinPerKm)}min/km")
             append("stops:$stopCount")
@@ -185,9 +357,29 @@ class CustomLocalModelProvider @Inject constructor(
             if (avgHr != null) {
                 appendLine("hr avg:$avgHr max:$maxHr min:$minHr bpm")
             }
+            if (avgCadence != null) appendLine("cadence:$avgCadence spm")
             if (track.startPlaceName != null || track.endPlaceName != null) {
                 appendLine("route:${track.startPlaceName ?: "?"}→${track.endPlaceName ?: "?"}")
             }
+            if (track.rideCost != null) {
+                appendLine("cost:${"%.2f".format(track.rideCost)}")
+            }
+            if (avgAccuracy != null) append("gps:${"%.0f".format(avgAccuracy)}m")
+            if (avgSatellites != null) append(" sat:$avgSatellites")
+            if (avgAccuracy != null || avgSatellites != null) appendLine()
+            if (bearingStdDev != null) appendLine("turns:${"%.0f".format(bearingStdDev)}°")
+            if (track.batteryStart != null && track.batteryEnd != null) {
+                appendLine("bat:${track.batteryStart}→${track.batteryEnd}%")
+            }
+            if (wearableDevice?.deviceName != null) {
+                appendLine("wear:${wearableDevice.deviceName}")
+            }
+            // Compact lifetime context
+            if (lifetimeContext != null && lifetimeContext.totalTracks >= 2) {
+                appendLine("history: ${lifetimeContext.totalTracks}trips avg:${"%.1f".format(lifetimeContext.avgDistanceKm)}km ${"%.1f".format(lifetimeContext.avgSpeedKmh)}km/h best:${"%.1f".format(lifetimeContext.bestDistanceKm)}km ${"%.1f".format(lifetimeContext.bestSpeedKmh)}km/h")
+            }
+            appendLine("---")
+            appendLine("IMPORTANT: Output ONLY valid JSON. No explanations, no markdown code blocks, no ``` wrapping, no text before or after the JSON object.")
         }
     }
 
@@ -231,13 +423,26 @@ class CustomLocalModelProvider @Inject constructor(
     }
 
     private fun extractJson(output: String): String {
-        // Try to extract JSON from output that may contain extra text
-        val jsonStart = output.indexOf('{')
-        val jsonEnd = output.lastIndexOf('}')
+        var cleaned = output.trim()
+        // Strip markdown code blocks: ```json ... ``` or ``` ... ```
+        if (cleaned.startsWith("```")) {
+            val firstNewline = cleaned.indexOf('\n')
+            if (firstNewline != -1) {
+                cleaned = cleaned.substring(firstNewline + 1)
+            }
+            val lastBackticks = cleaned.lastIndexOf("```")
+            if (lastBackticks != -1) {
+                cleaned = cleaned.substring(0, lastBackticks)
+            }
+            cleaned = cleaned.trim()
+        }
+        // Extract JSON object
+        val jsonStart = cleaned.indexOf('{')
+        val jsonEnd = cleaned.lastIndexOf('}')
         return if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            output.substring(jsonStart, jsonEnd + 1)
+            cleaned.substring(jsonStart, jsonEnd + 1)
         } else {
-            output
+            cleaned
         }
     }
 }

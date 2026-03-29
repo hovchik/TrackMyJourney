@@ -90,12 +90,12 @@ class CloudProvider @Inject constructor(
 
     override fun isAvailable(): Boolean = isConfigured()
 
-    override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints): String {
+    override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext?): String {
         ensureConfigLoaded()
         if (!isConfigured()) {
             throw IllegalStateException("Cloud AI not configured. Set API key in Settings → AI Engine → Cloud AI.")
         }
-        val prompt = buildDailyPrompt(snapshot)
+        val prompt = buildDailyPrompt(snapshot, lifetimeContext)
         if (BuildConfig.DEBUG) Log.d(TAG, "AI Prompt [daily] (${providerType.label}):\n$prompt")
         return callApi(prompt)
     }
@@ -157,7 +157,7 @@ class CloudProvider @Inject constructor(
                 })
             })
             put("temperature", 0.3)
-            put("max_tokens", 1024)
+            put("max_tokens", 2048)
         }
 
         val response = executeHttpRequest(
@@ -178,7 +178,7 @@ class CloudProvider @Inject constructor(
     private fun callAnthropicApi(prompt: String, key: String): String {
         val requestBody = JSONObject().apply {
             put("model", getModel())
-            put("max_tokens", 1024)
+            put("max_tokens", 2048)
             put("system", "You are a fitness and activity analysis AI. Always respond with valid JSON only, no markdown.")
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
@@ -325,7 +325,7 @@ class CloudProvider @Inject constructor(
 
     // ── Prompt builders ─────────────────────────────────────────────────────
 
-    private fun buildDailyPrompt(snapshot: TrackWithPoints): String {
+    private fun buildDailyPrompt(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext? = null): String {
         val track = snapshot.track
         val points = snapshot.points
         val healthData = snapshot.healthData
@@ -346,21 +346,192 @@ class CloudProvider @Inject constructor(
             (durationMin + durationSec / 60.0) / (track.distanceMeters / 1000.0)
         } else null
 
+        val elevationLoss = computeElevationLoss(altitudes)
+        val minAlt = altitudes.minOrNull()
+        val maxAlt = altitudes.maxOrNull()
+
+        // Stops analysis
+        var stopCount = 0
+        var totalStopMs = 0L
+        var inStop = false
+        var stopStartIdx = 0
+        for ((idx, pt) in points.withIndex()) {
+            if (pt.speedKmh < 0.5f) {
+                if (!inStop) { inStop = true; stopCount++; stopStartIdx = idx }
+            } else {
+                if (inStop && idx > 0 && stopStartIdx > 0) {
+                    totalStopMs += points[idx].timestamp - points[stopStartIdx].timestamp
+                }
+                inStop = false
+            }
+        }
+        val stopMin = TimeUnit.MILLISECONDS.toMinutes(totalStopMs)
+
+        // Activity segments
+        val activitySegments = points.groupBy { it.activityType }
+            .mapValues { it.value.size }
+            .entries.sortedByDescending { it.value }
+
+        // Speed distribution
+        val speedBuckets = speeds.groupBy {
+            when {
+                it < 1 -> "0-1"
+                it < 5 -> "1-5"
+                it < 10 -> "5-10"
+                it < 20 -> "10-20"
+                it < 40 -> "20-40"
+                it < 80 -> "40-80"
+                it < 120 -> "80-120"
+                else -> "120+"
+            }
+        }.mapValues { it.value.size }
+
+        // Speed consistency (std deviation)
+        val speedStdDev = if (speeds.size >= 2) {
+            val mean = speeds.average()
+            kotlin.math.sqrt(speeds.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else 0f
+
+        // GPS accuracy
+        val accuracies = points.mapNotNull { it.accuracy }
+        val avgAccuracy = accuracies.takeIf { it.isNotEmpty() }?.average()
+
+        // Time of day
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = track.startTime
+        val startHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+        val timeOfDay = when (startHour) {
+            in 5..11 -> "Morning"
+            in 12..16 -> "Afternoon"
+            in 17..20 -> "Evening"
+            else -> "Night"
+        }
+
+        // Heart rate zones
+        val hrZones = if (heartRates.size >= 5) {
+            val z1 = heartRates.count { it < 100 } * 100 / heartRates.size
+            val z2 = heartRates.count { it in 100..119 } * 100 / heartRates.size
+            val z3 = heartRates.count { it in 120..139 } * 100 / heartRates.size
+            val z4 = heartRates.count { it in 140..159 } * 100 / heartRates.size
+            val z5 = heartRates.count { it >= 160 } * 100 / heartRates.size
+            "Z1(<100):${z1}% Z2(100-119):${z2}% Z3(120-139):${z3}% Z4(140-159):${z4}% Z5(160+):${z5}%"
+        } else null
+
+        // Cadence details
+        val cadences = points.mapNotNull { it.cadence }
+        val minCadence = cadences.minOrNull()
+        val maxCadence = cadences.maxOrNull()
+
+        // Min heart rate
+        val minHr = heartRates.minOrNull()
+
+        // Speed profile — sample 5 segments across the track
+        val speedProfile = if (points.size >= 10) {
+            val segSize = points.size / 5
+            (0 until 5).map { i ->
+                val seg = points.subList(i * segSize, minOf((i + 1) * segSize, points.size))
+                val segAvg = seg.map { it.speedKmh }.filter { it > 0 }.takeIf { it.isNotEmpty() }?.average() ?: 0.0
+                "%.1f".format(segAvg)
+            }.joinToString(" → ")
+        } else null
+
+        // Bearing analysis
+        val bearings = points.mapNotNull { it.bearing }
+        val avgBearing = bearings.takeIf { it.isNotEmpty() }?.average()
+        val bearingStdDev = if (bearings.size >= 2) {
+            val mean = bearings.average()
+            kotlin.math.sqrt(bearings.map { (it - mean) * (it - mean) }.average()).toFloat()
+        } else null
+
+        // Satellite data
+        val satellites = points.mapNotNull { it.satellitesUsed }
+        val avgSatellites = satellites.takeIf { it.isNotEmpty() }?.average()?.toInt()
+        val inaccuratePoints = points.count { !it.isAccurate }
+
+        // Wearable device info
+        val wearableDevice = healthData.firstOrNull { it.deviceName != null }
+        val wearableInfo = wearableDevice?.let { "${it.deviceName} (${it.deviceType.name})" }
+
         return buildString {
-            appendLine("Analyze this GPS-tracked activity. Return JSON: {\"activity\":\"WALKING|RUNNING|CYCLING|DRIVING|FLYING|STATIONARY\",\"confidence\":0.0-1.0,\"summary\":\"2-3 sentences\",\"suggestions\":[\"2-4 tips\"],\"healthInsights\":\"or null\"}")
+            appendLine("Analyze this GPS-tracked activity in detail. Return a JSON object with these keys:")
+            appendLine("- activity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (just the word, no speed ranges)")
+            appendLine("  Speed guide: STATIONARY <0.5, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h")
+            appendLine("- confidence: 0.0 to 1.0")
+            appendLine("- summary: 4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers")
+            appendLine("- suggestions: array of 3-5 actionable tips referencing actual metrics from this trip")
+            appendLine("- healthInsights: heart rate zone analysis and fitness observations if HR data present, otherwise null")
+            appendLine("- lifetimeInsights: if lifetime data is provided, 2-3 sentences comparing this trip to the user's historical averages and personal bests (otherwise null)")
             appendLine()
-            appendLine("Activity: ${track.activityType}")
-            appendLine("Distance: ${"%.2f".format(track.distanceMeters / 1000)}km, Duration: ${durationMin}m ${durationSec}s")
-            appendLine("Speed: avg ${"%.1f".format(track.avgSpeedKmh)}, max ${"%.1f".format(track.maxSpeedKmh)}, median ${"%.1f".format(medianSpeed)} km/h")
+            appendLine("=== TRACK DATA ===")
+            // Show user's manual override if set
+            if (track.customActivityType != null) {
+                appendLine("User-set activity: ${track.customActivityType} (treat this as the correct activity type)")
+                appendLine("Auto-detected activity: ${track.activityType}")
+            } else {
+                appendLine("Activity: ${track.activityType}")
+            }
+            appendLine("Time: $timeOfDay start (${startHour}:00), Duration: ${durationMin}m ${durationSec}s")
+            appendLine("Distance: ${"%.2f".format(track.distanceMeters / 1000)}km")
+            appendLine("Speed: avg ${"%.1f".format(track.avgSpeedKmh)}, max ${"%.1f".format(track.maxSpeedKmh)}, median ${"%.1f".format(medianSpeed)}, stdDev ${"%.1f".format(speedStdDev)} km/h")
+            if (speedProfile != null) appendLine("Speed profile (start→end): $speedProfile km/h")
+            appendLine("Speed distribution: ${speedBuckets.entries.sortedBy { it.key }.joinToString { "${it.key}km/h:${it.value}pts" }}")
             appendLine("Calories: ${"%.0f".format(track.caloriesBurned)} kcal")
+            appendLine("GPS points: ${points.size}")
+            if (avgAccuracy != null) appendLine("GPS accuracy: avg ${"%.1f".format(avgAccuracy)}m")
             if (paceMinPerKm != null && track.avgSpeedKmh < 20) appendLine("Pace: ${"%.1f".format(paceMinPerKm)} min/km")
-            if (elevationGain > 0) appendLine("Elevation gain: ${"%.0f".format(elevationGain)}m")
-            if (avgHr != null) appendLine("Heart Rate: avg $avgHr, max $maxHr bpm")
-            if (avgCadence != null) appendLine("Cadence: $avgCadence spm")
+            if (elevationGain > 0 || elevationLoss > 0) {
+                append("Elevation: gain ${"%.0f".format(elevationGain)}m, loss ${"%.0f".format(elevationLoss)}m")
+                if (minAlt != null && maxAlt != null) append(", range ${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m")
+                appendLine()
+            }
+            if (avgHr != null) {
+                appendLine("Heart Rate: avg $avgHr, max $maxHr, min $minHr bpm")
+                if (hrZones != null) appendLine("HR Zones: $hrZones")
+            }
+            if (avgCadence != null) appendLine("Cadence: avg $avgCadence, min $minCadence, max $maxCadence spm")
+            if (stopCount > 0) {
+                append("Stops: $stopCount")
+                if (stopMin > 0) append(", total stop time: ${stopMin}min")
+                appendLine()
+            }
             if (track.startPlaceName != null || track.endPlaceName != null) {
                 appendLine("Route: ${track.startPlaceName ?: "?"} → ${track.endPlaceName ?: "?"}")
             }
-            appendLine("Return valid JSON only.")
+            if (activitySegments.size > 1) {
+                appendLine("Segments: ${activitySegments.joinToString { "${it.key}(${if (points.isNotEmpty()) (it.value * 100) / points.size else 0}%)" }}")
+            }
+            if (track.rideCost != null) {
+                appendLine("Ride Cost: ${"%.2f".format(track.rideCost)}")
+            }
+            // Bearing / direction consistency
+            if (avgBearing != null && bearingStdDev != null) {
+                appendLine("Bearing: avg ${"%.0f".format(avgBearing)}°, variability ${"%.0f".format(bearingStdDev)}° (low = straight route, high = many turns)")
+            }
+            // GPS quality
+            if (avgSatellites != null) appendLine("GPS satellites: avg $avgSatellites")
+            if (inaccuratePoints > 0) appendLine("Inaccurate GPS points: $inaccuratePoints of ${points.size}")
+            // Battery
+            if (track.batteryStart != null || track.batteryEnd != null) {
+                appendLine("Phone battery: ${track.batteryStart ?: "?"}% → ${track.batteryEnd ?: "?"}%")
+            }
+            // Wearable device
+            if (wearableInfo != null) appendLine("Wearable: $wearableInfo")
+
+            // Lifetime context for comparative analysis
+            if (lifetimeContext != null && lifetimeContext.totalTracks >= 2) {
+                appendLine()
+                appendLine("=== LIFETIME STATS (${lifetimeContext.totalTracks} total tracks) ===")
+                appendLine("All-time: ${"%.1f".format(lifetimeContext.totalDistanceKm)}km total, avg ${"%.2f".format(lifetimeContext.avgDistanceKm)}km/trip, avg speed ${"%.1f".format(lifetimeContext.avgSpeedKmh)}km/h")
+                appendLine("Personal bests: longest ${"%.2f".format(lifetimeContext.bestDistanceKm)}km, fastest ${"%.1f".format(lifetimeContext.bestSpeedKmh)}km/h")
+                appendLine("Avg duration: ${lifetimeContext.avgDurationMin}min, avg calories: ${"%.0f".format(lifetimeContext.avgCaloriesPerTrip)}/trip")
+                if (lifetimeContext.avgHeartRate != null) appendLine("Avg heart rate across all trips: ${lifetimeContext.avgHeartRate} bpm")
+                if (lifetimeContext.sameActivityCount > 1) {
+                    appendLine("Same activity (${track.activityType}) stats: ${lifetimeContext.sameActivityCount} trips, avg ${"%.1f".format(lifetimeContext.sameActivityAvgSpeedKmh)}km/h, avg ${"%.2f".format(lifetimeContext.sameActivityAvgDistanceKm)}km")
+                }
+            }
+
+            appendLine()
+            appendLine("Be specific — reference the actual numbers. Identify nuances like pace drops, speed inconsistencies, or unusual patterns. Return valid JSON only, no markdown.")
         }
     }
 
@@ -384,5 +555,15 @@ class CloudProvider @Inject constructor(
             if (diff > 0) gain += diff
         }
         return gain
+    }
+
+    private fun computeElevationLoss(altitudes: List<Double>): Double {
+        if (altitudes.size < 2) return 0.0
+        var loss = 0.0
+        for (i in 1 until altitudes.size) {
+            val diff = altitudes[i] - altitudes[i - 1]
+            if (diff < 0) loss -= diff
+        }
+        return loss
     }
 }

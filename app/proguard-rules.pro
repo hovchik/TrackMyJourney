@@ -14,6 +14,12 @@
 -keep class org.tensorflow.** { *; }
 -dontwarn org.tensorflow.**
 
+# MediaPipe LLM Inference + Protobuf
+-keep class com.google.mediapipe.** { *; }
+-dontwarn com.google.mediapipe.**
+-keep class com.google.protobuf.** { *; }
+-dontwarn com.google.protobuf.**
+
 # OSMDroid
 -keep class org.osmdroid.** { *; }
 -dontwarn org.osmdroid.**

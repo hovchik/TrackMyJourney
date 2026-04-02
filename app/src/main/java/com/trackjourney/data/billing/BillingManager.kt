@@ -92,8 +92,8 @@ class BillingManager(
                 suspendCancellableCoroutine<Pair<BillingResult, List<ProductDetails>>> { cont ->
                     billingClient.queryProductDetailsAsync(
                         params,
-                        ProductDetailsResponseListener { result, list ->
-                            cont.resume(result to list)
+                        ProductDetailsResponseListener { result, queryResult ->
+                            cont.resume(result to queryResult.productDetailsList)
                         }
                     )
                 }

@@ -2,7 +2,6 @@ package com.trackjourney.data.ai.models
 
 import android.content.Context
 import android.net.Uri
-import android.os.Environment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -266,38 +265,16 @@ class ModelInstaller @Inject constructor(
     }
 
     /**
-     * Collects all accessible storage roots on the device:
-     * - Primary external storage (shared storage root)
-     * - Well-known public directories (Downloads, Documents, etc.)
-     * - App-specific external dirs (getExternalFilesDirs)
-     * - Secondary volumes / SD cards (via context.getExternalFilesDirs)
+     * Collects storage roots accessible without special permissions:
+     * - App-specific external dirs on each volume (internal + SD cards)
      */
     private fun collectScanRoots(): List<File> {
         val roots = mutableSetOf<File>()
 
-        // Primary external storage root (/sdcard or /storage/emulated/0)
-        Environment.getExternalStorageDirectory()?.let { roots.add(it) }
-
-        // Well-known public directories
-        val publicDirTypes = arrayOf(
-            Environment.DIRECTORY_DOWNLOADS,
-            Environment.DIRECTORY_DOCUMENTS,
-            Environment.DIRECTORY_DCIM,
-            Environment.DIRECTORY_PICTURES
-        )
-        for (type in publicDirTypes) {
-            Environment.getExternalStoragePublicDirectory(type)?.let { roots.add(it) }
-        }
-
-        // App-specific external dirs — on each volume the device has (internal + SD cards)
+        // App-specific external dirs — on each volume the device has (internal + SD cards).
+        // No special permission required; the system grants access automatically.
         context.getExternalFilesDirs(null)?.filterNotNull()?.forEach { appDir ->
             roots.add(appDir)
-            // Walk up to the volume root (e.g. /storage/XXXX-XXXX)
-            // getExternalFilesDirs returns paths like /storage/<vol>/Android/data/<pkg>/files
-            val volumeRoot = appDir.parentFile?.parentFile?.parentFile?.parentFile
-            if (volumeRoot != null && volumeRoot.exists() && volumeRoot.canRead()) {
-                roots.add(volumeRoot)
-            }
         }
 
         return roots.filter { it.exists() && it.canRead() }.toList()

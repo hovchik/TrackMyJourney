@@ -995,7 +995,8 @@ fun SettingsScreen(
                 }
 
                 // SpO2 (full width, only if available)
-                if (reading.spO2 != null) {
+                val spO2 = reading.spO2
+                if (spO2 != null) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Card(
                         shape = RoundedCornerShape(14.dp),
@@ -1028,33 +1029,33 @@ fun SettingsScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp
                                 )
-                                @Suppress("KotlinConstantConditions")
                                 Text(
                                     when {
-                                        reading.spO2!! >= 95 -> "Normal"
-                                        reading.spO2!! >= 90 -> "Low — monitor"
+                                        spO2 >= 95 -> "Normal"
+                                        spO2 >= 90 -> "Low — monitor"
                                         else -> "Very low — seek attention"
                                     },
                                     fontSize = 11.sp,
                                     color = when {
-                                        reading.spO2!! >= 95 -> PrimaryLight
-                                        reading.spO2!! >= 90 -> Accent
+                                        spO2 >= 95 -> PrimaryLight
+                                        spO2 >= 90 -> Accent
                                         else -> Error
                                     }
                                 )
                             }
                             Text(
-                                "${reading.spO2}%",
+                                "$spO2%",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
-                                color = if (reading.spO2!! >= 95) Secondary else Error
+                                color = if (spO2 >= 95) Secondary else Error
                             )
                         }
                     }
                 }
 
                 // Temperature (full width, only if available)
-                if (reading.temperatureC != null) {
+                val temperatureC = reading.temperatureC
+                if (temperatureC != null) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Card(
                         shape = RoundedCornerShape(14.dp),
@@ -1087,24 +1088,23 @@ fun SettingsScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp
                                 )
-                                @Suppress("KotlinConstantConditions")
                                 Text(
                                     when {
-                                        reading.temperatureC!! < 36.1f -> "Below normal"
-                                        reading.temperatureC!! <= 37.2f -> "Normal"
-                                        reading.temperatureC!! <= 38.0f -> "Slightly elevated"
+                                        temperatureC < 36.1f -> "Below normal"
+                                        temperatureC <= 37.2f -> "Normal"
+                                        temperatureC <= 38.0f -> "Slightly elevated"
                                         else -> "Fever"
                                     },
                                     fontSize = 11.sp,
                                     color = when {
-                                        reading.temperatureC!! <= 37.2f -> PrimaryLight
-                                        reading.temperatureC!! <= 38.0f -> Accent
+                                        temperatureC <= 37.2f -> PrimaryLight
+                                        temperatureC <= 38.0f -> Accent
                                         else -> Error
                                     }
                                 )
                             }
                             Text(
-                                String.format(java.util.Locale.US, "%.1f°C", reading.temperatureC),
+                                String.format(java.util.Locale.US, "%.1f°C", temperatureC),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = Accent

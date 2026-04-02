@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Geocoder
 import android.location.Location
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import com.google.gson.GsonBuilder
 import com.trackjourney.data.ai.LocalAiEngine
@@ -15,7 +16,9 @@ import com.trackjourney.data.location.MotionSensorManager
 import com.trackjourney.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -46,15 +49,28 @@ class TrackRepository(
 
     // ─── GEOCODING ─────────────────────────────────────────
 
-    private fun resolveplaceName(latitude: Double, longitude: Double): String? {
+    private suspend fun resolveplaceName(latitude: Double, longitude: Double): String? {
         return try {
-            @Suppress("DEPRECATION")
-            val addresses = geocoder.getFromLocation(latitude, longitude, 1)
-            addresses?.firstOrNull()?.let { addr ->
-                addr.locality
-                    ?: addr.subAdminArea
-                    ?: addr.adminArea
-                    ?: addr.getAddressLine(0)?.split(",")?.firstOrNull()?.trim()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                suspendCancellableCoroutine { cont ->
+                    geocoder.getFromLocation(latitude, longitude, 1) { addresses ->
+                        cont.resume(addresses.firstOrNull()?.let { addr ->
+                            addr.locality
+                                ?: addr.subAdminArea
+                                ?: addr.adminArea
+                                ?: addr.getAddressLine(0)?.split(",")?.firstOrNull()?.trim()
+                        })
+                    }
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                geocoder.getFromLocation(latitude, longitude, 1)
+                    ?.firstOrNull()?.let { addr ->
+                        addr.locality
+                            ?: addr.subAdminArea
+                            ?: addr.adminArea
+                            ?: addr.getAddressLine(0)?.split(",")?.firstOrNull()?.trim()
+                    }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Geocoding failed: ${e.message}")

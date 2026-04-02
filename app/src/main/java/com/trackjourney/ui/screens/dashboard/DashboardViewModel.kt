@@ -8,6 +8,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 import java.util.*
 import javax.inject.Inject
 
@@ -46,8 +47,9 @@ class DashboardViewModel @Inject constructor(
     private fun observeStats(period: StatsPeriod) {
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
-            // Re-compute stats every time the tracks table changes
-            repository.getAllTracks().collect {
+            // Re-compute stats when tracks change; debounce to avoid recomputing
+            // on every point insert during an active recording session.
+            repository.getAllTracks().debounce(500.milliseconds).collect {
                 try {
                     val since = calculateSince(period)
                     val stats = repository.getStatsSince(since)

@@ -86,7 +86,7 @@ class SettingsDataStore(
             cloudAiEndpoint = prefs[CLOUD_AI_ENDPOINT] ?: "",
             cloudAiModel = prefs[CLOUD_AI_MODEL] ?: "",
             webhookEnabled = prefs[WEBHOOK_ENABLED] ?: false,
-            webhookUrl = prefs[WEBHOOK_URL] ?: "https://pathwise.art",
+            webhookUrl = prefs[WEBHOOK_URL] ?: "",
             webhookKey = prefs[WEBHOOK_KEY] ?: java.util.UUID.randomUUID().toString().replace("-", "").take(16),
             webhookIntervalMs = prefs[WEBHOOK_INTERVAL_MS] ?: 10000L
         )

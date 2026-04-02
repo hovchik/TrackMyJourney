@@ -61,7 +61,7 @@ class BatteryMonitor(private val context: Context) {
 
         val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-        val percent = if (level >= 0 && scale > 0) (level * 100) / scale else -1
+        val percent = if (level >= 0 && scale > 0) (level.toLong() * 100 / scale).toInt() else -1
 
         _batteryState.value = BatteryState(isCharging = isCharging, level = percent)
     }

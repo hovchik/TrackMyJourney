@@ -37,7 +37,7 @@ class GpsSatelliteTracker(
         if (locationManager == null) return
         stopMonitoring()
 
-        gnssCallback = object : GnssStatus.Callback() {
+        val callback = object : GnssStatus.Callback() {
             override fun onSatelliteStatusChanged(status: GnssStatus) {
                 val now = System.currentTimeMillis()
                 // Throttle updates to save CPU
@@ -58,9 +58,10 @@ class GpsSatelliteTracker(
                 }
             }
         }
+        gnssCallback = callback
 
         try {
-            locationManager.registerGnssStatusCallback(gnssCallback!!, null)
+            locationManager.registerGnssStatusCallback(callback, null)
             Log.i(TAG, "GNSS status monitoring started")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register GNSS callback: ${e.message}")

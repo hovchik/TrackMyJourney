@@ -1,9 +1,11 @@
 package com.trackjourney.data.ai.models
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
@@ -14,6 +16,19 @@ class LocalModelManager @Inject constructor(
     private val dao: LocalAiModelDao,
     private val aiPreferences: AiPreferences
 ) {
+    // Scope tied to the singleton's lifetime — used only to maintain the cache.
+    private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Thread-safe cache so isConfigured() / isAvailable() never need runBlocking.
+    @Volatile private var cachedActiveModel: LocalAiModel? = null
+
+    init {
+        managerScope.launch {
+            // Pre-load from DB, then stay in sync with any future changes.
+            cachedActiveModel = dao.getActive()?.toDomain()
+            observeActiveModel().collect { model -> cachedActiveModel = model }
+        }
+    }
 
     fun observeInstalledModels(): Flow<List<LocalAiModel>> =
         dao.observeAll().map { entities -> entities.map { it.toDomain() } }
@@ -29,9 +44,7 @@ class LocalModelManager @Inject constructor(
         dao.getActive()?.toDomain()
     }
 
-    fun getActiveModelSync(): LocalAiModel? = runBlocking {
-        dao.getActive()?.toDomain()
-    }
+    fun getActiveModelSync(): LocalAiModel? = cachedActiveModel
 
     suspend fun getModel(modelId: String): LocalAiModel? = withContext(Dispatchers.IO) {
         dao.getById(modelId)?.toDomain()
@@ -109,7 +122,7 @@ class LocalModelManager @Inject constructor(
         localPath = localPath,
         installState = try {
             ModelInstallState.valueOf(installState)
-        } catch (e: Exception) {
+        } catch (e: IllegalArgumentException) {
             ModelInstallState.NOT_INSTALLED
         },
         checksum = checksum,

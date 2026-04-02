@@ -35,21 +35,21 @@ class Converters {
 
     @TypeConverter
     fun toActivityType(value: String): ActivityType =
-        try { ActivityType.valueOf(value) } catch (e: Exception) { ActivityType.UNKNOWN }
+        try { ActivityType.valueOf(value) } catch (e: IllegalArgumentException) { ActivityType.UNKNOWN }
 
     @TypeConverter
     fun fromWearableType(value: WearableType): String = value.name
 
     @TypeConverter
     fun toWearableType(value: String): WearableType =
-        try { WearableType.valueOf(value) } catch (e: Exception) { WearableType.UNKNOWN }
+        try { WearableType.valueOf(value) } catch (e: IllegalArgumentException) { WearableType.UNKNOWN }
 
     @TypeConverter
     fun fromFuelType(value: FuelType): String = value.name
 
     @TypeConverter
     fun toFuelType(value: String): FuelType =
-        try { FuelType.valueOf(value) } catch (e: Exception) { FuelType.PETROL }
+        try { FuelType.valueOf(value) } catch (e: IllegalArgumentException) { FuelType.PETROL }
 }
 
 // ─────────────────────────────────────────────────────────

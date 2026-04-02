@@ -412,10 +412,11 @@ fun TracksScreen(
     }
 
     // Export format picker dialog
-    if (exportTrackId != null) {
+    val currentExportId = exportTrackId
+    if (currentExportId != null) {
         ExportFormatDialog(
             onFormatSelected = { format ->
-                viewModel.exportTrack(exportTrackId!!, format)
+                viewModel.exportTrack(currentExportId, format)
                 exportTrackId = null
             },
             onDismiss = { exportTrackId = null }

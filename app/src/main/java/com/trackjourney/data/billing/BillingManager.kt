@@ -6,9 +6,13 @@ import android.util.Log
 import com.android.billingclient.api.*
 import com.trackjourney.data.model.SubscriptionPlan
 import com.trackjourney.data.model.SubscriptionStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 class BillingManager(
     private val context: Context
@@ -17,6 +21,9 @@ class BillingManager(
     companion object {
         private const val TAG = "BillingManager"
     }
+
+    private val job = SupervisorJob()
+    private val scope = CoroutineScope(job + Dispatchers.IO)
 
     private var billingClient: BillingClient = BillingClient.newBuilder(context)
         .setListener(this)
@@ -78,30 +85,32 @@ class BillingManager(
             )
             .build()
 
-        billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                val details = productDetailsList.firstOrNull()
+        scope.launch {
+            val result = billingClient.queryProductDetailsAsync(params)
+            if (result.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                val details = result.productDetailsList.firstOrNull()
                 _productDetails.value = details
                 if (details != null) {
-                    val basePlans = details.subscriptionOfferDetails?.map { it.basePlanId }
+                    val basePlans = details.subscriptionOfferDetails?.map { offer -> offer.basePlanId }
                     Log.i(TAG, "Loaded subscription product with base plans: $basePlans")
                 } else {
                     Log.w(TAG, "No product details found for ${SubscriptionPlan.PRODUCT_ID}")
                 }
             } else {
-                Log.w(TAG, "Query product details failed: ${billingResult.debugMessage}")
+                Log.w(TAG, "Query product details failed: ${result.billingResult.debugMessage}")
             }
         }
     }
 
     fun queryExistingPurchases() {
-        billingClient.queryPurchasesAsync(
-            QueryPurchasesParams.newBuilder()
-                .setProductType(BillingClient.ProductType.SUBS)
-                .build()
-        ) { billingResult, purchases ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                handlePurchases(purchases)
+        scope.launch {
+            val result = billingClient.queryPurchasesAsync(
+                QueryPurchasesParams.newBuilder()
+                    .setProductType(BillingClient.ProductType.SUBS)
+                    .build()
+            )
+            if (result.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                handlePurchases(result.purchasesList)
             }
         }
     }
@@ -228,5 +237,6 @@ class BillingManager(
 
     fun endConnection() {
         billingClient.endConnection()
+        job.cancel()
     }
 }

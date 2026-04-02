@@ -269,8 +269,13 @@ class WearableManager(
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    Log.i(TAG, "Connected to ${currentDevice?.name}")
-                    _connectionState.value = WearableConnectionState.Connected(currentDevice!!)
+                    val device = currentDevice ?: run {
+                        Log.w(TAG, "STATE_CONNECTED but currentDevice is null — closing GATT")
+                        gatt.close()
+                        return
+                    }
+                    Log.i(TAG, "Connected to ${device.name}")
+                    _connectionState.value = WearableConnectionState.Connected(device)
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -563,8 +568,10 @@ class WearableManager(
         val crankTime = (data[offset + 2].toInt() and 0xFF) or ((data[offset + 3].toInt() and 0xFF) shl 8)
 
         val rpm = if (lastCrankRevs != null && lastCrankTime != null) {
-            val dRevs = crankRevs - lastCrankRevs!!
-            var dTime = crankTime - lastCrankTime!!
+            val prevRevs = lastCrankRevs!!
+            val prevTime = lastCrankTime!!
+            val dRevs = crankRevs - prevRevs
+            var dTime = crankTime - prevTime
             if (dTime < 0) dTime += 65536 // handle 16-bit wrap
             if (dTime > 0 && dRevs > 0) {
                 (dRevs * 60 * 1024) / dTime // 1/1024s units

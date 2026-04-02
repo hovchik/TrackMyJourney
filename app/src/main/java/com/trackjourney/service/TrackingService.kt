@@ -37,6 +37,8 @@ import javax.inject.Inject
 class TrackingService : Service() {
 
     companion object {
+        /** Max time to wait for motion sensors to signal GPS-needed before resuming anyway. */
+        private const val MOTION_RESUME_TIMEOUT_MS = 5 * 60_000L // 5 minutes
         private const val TAG = "TrackingService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "tracking_channel"
@@ -190,8 +192,17 @@ class TrackingService : Service() {
                 }
             } catch (e: CancellationException) {
                 Log.i(TAG, "Tracking cancelled")
+                throw e // re-throw so the coroutine cancels properly
             } catch (e: Exception) {
-                Log.e(TAG, "Tracking error: ${e.message}")
+                Log.e(TAG, "Tracking error: ${e.message}", e)
+                // Ensure the track is not left open in the DB on unexpected failure
+                currentTrackId?.let { trackId ->
+                    serviceScope.launch {
+                        try { repository.endTrack(trackId) } catch (_: Exception) {}
+                        currentTrackId = null
+                        _isRunning.value = false
+                    }
+                }
             }
         }
     }
@@ -278,11 +289,13 @@ class TrackingService : Service() {
                         Log.i(TAG, "GPS suspended — waiting for sensor motion")
                         updateNotification("Stationary | GPS suspended | ${pointCount} pts")
 
-                        // Block until the motion sensor says GPS is needed again
-                        motionSensorManager.motionState
-                            .first { it.gpsNeeded }
+                        // Wait for motion sensors to signal GPS is needed, with a
+                        // safety timeout so GPS resumes even if sensors go silent.
+                        withTimeoutOrNull(MOTION_RESUME_TIMEOUT_MS) {
+                            motionSensorManager.motionState.first { it.gpsNeeded }
+                        }
 
-                        Log.i(TAG, "Sensor motion detected — resuming GPS")
+                        Log.i(TAG, "Sensor motion detected (or timeout) — resuming GPS")
                         // Start with a responsive interval after wake-up
                         currentInterval = smartIntervalManager.getInitialInterval(settings)
                         continue
@@ -466,7 +479,7 @@ class TrackingService : Service() {
             val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-            if (level >= 0 && scale > 0) (level * 100) / scale else null
+            if (level >= 0 && scale > 0) (level.toLong() * 100 / scale).toInt() else null
         } catch (e: Exception) {
             Log.w(TAG, "Failed to read battery level: ${e.message}")
             null

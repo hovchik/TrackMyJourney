@@ -6,9 +6,15 @@ import android.util.Log
 import com.android.billingclient.api.*
 import com.trackjourney.data.model.SubscriptionPlan
 import com.trackjourney.data.model.SubscriptionStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class BillingManager(
     private val context: Context
@@ -18,9 +24,17 @@ class BillingManager(
         private const val TAG = "BillingManager"
     }
 
+    private val job = SupervisorJob()
+    private val scope = CoroutineScope(job + Dispatchers.IO)
+
     private var billingClient: BillingClient = BillingClient.newBuilder(context)
         .setListener(this)
-        .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
+        .enablePendingPurchases(
+            PendingPurchasesParams.newBuilder()
+                .enableOneTimeProducts()
+                .enablePrepaidPlans()
+                .build()
+        )
         .build()
 
     private val _subscriptionStatus = MutableStateFlow(SubscriptionStatus())
@@ -73,12 +87,21 @@ class BillingManager(
             )
             .build()
 
-        billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
+        scope.launch {
+            val (billingResult, productDetailsList) =
+                suspendCancellableCoroutine<Pair<BillingResult, List<ProductDetails>>> { cont ->
+                    billingClient.queryProductDetailsAsync(
+                        params,
+                        ProductDetailsResponseListener { result, queryResult ->
+                            cont.resume(result to queryResult.productDetailsList)
+                        }
+                    )
+                }
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 val details = productDetailsList.firstOrNull()
                 _productDetails.value = details
                 if (details != null) {
-                    val basePlans = details.subscriptionOfferDetails?.map { it.basePlanId }
+                    val basePlans = details.subscriptionOfferDetails?.map { offer -> offer.basePlanId }
                     Log.i(TAG, "Loaded subscription product with base plans: $basePlans")
                 } else {
                     Log.w(TAG, "No product details found for ${SubscriptionPlan.PRODUCT_ID}")
@@ -90,11 +113,18 @@ class BillingManager(
     }
 
     fun queryExistingPurchases() {
-        billingClient.queryPurchasesAsync(
-            QueryPurchasesParams.newBuilder()
-                .setProductType(BillingClient.ProductType.SUBS)
-                .build()
-        ) { billingResult, purchases ->
+        scope.launch {
+            val (billingResult, purchases) =
+                suspendCancellableCoroutine<Pair<BillingResult, List<Purchase>>> { cont ->
+                    billingClient.queryPurchasesAsync(
+                        QueryPurchasesParams.newBuilder()
+                            .setProductType(BillingClient.ProductType.SUBS)
+                            .build(),
+                        PurchasesResponseListener { result, list ->
+                            cont.resume(result to list)
+                        }
+                    )
+                }
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 handlePurchases(purchases)
             }
@@ -223,5 +253,6 @@ class BillingManager(
 
     fun endConnection() {
         billingClient.endConnection()
+        job.cancel()
     }
 }

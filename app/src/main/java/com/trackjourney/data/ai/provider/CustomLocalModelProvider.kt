@@ -213,7 +213,7 @@ class CustomLocalModelProvider @Inject constructor(
     }
 
     override suspend fun analyzeDailyBehavior(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext?): String {
-        val activeModel = modelManager.getActiveModelSync()
+        val activeModel = modelManager.getActiveModel()
             ?: throw IllegalStateException("No active local model configured")
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")
@@ -231,7 +231,7 @@ class CustomLocalModelProvider @Inject constructor(
     }
 
     override suspend fun analyzeWeeklyBehavior(snapshots: List<TrackWithPoints>): String {
-        val activeModel = modelManager.getActiveModelSync()
+        val activeModel = modelManager.getActiveModel()
             ?: throw IllegalStateException("No active local model configured")
         val runtime = resolveRuntime(activeModel.runtimeType)
             ?: throw IllegalStateException("No runtime available for ${activeModel.runtimeType}")

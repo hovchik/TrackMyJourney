@@ -101,7 +101,7 @@ dependencies {
     implementation("com.google.mediapipe:tasks-genai:0.10.24")
 
     // Google Play Billing
-    implementation("com.android.billingclient:billing-ktx:6.1.0")
+    implementation("com.android.billingclient:billing-ktx:7.1.1")
 
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")

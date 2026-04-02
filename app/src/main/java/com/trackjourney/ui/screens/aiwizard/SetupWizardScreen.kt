@@ -666,7 +666,7 @@ private fun LocalModelConfigScreen(
                 item {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Found on Device",
+                        "Found in App Storage",
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.primary,
@@ -708,7 +708,7 @@ private fun LocalModelConfigScreen(
                 }
             }
 
-            // Scan device for existing models
+            // Scan app-specific storage for existing model files (no special permission required)
             item {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
@@ -719,11 +719,11 @@ private fun LocalModelConfigScreen(
                     if (state.isScanning) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Scanning device...")
+                        Text("Scanning app storage...")
                     } else {
                         Icon(Icons.Filled.Search, null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Scan Device for Models")
+                        Text("Find Models in App Storage")
                     }
                 }
                 state.scanResultMessage?.let { msg ->

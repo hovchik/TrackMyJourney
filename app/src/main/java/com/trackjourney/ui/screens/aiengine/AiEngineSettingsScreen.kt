@@ -159,11 +159,11 @@ fun AiEngineSettingsScreen(
                     if (state.isScanning) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Scanning device...")
+                        Text("Scanning app storage...")
                     } else {
                         Icon(Icons.Filled.SearchOff, null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Scan Device for Models")
+                        Text("Find Models in App Storage")
                     }
                 }
 

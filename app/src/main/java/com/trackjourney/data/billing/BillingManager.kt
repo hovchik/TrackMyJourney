@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class BillingManager(
     private val context: Context
@@ -86,9 +88,17 @@ class BillingManager(
             .build()
 
         scope.launch {
-            val result = billingClient.queryProductDetailsAsync(params)
-            if (result.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                val details = result.productDetailsList.firstOrNull()
+            val (billingResult, productDetailsList) =
+                suspendCancellableCoroutine<Pair<BillingResult, List<ProductDetails>>> { cont ->
+                    billingClient.queryProductDetailsAsync(
+                        params,
+                        ProductDetailsResponseListener { result, list ->
+                            cont.resume(result to list)
+                        }
+                    )
+                }
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                val details = productDetailsList.firstOrNull()
                 _productDetails.value = details
                 if (details != null) {
                     val basePlans = details.subscriptionOfferDetails?.map { offer -> offer.basePlanId }
@@ -97,20 +107,26 @@ class BillingManager(
                     Log.w(TAG, "No product details found for ${SubscriptionPlan.PRODUCT_ID}")
                 }
             } else {
-                Log.w(TAG, "Query product details failed: ${result.billingResult.debugMessage}")
+                Log.w(TAG, "Query product details failed: ${billingResult.debugMessage}")
             }
         }
     }
 
     fun queryExistingPurchases() {
         scope.launch {
-            val result = billingClient.queryPurchasesAsync(
-                QueryPurchasesParams.newBuilder()
-                    .setProductType(BillingClient.ProductType.SUBS)
-                    .build()
-            )
-            if (result.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                handlePurchases(result.purchasesList)
+            val (billingResult, purchases) =
+                suspendCancellableCoroutine<Pair<BillingResult, List<Purchase>>> { cont ->
+                    billingClient.queryPurchasesAsync(
+                        QueryPurchasesParams.newBuilder()
+                            .setProductType(BillingClient.ProductType.SUBS)
+                            .build(),
+                        PurchasesResponseListener { result, list ->
+                            cont.resume(result to list)
+                        }
+                    )
+                }
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                handlePurchases(purchases)
             }
         }
     }

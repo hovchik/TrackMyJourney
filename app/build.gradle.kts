@@ -1,9 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
+}
+
+// Load local.properties so API keys never need to be hardcoded in source.
+val localProperties = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
 }
 
 android {
@@ -21,6 +29,12 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Inject API keys from local.properties into BuildConfig.
+        // Use an empty string as the default so the app still compiles on CI
+        // without local.properties; the key is then supplied via user settings.
+        buildConfigField("String", "DEEPSEEK_API_KEY",
+            "\"${localProperties.getProperty("DEEPSEEK_API_KEY", "")}\"")
     }
 
     buildTypes {

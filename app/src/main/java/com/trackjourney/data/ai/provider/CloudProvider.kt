@@ -51,17 +51,28 @@ class CloudProvider @Inject constructor(
      * Loads cloud AI config from SettingsDataStore (the source of truth,
      * written by the Settings screen's Cloud AI wizard).
      * Always reloads to pick up any changes the user made.
+     *
+     * Key resolution order for DeepSeek:
+     *   1. User-entered key in Settings (SettingsDataStore)
+     *   2. Legacy AiPreferences store
+     *   3. Built-in key baked into the build from local.properties (BuildConfig.DEEPSEEK_API_KEY)
      */
     suspend fun ensureConfigLoaded() {
         val settings = settingsDataStore.settings.first()
 
-        // Always reload from SettingsDataStore to pick up provider/key changes
-        apiKey = settings.cloudAiApiKey.takeIf { it.isNotBlank() }
-            ?: aiPreferences.getCloudApiKey()
-
         providerType = mapSettingsProvider(settings.cloudAiProvider)
         customEndpoint = settings.cloudAiEndpoint
         customModel = settings.cloudAiModel
+
+        // Resolve API key with fallback to the build-time constant for DeepSeek.
+        val builtInKey = if (providerType == CloudProviderType.DEEPSEEK &&
+            BuildConfig.DEEPSEEK_API_KEY.isNotBlank()
+        ) BuildConfig.DEEPSEEK_API_KEY else null
+
+        apiKey = settings.cloudAiApiKey.takeIf { it.isNotBlank() }
+            ?: aiPreferences.getCloudApiKey()
+            ?: builtInKey
+
         Log.d(TAG, "Config loaded: provider=${providerType.label}, keySet=${!apiKey.isNullOrBlank()}")
     }
 

@@ -35,6 +35,12 @@ android {
         // without local.properties; the key is then supplied via user settings.
         buildConfigField("String", "DEEPSEEK_API_KEY",
             "\"${localProperties.getProperty("DEEPSEEK_API_KEY", "")}\"")
+        buildConfigField("String", "OPENAI_API_KEY",
+            "\"${localProperties.getProperty("OPENAI_API_KEY", "")}\"")
+        buildConfigField("String", "ANTHROPIC_API_KEY",
+            "\"${localProperties.getProperty("ANTHROPIC_API_KEY", "")}\"")
+        buildConfigField("String", "GEMINI_API_KEY",
+            "\"${localProperties.getProperty("GEMINI_API_KEY", "")}\"")
     }
 
     buildTypes {

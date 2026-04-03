@@ -64,10 +64,15 @@ class CloudProvider @Inject constructor(
         customEndpoint = settings.cloudAiEndpoint
         customModel = settings.cloudAiModel
 
-        // Resolve API key with fallback to the build-time constant for DeepSeek.
-        val builtInKey = if (providerType == CloudProviderType.DEEPSEEK &&
-            BuildConfig.DEEPSEEK_API_KEY.isNotBlank()
-        ) BuildConfig.DEEPSEEK_API_KEY else null
+        // Resolve API key: user-entered key takes priority, then the build-time
+        // constant baked in from local.properties. If both are absent the user
+        // must supply a key via Settings before the provider will work.
+        val builtInKey = when (providerType) {
+            CloudProviderType.DEEPSEEK  -> BuildConfig.DEEPSEEK_API_KEY
+            CloudProviderType.OPENAI    -> BuildConfig.OPENAI_API_KEY
+            CloudProviderType.CLAUDE    -> BuildConfig.ANTHROPIC_API_KEY
+            CloudProviderType.GEMINI    -> BuildConfig.GEMINI_API_KEY
+        }.takeIf { it.isNotBlank() }
 
         apiKey = settings.cloudAiApiKey.takeIf { it.isNotBlank() }
             ?: aiPreferences.getCloudApiKey()

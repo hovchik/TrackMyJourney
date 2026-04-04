@@ -40,3 +40,6 @@ All AI analysis and activity detection runs locally on your device. No accounts,
 Free users get unlimited tracking and AI insights. Subscribe to unlock track playback, advanced analytics, and more.
 
 Download Pathwise and start discovering the patterns in your everyday journeys.
+
+⚠️ DISCLAIMER
+Pathwise is not a medical device and is not intended to diagnose, treat, cure, or prevent any disease or medical condition. Health-related data displayed in the app (including heart rate, blood oxygen saturation, and calorie estimates) is derived from consumer-grade sensors and is provided for general fitness and informational purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare professional before making any health-related decisions.

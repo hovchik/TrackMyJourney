@@ -1031,10 +1031,10 @@ fun SettingsScreen(
                                 )
                                 Text(
                                     when {
-                                        spO2 >= 95 -> "Normal"
-                                        spO2 >= 90 -> "Low — monitor"
-                                        else -> "Very low — seek attention"
-                                    },
+                                        spO2 >= 95 -> "Typical range"
+                                        spO2 >= 90 -> "Below typical"
+                                        else -> "Low reading"
+                                    } + " · Not for medical use",
                                     fontSize = 11.sp,
                                     color = when {
                                         spO2 >= 95 -> PrimaryLight
@@ -2446,7 +2446,30 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 19.sp
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Not a Medical Device",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Pathwise is not a medical device and is not intended to diagnose, treat, " +
+                            "cure, or prevent any disease or medical condition. Health-related data " +
+                            "(heart rate, SpO2, calorie estimates) is for general fitness and " +
+                            "informational purposes only. Always consult a qualified healthcare " +
+                            "professional for medical advice.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        lineHeight = 16.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         "\u00a9 ${java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)} Pathwise. All rights reserved.",
                         fontSize = 11.sp,

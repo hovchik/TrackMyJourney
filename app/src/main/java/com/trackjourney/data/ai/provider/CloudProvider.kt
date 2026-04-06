@@ -344,7 +344,6 @@ class CloudProvider @Inject constructor(
     private fun buildDailyPrompt(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext? = null): String {
         val track = snapshot.track
         val points = snapshot.points
-        val healthData = snapshot.healthData
 
         val durationMs = (track.endTime ?: System.currentTimeMillis()) - track.startTime
         val durationMin = TimeUnit.MILLISECONDS.toMinutes(durationMs)
@@ -352,9 +351,6 @@ class CloudProvider @Inject constructor(
 
         val altitudes = points.mapNotNull { it.altitude }
         val elevationGain = computeElevationGain(altitudes)
-        val heartRates = points.mapNotNull { it.heartRate } + healthData.mapNotNull { it.heartRate }
-        val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
-        val maxHr = heartRates.maxOrNull()
         val speeds = points.map { it.speedKmh }.filter { it > 0 }
         val medianSpeed = speeds.sorted().let { if (it.isNotEmpty()) it[it.size / 2] else 0f }
         val avgCadence = points.mapNotNull { it.cadence }.takeIf { it.isNotEmpty() }?.average()?.toInt()
@@ -423,23 +419,10 @@ class CloudProvider @Inject constructor(
             else -> "Night"
         }
 
-        // Heart rate zones
-        val hrZones = if (heartRates.size >= 5) {
-            val z1 = heartRates.count { it < 100 } * 100 / heartRates.size
-            val z2 = heartRates.count { it in 100..119 } * 100 / heartRates.size
-            val z3 = heartRates.count { it in 120..139 } * 100 / heartRates.size
-            val z4 = heartRates.count { it in 140..159 } * 100 / heartRates.size
-            val z5 = heartRates.count { it >= 160 } * 100 / heartRates.size
-            "Z1(<100):${z1}% Z2(100-119):${z2}% Z3(120-139):${z3}% Z4(140-159):${z4}% Z5(160+):${z5}%"
-        } else null
-
         // Cadence details
         val cadences = points.mapNotNull { it.cadence }
         val minCadence = cadences.minOrNull()
         val maxCadence = cadences.maxOrNull()
-
-        // Min heart rate
-        val minHr = heartRates.minOrNull()
 
         // Speed profile — sample 5 segments across the track
         val speedProfile = if (points.size >= 10) {
@@ -464,10 +447,6 @@ class CloudProvider @Inject constructor(
         val avgSatellites = satellites.takeIf { it.isNotEmpty() }?.average()?.toInt()
         val inaccuratePoints = points.count { !it.isAccurate }
 
-        // Wearable device info
-        val wearableDevice = healthData.firstOrNull { it.deviceName != null }
-        val wearableInfo = wearableDevice?.let { "${it.deviceName} (${it.deviceType.name})" }
-
         return buildString {
             appendLine("Analyze this GPS-tracked activity in detail. Return a JSON object with these keys:")
             appendLine("- activity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (just the word, no speed ranges)")
@@ -475,7 +454,6 @@ class CloudProvider @Inject constructor(
             appendLine("- confidence: 0.0 to 1.0")
             appendLine("- summary: 4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers")
             appendLine("- suggestions: array of 3-5 actionable tips referencing actual metrics from this trip")
-            appendLine("- healthInsights: heart rate zone analysis and fitness observations if HR data present, otherwise null")
             appendLine("- lifetimeInsights: if lifetime data is provided, 2-3 sentences comparing this trip to the user's historical averages and personal bests (otherwise null)")
             appendLine()
             appendLine("=== TRACK DATA ===")
@@ -499,10 +477,6 @@ class CloudProvider @Inject constructor(
                 append("Elevation: gain ${"%.0f".format(elevationGain)}m, loss ${"%.0f".format(elevationLoss)}m")
                 if (minAlt != null && maxAlt != null) append(", range ${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m")
                 appendLine()
-            }
-            if (avgHr != null) {
-                appendLine("Heart Rate: avg $avgHr, max $maxHr, min $minHr bpm")
-                if (hrZones != null) appendLine("HR Zones: $hrZones")
             }
             if (avgCadence != null) appendLine("Cadence: avg $avgCadence, min $minCadence, max $maxCadence spm")
             if (stopCount > 0) {
@@ -530,9 +504,6 @@ class CloudProvider @Inject constructor(
             if (track.batteryStart != null || track.batteryEnd != null) {
                 appendLine("Phone battery: ${track.batteryStart ?: "?"}% → ${track.batteryEnd ?: "?"}%")
             }
-            // Wearable device
-            if (wearableInfo != null) appendLine("Wearable: $wearableInfo")
-
             // Lifetime context for comparative analysis
             if (lifetimeContext != null && lifetimeContext.totalTracks >= 2) {
                 appendLine()
@@ -540,7 +511,6 @@ class CloudProvider @Inject constructor(
                 appendLine("All-time: ${"%.1f".format(lifetimeContext.totalDistanceKm)}km total, avg ${"%.2f".format(lifetimeContext.avgDistanceKm)}km/trip, avg speed ${"%.1f".format(lifetimeContext.avgSpeedKmh)}km/h")
                 appendLine("Personal bests: longest ${"%.2f".format(lifetimeContext.bestDistanceKm)}km, fastest ${"%.1f".format(lifetimeContext.bestSpeedKmh)}km/h")
                 appendLine("Avg duration: ${lifetimeContext.avgDurationMin}min, avg calories: ${"%.0f".format(lifetimeContext.avgCaloriesPerTrip)}/trip")
-                if (lifetimeContext.avgHeartRate != null) appendLine("Avg heart rate across all trips: ${lifetimeContext.avgHeartRate} bpm")
                 if (lifetimeContext.sameActivityCount > 1) {
                     appendLine("Same activity (${track.activityType}) stats: ${lifetimeContext.sameActivityCount} trips, avg ${"%.1f".format(lifetimeContext.sameActivityAvgSpeedKmh)}km/h, avg ${"%.2f".format(lifetimeContext.sameActivityAvgDistanceKm)}km")
                 }

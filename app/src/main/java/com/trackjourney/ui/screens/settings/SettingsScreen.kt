@@ -843,30 +843,26 @@ fun SettingsScreen(
             if (isConnected && reading != null) {
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Row 1: Heart Rate + Watch Battery
+                // Cadence + Watch Battery
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     SensorCard(
                         modifier = Modifier.weight(1f),
-                        icon = Icons.Filled.MonitorHeart,
-                        title = "Heart Rate",
-                        value = reading.heartRate?.toString() ?: "--",
-                        unit = if (reading.heartRate != null) "bpm" else "",
+                        icon = Icons.Filled.Speed,
+                        title = "Cadence",
+                        value = reading.cadence?.toString() ?: "--",
+                        unit = if (reading.cadence != null) "spm" else "",
                         subtitle = when {
-                            reading.sensorContact == false -> "no wrist contact"
-                            reading.heartRate != null && reading.heartRate > 0 -> when {
-                                reading.heartRate < 60 -> "resting"
-                                reading.heartRate < 100 -> "normal"
-                                reading.heartRate < 140 -> "elevated"
-                                reading.heartRate < 170 -> "high"
-                                else -> "max effort"
-                            }
-                            else -> "waiting for data"
+                            reading.cadence == null -> "waiting for data"
+                            reading.cadence == 0 -> "stopped"
+                            reading.cadence < 100 -> "walking pace"
+                            reading.cadence < 180 -> "running pace"
+                            else -> "sprinting"
                         },
-                        isActive = reading.heartRate != null && reading.heartRate > 0,
-                        activeColor = Error
+                        isActive = reading.cadence != null && reading.cadence > 0,
+                        activeColor = Cycling
                     )
 
                     SensorCard(
@@ -894,223 +890,6 @@ fun SettingsScreen(
                             else -> Error
                         }
                     )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Row 2: Cadence + RR Intervals
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    SensorCard(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Filled.Speed,
-                        title = "Cadence",
-                        value = reading.cadence?.toString() ?: "--",
-                        unit = if (reading.cadence != null) "rpm" else "",
-                        subtitle = when {
-                            reading.cadence == null -> "waiting for data"
-                            reading.cadence == 0 -> "stopped"
-                            reading.cadence < 100 -> "walking pace"
-                            reading.cadence < 180 -> "running pace"
-                            else -> "sprinting"
-                        },
-                        isActive = reading.cadence != null && reading.cadence > 0,
-                        activeColor = Cycling
-                    )
-
-                    SensorCard(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Filled.Timeline,
-                        title = "RR Interval",
-                        value = if (reading.rrIntervals.isNotEmpty())
-                            reading.rrIntervals.last().toString()
-                        else "--",
-                        unit = if (reading.rrIntervals.isNotEmpty()) "ms" else "",
-                        subtitle = when {
-                            reading.rrIntervals.isEmpty() -> "waiting for data"
-                            reading.rrIntervals.size >= 2 -> {
-                                val diff = kotlin.math.abs(
-                                    reading.rrIntervals.last() -
-                                    reading.rrIntervals[reading.rrIntervals.size - 2]
-                                )
-                                "variability: ${diff}ms"
-                            }
-                            else -> "measuring..."
-                        },
-                        isActive = reading.rrIntervals.isNotEmpty(),
-                        activeColor = Driving
-                    )
-                }
-
-                // Energy Expended (full width, only if available)
-                if (reading.energyExpended != null) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Card(
-                        shape = RoundedCornerShape(14.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                color = Running.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Filled.LocalFireDepartment,
-                                        contentDescription = null,
-                                        tint = Running,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Energy Expended",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    "Cumulative from heart rate sensor",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Text(
-                                "${reading.energyExpended} kJ",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = Running
-                            )
-                        }
-                    }
-                }
-
-                // SpO2 (full width, only if available)
-                val spO2 = reading.spO2
-                if (spO2 != null) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Card(
-                        shape = RoundedCornerShape(14.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                color = Secondary.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Filled.Air,
-                                        contentDescription = null,
-                                        tint = Secondary,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Blood Oxygen (SpO2)",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    when {
-                                        spO2 >= 95 -> "Typical range"
-                                        spO2 >= 90 -> "Below typical"
-                                        else -> "Low reading"
-                                    } + " · Not for medical use",
-                                    fontSize = 11.sp,
-                                    color = when {
-                                        spO2 >= 95 -> PrimaryLight
-                                        spO2 >= 90 -> Accent
-                                        else -> Error
-                                    }
-                                )
-                            }
-                            Text(
-                                "$spO2%",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = if (spO2 >= 95) Secondary else Error
-                            )
-                        }
-                    }
-                }
-
-                // Temperature (full width, only if available)
-                val temperatureC = reading.temperatureC
-                if (temperatureC != null) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Card(
-                        shape = RoundedCornerShape(14.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                color = Accent.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Filled.Thermostat,
-                                        contentDescription = null,
-                                        tint = Accent,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Body Temperature",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    when {
-                                        temperatureC < 36.1f -> "Below normal"
-                                        temperatureC <= 37.2f -> "Normal"
-                                        temperatureC <= 38.0f -> "Slightly elevated"
-                                        else -> "Fever"
-                                    },
-                                    fontSize = 11.sp,
-                                    color = when {
-                                        temperatureC <= 37.2f -> PrimaryLight
-                                        temperatureC <= 38.0f -> Accent
-                                        else -> Error
-                                    }
-                                )
-                            }
-                            Text(
-                                String.format(java.util.Locale.US, "%.1f°C", temperatureC),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = Accent
-                            )
-                        }
-                    }
                 }
 
                 // Last updated timestamp
@@ -2291,7 +2070,6 @@ fun SettingsScreen(
   "bearing": 180.0,
   "accuracy_m": 4.5,
   "activity": "WALKING",
-  "heart_rate": 72,
   "battery": 85
 }
                                     """.trimIndent(),
@@ -2437,11 +2215,12 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "Pathwise is a privacy-first journey tracker that uses high-precision GPS " +
-                            "positioning with OpenStreetMap. It features on-device AI analysis for " +
-                            "smart trip insights, automatic activity detection, and vehicle tracking " +
-                            "with fuel cost estimation. All your data is stored locally on your " +
-                            "device — nothing is sent to external servers.",
+                        "Pathwise is a privacy-first GPS tracking and activity analysis app for " +
+                            "walkers, runners, cyclists, hikers, and commuters. It counts your steps, " +
+                            "predicts calories burned using MET-based calculations, and automatically " +
+                            "detects your activity type using on-device AI — no data leaves your device. " +
+                            "Export routes as GPX, CSV, or JSON, connect a Bluetooth wearable for live " +
+                            "cadence data, and track vehicle fuel costs across multiple car profiles.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 19.sp
@@ -2460,8 +2239,8 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "Pathwise is not a medical device and is not intended to diagnose, treat, " +
-                            "cure, or prevent any disease or medical condition. Health-related data " +
-                            "(heart rate, SpO2, calorie estimates) is for general fitness and " +
+                            "cure, or prevent any disease or medical condition. Fitness data " +
+                            "(step counts, calorie estimates) is for general fitness and " +
                             "informational purposes only. Always consult a qualified healthcare " +
                             "professional for medical advice.",
                         fontSize = 11.sp,

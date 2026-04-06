@@ -15,7 +15,6 @@ data class LifetimeContext(
     val avgDurationMin: Long,
     val totalCalories: Double,
     val avgCaloriesPerTrip: Double,
-    val avgHeartRate: Int?,
     val bestDistanceKm: Double,
     val bestSpeedKmh: Double,
     val sameActivityCount: Int,

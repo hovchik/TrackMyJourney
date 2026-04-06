@@ -11,15 +11,14 @@ import kotlinx.coroutines.flow.Flow
 // ─────────────────────────────────────────────────────────
 
 @Database(
-    entities = [TrackSession::class, TrackPoint::class, HealthData::class, AiAnalysis::class, CarProfile::class, LocalAiModelEntity::class],
-    version = 9,
+    entities = [TrackSession::class, TrackPoint::class, AiAnalysis::class, CarProfile::class, LocalAiModelEntity::class],
+    version = 10,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class TrackDatabase : RoomDatabase() {
     abstract fun trackDao(): TrackDao
     abstract fun trackPointDao(): TrackPointDao
-    abstract fun healthDataDao(): HealthDataDao
     abstract fun aiAnalysisDao(): AiAnalysisDao
     abstract fun carProfileDao(): CarProfileDao
     abstract fun localAiModelDao(): LocalAiModelDao
@@ -194,29 +193,6 @@ interface TrackPointDao {
 
     @Query("SELECT COUNT(*) FROM track_points")
     suspend fun getTotalPointCount(): Int
-}
-
-// ─────────────────────────────────────────────────────────
-//  HEALTH DATA DAO
-// ─────────────────────────────────────────────────────────
-
-@Dao
-interface HealthDataDao {
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(data: HealthData)
-
-    @Query("SELECT * FROM health_data WHERE track_id = :trackId ORDER BY timestamp ASC")
-    fun getHealthDataForTrack(trackId: String): Flow<List<HealthData>>
-
-    @Query("SELECT * FROM health_data WHERE track_id = :trackId ORDER BY timestamp ASC")
-    suspend fun getHealthDataForTrackSync(trackId: String): List<HealthData>
-
-    @Query("SELECT AVG(heart_rate) FROM health_data WHERE track_id = :trackId AND heart_rate IS NOT NULL")
-    suspend fun getAverageHeartRate(trackId: String): Int?
-
-    @Query("SELECT AVG(cadence) FROM health_data WHERE track_id = :trackId AND cadence IS NOT NULL")
-    suspend fun getAverageCadence(trackId: String): Int?
 }
 
 // ─────────────────────────────────────────────────────────

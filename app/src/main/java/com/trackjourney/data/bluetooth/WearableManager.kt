@@ -18,10 +18,6 @@ import java.util.UUID
 // ─────────────────────────────────────────────────────────
 
 object BleUuids {
-    // Heart Rate Service (0x180D)
-    val HEART_RATE_SERVICE: UUID       = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
-    val HEART_RATE_MEASUREMENT: UUID   = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
-
     // Battery Service (0x180F)
     val BATTERY_SERVICE: UUID          = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
     val BATTERY_LEVEL: UUID            = UUID.fromString("00002a19-0000-1000-8000-00805f9b34fb")
@@ -40,15 +36,6 @@ object BleUuids {
     val MODEL_NUMBER: UUID             = UUID.fromString("00002a24-0000-1000-8000-00805f9b34fb")
     val FIRMWARE_REVISION: UUID        = UUID.fromString("00002a26-0000-1000-8000-00805f9b34fb")
 
-    // Pulse Oximeter Service (0x1822) — SpO2
-    val PLX_SERVICE: UUID              = UUID.fromString("00001822-0000-1000-8000-00805f9b34fb")
-    val PLX_CONTINUOUS: UUID           = UUID.fromString("00002a5f-0000-1000-8000-00805f9b34fb")
-    val PLX_SPOT_CHECK: UUID           = UUID.fromString("00002a5e-0000-1000-8000-00805f9b34fb")
-
-    // Health Thermometer Service (0x1809) — Body temperature
-    val HTS_SERVICE: UUID              = UUID.fromString("00001809-0000-1000-8000-00805f9b34fb")
-    val TEMPERATURE_MEASUREMENT: UUID  = UUID.fromString("00002a1c-0000-1000-8000-00805f9b34fb")
-
     // Client Characteristic Configuration Descriptor
     val CCCD: UUID                     = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 }
@@ -65,14 +52,8 @@ data class WearableDevice(
 )
 
 data class WearableReading(
-    val heartRate: Int? = null,
-    val rrIntervals: List<Int> = emptyList(),     // beat-to-beat intervals in ms
-    val energyExpended: Int? = null,              // cumulative kJ
-    val sensorContact: Boolean? = null,           // wrist contact detected
     val batteryLevel: Int? = null,                // 0-100%
     val cadence: Int? = null,                     // steps/min or rpm
-    val spO2: Int? = null,                        // blood oxygen saturation 0-100%
-    val temperatureC: Float? = null,              // body temperature in °C
     val timestamp: Long = System.currentTimeMillis(),
     val deviceName: String = "",
     val deviceType: WearableType = WearableType.UNKNOWN,
@@ -155,22 +136,13 @@ class WearableManager(
 
         _connectionState.value = WearableConnectionState.Scanning
 
-        // Scan for any device advertising a standard fitness BLE service.
-        // Different brands advertise different services — Polar/Garmin/Wahoo
-        // typically advertise HR, while cycling sensors may only advertise CSC,
-        // and some wearables expose SpO2 (PLX) or RSC.
+        // Scan for devices advertising RSC or CSC services (step/cadence data).
         val scanFilters = listOf(
-            ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(BleUuids.HEART_RATE_SERVICE))
-                .build(),
             ScanFilter.Builder()
                 .setServiceUuid(ParcelUuid(BleUuids.RSC_SERVICE))
                 .build(),
             ScanFilter.Builder()
                 .setServiceUuid(ParcelUuid(BleUuids.CSC_SERVICE))
-                .build(),
-            ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(BleUuids.PLX_SERVICE))
                 .build()
         )
 
@@ -297,14 +269,7 @@ class WearableManager(
 
             Log.i(TAG, "Services discovered: ${gatt.services.map { it.uuid }}")
 
-            // 1. Subscribe to Heart Rate Measurement notifications
-            gatt.getService(BleUuids.HEART_RATE_SERVICE)?.let { service ->
-                service.getCharacteristic(BleUuids.HEART_RATE_MEASUREMENT)?.let { char ->
-                    enqueueGattOp { enableNotifications(gatt, char) }
-                }
-            }
-
-            // 2. Subscribe to Battery Level notifications / read once
+            // 1. Subscribe to Battery Level notifications / read once
             gatt.getService(BleUuids.BATTERY_SERVICE)?.let { service ->
                 service.getCharacteristic(BleUuids.BATTERY_LEVEL)?.let { char ->
                     enqueueGattOp { enableNotifications(gatt, char) }
@@ -312,36 +277,21 @@ class WearableManager(
                 }
             }
 
-            // 3. Subscribe to Running Speed & Cadence
+            // 2. Subscribe to Running Speed & Cadence
             gatt.getService(BleUuids.RSC_SERVICE)?.let { service ->
                 service.getCharacteristic(BleUuids.RSC_MEASUREMENT)?.let { char ->
                     enqueueGattOp { enableNotifications(gatt, char) }
                 }
             }
 
-            // 4. Subscribe to Cycling Speed & Cadence
+            // 3. Subscribe to Cycling Speed & Cadence
             gatt.getService(BleUuids.CSC_SERVICE)?.let { service ->
                 service.getCharacteristic(BleUuids.CSC_MEASUREMENT)?.let { char ->
                     enqueueGattOp { enableNotifications(gatt, char) }
                 }
             }
 
-            // 5. Subscribe to Pulse Oximeter (SpO2)
-            gatt.getService(BleUuids.PLX_SERVICE)?.let { service ->
-                // Prefer continuous measurement, fall back to spot-check
-                val char = service.getCharacteristic(BleUuids.PLX_CONTINUOUS)
-                    ?: service.getCharacteristic(BleUuids.PLX_SPOT_CHECK)
-                char?.let { enqueueGattOp { enableNotifications(gatt, it) } }
-            }
-
-            // 6. Subscribe to Health Thermometer
-            gatt.getService(BleUuids.HTS_SERVICE)?.let { service ->
-                service.getCharacteristic(BleUuids.TEMPERATURE_MEASUREMENT)?.let { char ->
-                    enqueueGattOp { enableNotifications(gatt, char) }
-                }
-            }
-
-            // 7. Read Device Information (one-shot reads)
+            // 4. Read Device Information (one-shot reads)
             gatt.getService(BleUuids.DEVICE_INFO_SERVICE)?.let { service ->
                 service.getCharacteristic(BleUuids.MANUFACTURER_NAME)?.let { char ->
                     enqueueGattOp { gatt.readCharacteristic(char) }
@@ -407,15 +357,6 @@ class WearableManager(
 
     private fun handleCharacteristic(uuid: UUID, value: ByteArray) {
         when (uuid) {
-            BleUuids.HEART_RATE_MEASUREMENT -> {
-                val parsed = parseHeartRateMeasurement(value)
-                updateReading(
-                    heartRate = parsed.heartRate,
-                    rrIntervals = parsed.rrIntervals,
-                    energyExpended = parsed.energyExpended,
-                    sensorContact = parsed.sensorContact
-                )
-            }
             BleUuids.BATTERY_LEVEL -> {
                 val level = value.firstOrNull()?.toInt()?.and(0xFF)
                 updateReading(batteryLevel = level)
@@ -425,17 +366,8 @@ class WearableManager(
                 updateReading(cadence = cadence)
             }
             BleUuids.CSC_MEASUREMENT -> {
-                // CSC cadence parsing handled via crank revolution data
                 val cadence = parseCyclingCadence(value)
                 if (cadence != null) updateReading(cadence = cadence)
-            }
-            BleUuids.PLX_CONTINUOUS, BleUuids.PLX_SPOT_CHECK -> {
-                val spo2 = parseSpO2(value)
-                if (spo2 != null) updateReading(spO2 = spo2)
-            }
-            BleUuids.TEMPERATURE_MEASUREMENT -> {
-                val tempC = parseTemperature(value)
-                if (tempC != null) updateReading(temperatureC = tempC)
             }
         }
     }
@@ -472,66 +404,6 @@ class WearableManager(
     }
 
     // ─── PARSERS ─────────────────────────────────────────
-
-    /**
-     * Parse Heart Rate Measurement per Bluetooth SIG spec (0x2A37).
-     *
-     * Flags byte layout:
-     *   Bit 0: HR format (0=UINT8, 1=UINT16)
-     *   Bit 1-2: Sensor contact
-     *   Bit 3: Energy expended present
-     *   Bit 4: RR-interval present
-     */
-    private data class HeartRateParsed(
-        val heartRate: Int,
-        val sensorContact: Boolean?,
-        val energyExpended: Int?,
-        val rrIntervals: List<Int>
-    )
-
-    private fun parseHeartRateMeasurement(data: ByteArray): HeartRateParsed {
-        if (data.isEmpty()) return HeartRateParsed(0, null, null, emptyList())
-
-        val flags = data[0].toInt() and 0xFF
-        var offset = 1
-
-        // Heart Rate value
-        val hrFormat16 = flags and 0x01 != 0
-        val heartRate = if (hrFormat16) {
-            val hr = (data[offset].toInt() and 0xFF) or ((data[offset + 1].toInt() and 0xFF) shl 8)
-            offset += 2
-            hr
-        } else {
-            val hr = data[offset].toInt() and 0xFF
-            offset += 1
-            hr
-        }
-
-        // Sensor contact
-        val contactSupported = flags and 0x04 != 0
-        val sensorContact = if (contactSupported) (flags and 0x02 != 0) else null
-
-        // Energy expended (cumulative kJ)
-        val energyPresent = flags and 0x08 != 0
-        val energyExpended = if (energyPresent && offset + 1 < data.size) {
-            val ee = (data[offset].toInt() and 0xFF) or ((data[offset + 1].toInt() and 0xFF) shl 8)
-            offset += 2
-            ee
-        } else null
-
-        // RR-intervals (1/1024 seconds each, convert to ms)
-        val rrPresent = flags and 0x10 != 0
-        val rrIntervals = mutableListOf<Int>()
-        if (rrPresent) {
-            while (offset + 1 < data.size) {
-                val rr = (data[offset].toInt() and 0xFF) or ((data[offset + 1].toInt() and 0xFF) shl 8)
-                rrIntervals.add((rr * 1000) / 1024) // convert to ms
-                offset += 2
-            }
-        }
-
-        return HeartRateParsed(heartRate, sensorContact, energyExpended, rrIntervals)
-    }
 
     /**
      * Parse Running Speed & Cadence Measurement (0x2A53).
@@ -583,17 +455,11 @@ class WearableManager(
         return rpm
     }
 
-    // ─── STATE UPDATES ───────────────────────────────────
+    // ─── STATE UPDATES ────────────────────────────────────
 
     private fun updateReading(
-        heartRate: Int? = null,
-        rrIntervals: List<Int>? = null,
-        energyExpended: Int? = null,
-        sensorContact: Boolean? = null,
         batteryLevel: Int? = null,
         cadence: Int? = null,
-        spO2: Int? = null,
-        temperatureC: Float? = null,
         manufacturerName: String? = null,
         modelNumber: String? = null
     ) {
@@ -603,14 +469,8 @@ class WearableManager(
         )
 
         val updated = current.copy(
-            heartRate = heartRate ?: current.heartRate,
-            rrIntervals = rrIntervals ?: current.rrIntervals,
-            energyExpended = energyExpended ?: current.energyExpended,
-            sensorContact = sensorContact ?: current.sensorContact,
             batteryLevel = batteryLevel ?: current.batteryLevel,
             cadence = cadence ?: current.cadence,
-            spO2 = spO2 ?: current.spO2,
-            temperatureC = temperatureC ?: current.temperatureC,
             timestamp = System.currentTimeMillis(),
             manufacturerName = manufacturerName ?: current.manufacturerName,
             modelNumber = modelNumber ?: current.modelNumber
@@ -618,54 +478,6 @@ class WearableManager(
 
         _latestReading.value = updated
         _readings.tryEmit(updated)
-    }
-
-    // ─── SpO2 PARSER ────────────────────────────────────
-
-    /**
-     * Parse PLX Continuous/Spot-Check Measurement.
-     * Byte 0: flags
-     * Bytes 1-2: SpO2 (SFLOAT — IEEE 11073 16-bit float)
-     *
-     * Returns integer SpO2 percentage (0-100), or null if invalid.
-     */
-    private fun parseSpO2(data: ByteArray): Int? {
-        if (data.size < 3) return null
-        // SFLOAT: lower 12 bits = mantissa, upper 4 bits = exponent
-        val raw = (data[1].toInt() and 0xFF) or ((data[2].toInt() and 0xFF) shl 8)
-        val mantissa = raw and 0x0FFF
-        val exponent = (raw shr 12) and 0x0F
-        // Simple conversion for typical SpO2 values (exponent usually 0 or -1)
-        val exp = if (exponent > 7) exponent - 16 else exponent  // signed 4-bit
-        val value = mantissa * Math.pow(10.0, exp.toDouble()).toFloat()
-        return if (value in 50f..100f) value.toInt() else null
-    }
-
-    // ─── TEMPERATURE PARSER ──────────────────────────────
-
-    /**
-     * Parse Health Thermometer Measurement (0x2A1C).
-     * Byte 0: flags (bit 0 = Fahrenheit if set, Celsius if clear)
-     * Bytes 1-4: temperature as IEEE 11073 FLOAT (32-bit)
-     *
-     * Returns temperature in °C.
-     */
-    private fun parseTemperature(data: ByteArray): Float? {
-        if (data.size < 5) return null
-        val flags = data[0].toInt() and 0xFF
-        // IEEE 11073 FLOAT: bytes 1-3 = 24-bit mantissa (signed), byte 4 = exponent (signed)
-        val mantissa = (data[1].toInt() and 0xFF) or
-                ((data[2].toInt() and 0xFF) shl 8) or
-                ((data[3].toInt() and 0xFF) shl 16)
-        // Sign-extend 24-bit mantissa
-        val signedMantissa = if (mantissa and 0x800000 != 0) mantissa or (0xFF shl 24) else mantissa
-        val exponent = data[4].toInt() // already signed byte
-        val tempValue = signedMantissa * Math.pow(10.0, exponent.toDouble()).toFloat()
-
-        // Convert Fahrenheit to Celsius if needed
-        val isFahrenheit = flags and 0x01 != 0
-        val tempC = if (isFahrenheit) (tempValue - 32f) * 5f / 9f else tempValue
-        return if (tempC in 20f..45f) tempC else null // sanity range for body temp
     }
 
     // ─── DEVICE DETECTION ────────────────────────────────

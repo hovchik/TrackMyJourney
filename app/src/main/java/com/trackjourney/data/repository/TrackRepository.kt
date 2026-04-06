@@ -28,7 +28,6 @@ class TrackRepository(
     private val context: Context,
     private val trackDao: TrackDao,
     private val trackPointDao: TrackPointDao,
-    private val healthDataDao: HealthDataDao,
     private val aiAnalysisDao: AiAnalysisDao,
     private val carProfileDao: CarProfileDao,
     private val locationTracker: LocationTracker,
@@ -318,7 +317,6 @@ class TrackRepository(
             bearing = if (location.hasBearing()) location.bearing else null,
             accuracy = accuracyMeters,
             timestamp = now,
-            heartRate = healthReading?.heartRate,
             cadence = healthReading?.cadence,
             activityType = activity,
             placeName = placeName,
@@ -335,18 +333,6 @@ class TrackRepository(
                     trackDao.update(track.copy(startPlaceName = placeName))
                 }
             }
-        }
-
-        // Store separate health data record if available
-        if (healthReading != null && healthReading.heartRate != null) {
-            healthDataDao.insert(HealthData(
-                trackId = trackId,
-                heartRate = healthReading.heartRate,
-                batteryLevel = healthReading.batteryLevel,
-                cadence = healthReading.cadence,
-                deviceName = healthReading.deviceName,
-                deviceType = healthReading.deviceType
-            ))
         }
 
         // Update track stats
@@ -374,8 +360,6 @@ class TrackRepository(
         // Use 95th percentile for max speed to reject residual GPS outliers
         val movingSpeeds = points.map { it.speedKmh }.filter { it > 0f }
         val maxSpeed = LocationTracker.percentileSpeed(movingSpeeds)
-
-        val avgHr = healthDataDao.getAverageHeartRate(trackId)
 
         // Determine dominant activity from ALL points, excluding disabled types and STATIONARY
         val currentSettings = settingsDataStore.settings.first()
@@ -406,7 +390,6 @@ class TrackRepository(
             avgSpeedKmh = avgSpeed.toDouble(),
             maxSpeedKmh = maxSpeed.toDouble(),
             activityType = dominant,
-            avgHeartRate = avgHr,
             caloriesBurned = calories,
             rideCost = rideCost
         ))
@@ -464,12 +447,11 @@ class TrackRepository(
     suspend fun analyzeTrack(trackId: String): AiAnalysis? = withContext(Dispatchers.Default) {
         try {
             val points = trackPointDao.getPointsForTrackSync(trackId)
-            val healthData = healthDataDao.getHealthDataForTrackSync(trackId)
 
             if (points.isEmpty()) return@withContext null
 
             // Try using the user's selected AI provider first
-            val providerAnalysis = tryProviderAnalysis(trackId, points, healthData)
+            val providerAnalysis = tryProviderAnalysis(trackId, points)
             if (providerAnalysis != null) {
                 aiAnalysisDao.insert(providerAnalysis)
                 trackDao.getTrackById(trackId)?.let { track ->
@@ -488,7 +470,7 @@ class TrackRepository(
             }
 
             // Fall back to local rule-based engine
-            val analysis = aiEngine.analyzeTrack(points, healthData)
+            val analysis = aiEngine.analyzeTrack(points)
             val finalAnalysis = analysis.copy(trackId = trackId)
             aiAnalysisDao.insert(finalAnalysis)
 
@@ -519,8 +501,7 @@ class TrackRepository(
      */
     private suspend fun tryProviderAnalysis(
         trackId: String,
-        points: List<TrackPoint>,
-        healthData: List<HealthData>
+        points: List<TrackPoint>
     ): AiAnalysis? {
         return try {
             val selection = aiProviderSelector.selectProvider()
@@ -532,7 +513,7 @@ class TrackRepository(
             }
 
             val track = trackDao.getTrackById(trackId) ?: return null
-            val snapshot = TrackWithPoints(track, points, healthData)
+            val snapshot = TrackWithPoints(track, points)
 
             // Build lifetime context from historical tracks
             val lifetimeContext = buildLifetimeContext(track)
@@ -563,8 +544,6 @@ class TrackRepository(
                 end - t.startTime
             }.takeIf { it.isNotEmpty() }?.average()?.toLong() ?: 0L
 
-            val avgHr = allTracks.mapNotNull { it.avgHeartRate }.takeIf { it.isNotEmpty() }?.average()?.toInt()
-
             val sameActivityTracks = allTracks.filter { it.activityType == currentTrack.activityType }
 
             com.trackjourney.data.ai.provider.LifetimeContext(
@@ -575,7 +554,6 @@ class TrackRepository(
                 avgDurationMin = avgDurationMs / 60_000,
                 totalCalories = stats.totalCalories,
                 avgCaloriesPerTrip = if (stats.totalTracks > 0) stats.totalCalories / stats.totalTracks else 0.0,
-                avgHeartRate = avgHr,
                 bestDistanceKm = (allTracks.maxOfOrNull { it.distanceMeters } ?: 0.0) / 1000.0,
                 bestSpeedKmh = allTracks.maxOfOrNull { it.maxSpeedKmh } ?: 0.0,
                 sameActivityCount = sameActivityTracks.size,
@@ -624,7 +602,6 @@ class TrackRepository(
                 confidence = json.optDouble("confidence", 0.0).toFloat(),
                 summary = json.optString("summary", ""),
                 suggestions = suggestions.joinToString("|"),
-                healthInsights = json.optString("healthInsights").takeIf { it.isNotEmpty() && it != "null" },
                 lifetimeInsights = json.optString("lifetimeInsights").takeIf { it.isNotEmpty() && it != "null" }
             )
         } catch (e: Exception) {
@@ -721,7 +698,6 @@ class TrackRepository(
             val analysis = aiAnalysisDao.getLatestAnalysis(trackId)
             val track = trackWithPoints.track
             val points = trackWithPoints.points
-            val health = trackWithPoints.healthData
 
             val export = TrackExport(
                 session = TrackSessionExport(
@@ -733,7 +709,6 @@ class TrackRepository(
                     avgSpeedKmh = track.avgSpeedKmh,
                     maxSpeedKmh = track.maxSpeedKmh,
                     activityType = track.activityType.name,
-                    avgHeartRate = track.avgHeartRate,
                     startPlaceName = track.startPlaceName,
                     endPlaceName = track.endPlaceName,
                     caloriesBurned = track.caloriesBurned,
@@ -750,22 +725,11 @@ class TrackRepository(
                         bearing = pt.bearing,
                         accuracy = pt.accuracy,
                         timestamp = pt.timestamp,
-                        heartRate = pt.heartRate,
                         cadence = pt.cadence,
                         activityType = pt.activityType.name,
                         placeName = pt.placeName,
                         satellitesUsed = pt.satellitesUsed,
                         isAccurate = pt.isAccurate
-                    )
-                },
-                healthData = health.map { hd ->
-                    HealthDataExport(
-                        timestamp = hd.timestamp,
-                        heartRate = hd.heartRate,
-                        batteryLevel = hd.batteryLevel,
-                        cadence = hd.cadence,
-                        deviceName = hd.deviceName,
-                        deviceType = hd.deviceType.name
                     )
                 },
                 aiAnalysis = analysis?.let { a ->
@@ -774,7 +738,6 @@ class TrackRepository(
                         confidence = a.confidence,
                         summary = a.summary,
                         suggestions = a.suggestions.split("|").filter { it.isNotBlank() },
-                        healthInsights = a.healthInsights,
                         segmentActivities = null
                     )
                 }
@@ -822,7 +785,6 @@ class TrackRepository(
                     append("      <trkpt lat=\"${pt.latitude}\" lon=\"${pt.longitude}\">")
                     pt.altitude?.let { append("<ele>$it</ele>") }
                     append("<time>${isoFmt.format(Date(pt.timestamp))}</time>")
-                    pt.heartRate?.let { append("<extensions><hr>$it</hr></extensions>") }
                     appendLine("</trkpt>")
                 }
                 appendLine("    </trkseg>")
@@ -855,7 +817,7 @@ class TrackRepository(
             }
 
             val csv = buildString {
-                appendLine("timestamp,latitude,longitude,altitude,speed_kmh,bearing,accuracy,heart_rate,cadence,activity,satellites,accurate")
+                appendLine("timestamp,latitude,longitude,altitude,speed_kmh,bearing,accuracy,cadence,activity,satellites,accurate")
                 for (pt in points) {
                     appendLine(buildString {
                         append(isoFmt.format(Date(pt.timestamp))).append(',')
@@ -865,7 +827,6 @@ class TrackRepository(
                         append(pt.speedKmh).append(',')
                         append(pt.bearing ?: "").append(',')
                         append(pt.accuracy ?: "").append(',')
-                        append(pt.heartRate ?: "").append(',')
                         append(pt.cadence ?: "").append(',')
                         append(pt.activityType.name).append(',')
                         append(pt.satellitesUsed ?: "").append(',')
@@ -958,7 +919,6 @@ class TrackRepository(
             avgSpeedKmh = session.avgSpeedKmh,
             maxSpeedKmh = session.maxSpeedKmh,
             activityType = parseActivityType(session.activityType),
-            avgHeartRate = session.avgHeartRate,
             startPlaceName = session.startPlaceName,
             endPlaceName = session.endPlaceName,
             isActive = false
@@ -976,7 +936,6 @@ class TrackRepository(
                 bearing = pt.bearing,
                 accuracy = pt.accuracy,
                 timestamp = pt.timestamp,
-                heartRate = pt.heartRate,
                 cadence = pt.cadence,
                 activityType = parseActivityType(pt.activityType),
                 placeName = pt.placeName,
@@ -986,19 +945,6 @@ class TrackRepository(
         }
         trackPointDao.insertAll(points)
 
-        // Import health data
-        export.healthData.forEach { hd ->
-            healthDataDao.insert(HealthData(
-                trackId = trackId,
-                timestamp = hd.timestamp,
-                heartRate = hd.heartRate,
-                batteryLevel = hd.batteryLevel,
-                cadence = hd.cadence,
-                deviceName = hd.deviceName,
-                deviceType = parseWearableType(hd.deviceType)
-            ))
-        }
-
         // Import AI analysis
         export.aiAnalysis?.let { ai ->
             aiAnalysisDao.insert(AiAnalysis(
@@ -1006,8 +952,7 @@ class TrackRepository(
                 detectedActivity = parseActivityType(ai.detectedActivity),
                 confidence = ai.confidence,
                 summary = ai.summary,
-                suggestions = ai.suggestions.joinToString("|"),
-                healthInsights = ai.healthInsights
+                suggestions = ai.suggestions.joinToString("|")
             ))
             // Set AI summary on track
             trackDao.update(track.copy(aiSummary = ai.summary))
@@ -1034,7 +979,6 @@ class TrackRepository(
         val trkptRegex = Regex("""<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)">(.*?)</trkpt>""", RegexOption.DOT_MATCHES_ALL)
         val eleRegex = Regex("<ele>(.*?)</ele>")
         val timeRegex = Regex("<time>(.*?)</time>")
-        val hrRegex = Regex("<hr>(.*?)</hr>")
 
         val points = mutableListOf<TrackPoint>()
         for (match in trkptRegex.findAll(content)) {
@@ -1046,7 +990,6 @@ class TrackRepository(
             val timestamp = timeRegex.find(inner)?.groupValues?.get(1)?.let {
                 try { isoFmt.parse(it)?.time } catch (e: Exception) { null }
             } ?: System.currentTimeMillis()
-            val heartRate = hrRegex.find(inner)?.groupValues?.get(1)?.toIntOrNull()
 
             points.add(TrackPoint(
                 trackId = trackId,
@@ -1054,7 +997,6 @@ class TrackRepository(
                 longitude = lon,
                 altitude = altitude,
                 timestamp = timestamp,
-                heartRate = heartRate,
                 activityType = activityType,
                 isAccurate = true
             ))
@@ -1118,7 +1060,6 @@ class TrackRepository(
         val tsIdx = header.indexOfFirst { it == "timestamp" || it == "time" || it == "datetime" }
         val altIdx = header.indexOfFirst { it == "altitude" || it == "ele" || it == "elevation" }
         val speedIdx = header.indexOfFirst { it == "speed_kmh" || it == "speed" }
-        val hrIdx = header.indexOfFirst { it == "heart_rate" || it == "hr" || it == "heartrate" }
         val cadIdx = header.indexOfFirst { it == "cadence" }
         val actIdx = header.indexOfFirst { it == "activity" || it == "activity_type" }
         val accIdx = header.indexOfFirst { it == "accuracy" }
@@ -1142,7 +1083,6 @@ class TrackRepository(
 
             val altitude = if (altIdx >= 0) cols.getOrNull(altIdx)?.toDoubleOrNull() else null
             val speedKmh = if (speedIdx >= 0) cols.getOrNull(speedIdx)?.toFloatOrNull() ?: 0f else 0f
-            val heartRate = if (hrIdx >= 0) cols.getOrNull(hrIdx)?.toIntOrNull() else null
             val cadence = if (cadIdx >= 0) cols.getOrNull(cadIdx)?.toIntOrNull() else null
             val activity = if (actIdx >= 0) cols.getOrNull(actIdx)?.let { parseActivityType(it) } ?: ActivityType.UNKNOWN else ActivityType.UNKNOWN
             val accuracy = if (accIdx >= 0) cols.getOrNull(accIdx)?.toFloatOrNull() else null
@@ -1156,7 +1096,6 @@ class TrackRepository(
                 speedKmh = speedKmh,
                 speedMs = speedKmh / 3.6f,
                 timestamp = timestamp,
-                heartRate = heartRate,
                 cadence = cadence,
                 activityType = activity,
                 accuracy = accuracy,
@@ -1242,7 +1181,6 @@ class TrackRepository(
                         avgSpeedKmh = track.avgSpeedKmh,
                         maxSpeedKmh = track.maxSpeedKmh,
                         activityType = track.activityType.name,
-                        avgHeartRate = track.avgHeartRate,
                         startPlaceName = track.startPlaceName,
                         endPlaceName = track.endPlaceName,
                         caloriesBurned = track.caloriesBurned,
@@ -1259,22 +1197,11 @@ class TrackRepository(
                             bearing = pt.bearing,
                             accuracy = pt.accuracy,
                             timestamp = pt.timestamp,
-                            heartRate = pt.heartRate,
                             cadence = pt.cadence,
                             activityType = pt.activityType.name,
                             placeName = pt.placeName,
                             satellitesUsed = pt.satellitesUsed,
                             isAccurate = pt.isAccurate
-                        )
-                    },
-                    healthData = twp.healthData.map { hd ->
-                        HealthDataExport(
-                            timestamp = hd.timestamp,
-                            heartRate = hd.heartRate,
-                            batteryLevel = hd.batteryLevel,
-                            cadence = hd.cadence,
-                            deviceName = hd.deviceName,
-                            deviceType = hd.deviceType.name
                         )
                     },
                     aiAnalysis = analysis?.let { a ->
@@ -1283,7 +1210,6 @@ class TrackRepository(
                             confidence = a.confidence,
                             summary = a.summary,
                             suggestions = a.suggestions.split("|").filter { it.isNotBlank() },
-                            healthInsights = a.healthInsights,
                             segmentActivities = null
                         )
                     }
@@ -1331,7 +1257,6 @@ class TrackRepository(
                     avgSpeedKmh = session.avgSpeedKmh,
                     maxSpeedKmh = session.maxSpeedKmh,
                     activityType = parseActivityType(session.activityType),
-                    avgHeartRate = session.avgHeartRate,
                     startPlaceName = session.startPlaceName,
                     endPlaceName = session.endPlaceName,
                     caloriesBurned = session.caloriesBurned,
@@ -1352,7 +1277,6 @@ class TrackRepository(
                         bearing = pt.bearing,
                         accuracy = pt.accuracy,
                         timestamp = pt.timestamp,
-                        heartRate = pt.heartRate,
                         cadence = pt.cadence,
                         activityType = parseActivityType(pt.activityType),
                         placeName = pt.placeName,
@@ -1362,26 +1286,13 @@ class TrackRepository(
                 }
                 trackPointDao.insertAll(points)
 
-                trackExport.healthData.forEach { hd ->
-                    healthDataDao.insert(HealthData(
-                        trackId = trackId,
-                        timestamp = hd.timestamp,
-                        heartRate = hd.heartRate,
-                        batteryLevel = hd.batteryLevel,
-                        cadence = hd.cadence,
-                        deviceName = hd.deviceName,
-                        deviceType = parseWearableType(hd.deviceType)
-                    ))
-                }
-
                 trackExport.aiAnalysis?.let { ai ->
                     aiAnalysisDao.insert(AiAnalysis(
                         trackId = trackId,
                         detectedActivity = parseActivityType(ai.detectedActivity),
                         confidence = ai.confidence,
                         summary = ai.summary,
-                        suggestions = ai.suggestions.joinToString("|"),
-                        healthInsights = ai.healthInsights
+                        suggestions = ai.suggestions.joinToString("|")
                     ))
                     trackDao.update(track.copy(aiSummary = ai.summary))
                 }

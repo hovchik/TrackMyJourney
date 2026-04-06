@@ -196,7 +196,6 @@ fun MapScreen(
                 )
                 WearableStatusChip(
                     connectionState = uiState.wearableState,
-                    heartRate = uiState.wearableReading?.heartRate,
                     batteryLevel = uiState.wearableReading?.batteryLevel
                 )
             }
@@ -520,17 +519,13 @@ private fun TrackingStatsBar(state: MapUiState) {
                         else -> Error
                     }
                 )
-                state.wearableReading?.heartRate?.let { hr ->
+                state.wearableReading?.cadence?.let { cadence ->
                     StatDivider()
                     StatItem(
-                        value = hr.toString(),
-                        unit = "bpm",
-                        label = "Heart",
-                        accentColor = when {
-                            hr < 60 -> Accent
-                            hr <= 140 -> PrimaryLight
-                            else -> Error
-                        }
+                        value = cadence.toString(),
+                        unit = "spm",
+                        label = "Cadence",
+                        accentColor = PrimaryLight
                     )
                 }
             }
@@ -819,18 +814,13 @@ private fun GpsSatelliteChip(
 @Composable
 private fun WearableStatusChip(
     connectionState: WearableConnectionState,
-    heartRate: Int?,
     batteryLevel: Int?,
     modifier: Modifier = Modifier
 ) {
     val (indicatorColor, text, icon) = when (connectionState) {
         is WearableConnectionState.Connected -> {
             val displayText = buildString {
-                heartRate?.let { append("$it bpm") }
-                batteryLevel?.let {
-                    if (isNotEmpty()) append("  $it%")
-                    else append("$it%")
-                }
+                batteryLevel?.let { append("$it%") }
                 if (isEmpty()) append(connectionState.device.name)
             }
             Triple(PrimaryLight, displayText, Icons.Filled.Watch)

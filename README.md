@@ -1,14 +1,14 @@
 # Pathwise 🗺️
 
-**Pathwise** (formerly TrackMyJourney) — an Android application that tracks your movements on OpenStreetMap, integrates with Garmin/Samsung smartwatches via Bluetooth LE for health metrics, and uses on-device AI to analyze your trips.
+**Pathwise** (formerly TrackMyJourney) — an Android application that tracks your movements on OpenStreetMap, integrates with smartwatches via Bluetooth LE for health metrics, and uses AI (on-device or cloud) to analyze your trips.
 
 ## Features
 
 ### 📍 GPS Tracking with OpenStreetMap
 - Real-time location tracking rendered on OSM (osmdroid)
 - Color-coded track segments by detected activity type
-- Configurable recording interval (1s – 30s) and minimum distance filter
-- Speed recording at every data point
+- Configurable recording interval with smart adaptive sampling
+- Speed recording and satellite quality monitoring at every data point
 - Foreground service for reliable background tracking
 
 ### ⌚ Smartwatch Integration (Bluetooth LE)
@@ -18,19 +18,26 @@
 - Real-time heart rate (BPM) and blood oxygen saturation (SpO2 %) display
 - Health data stored alongside GPS points in each track
 
-### 🤖 On-Device AI Analysis
+### 🤖 AI Analysis
 - **Real-time activity detection**: Walking, Running, Cycling, Driving, Flying, Stationary
 - **Rule-based classifier** works immediately with speed + altitude heuristics
-- **Optional TFLite model** slot — drop `activity_classifier.tflite` into `assets/` for ML inference
-- **Post-trip analysis**: Track segmentation, health insights, trip suggestions
+- **Multiple AI providers**:
+  - On-device inference via MediaPipe LLM (no data leaves the device)
+  - System AI runtime (Android AICore)
+  - Custom local models via LiteRt/ONNX runtime
+  - Cloud providers: Deepseek, OpenAI, Anthropic, Gemini (API key required)
+- **Model catalog**: browse, download, and manage on-device models
+- **Post-trip analysis**: track segmentation, health insights, trip suggestions
 - **Best trip suggestions** across your history (best cardio, most scenic, longest, etc.)
-- All processing runs locally — no data leaves your device
 
 ### 💾 Local JSON Storage
 - Room database for structured persistence
 - One-tap export to pretty-printed JSON files
 - Export includes session metadata, all GPS points, health readings, and AI analysis
 - Files saved to `Android/data/com.trackjourney/files/tracks/`
+
+### 🔔 Webhooks
+- Push track data to a custom endpoint on trip completion
 
 ## Architecture
 
@@ -42,57 +49,87 @@ com.trackjourney/
 │   ├── local/
 │   │   ├── TrackDatabase.kt     # Room DB + DAOs
 │   │   └── SettingsDataStore.kt # DataStore preferences
-│   ├── location/LocationTracker.kt  # Fused Location Provider
+│   ├── location/
+│   │   ├── LocationTracker.kt       # Fused Location Provider
+│   │   ├── GpsSatelliteTracker.kt   # Satellite quality monitoring
+│   │   ├── SmartIntervalManager.kt  # Adaptive recording interval
+│   │   ├── MotionSensorManager.kt   # Motion-based filtering
+│   │   └── BatteryMonitor.kt        # Battery-aware tracking
 │   ├── bluetooth/WearableManager.kt # BLE GATT client
-│   ├── ai/LocalAiEngine.kt     # Activity classifier + analysis
+│   ├── ai/
+│   │   ├── LocalAiEngine.kt         # Activity classifier + analysis orchestrator
+│   │   ├── provider/                # AI provider implementations (Cloud, System, Local)
+│   │   ├── runtime/                 # Runtime adapters (MediaPipe, LiteRt, SystemAI)
+│   │   └── models/                  # Model catalog, installer, and compatibility
+│   ├── billing/BillingManager.kt    # Google Play Billing
+│   ├── webhook/WebhookSender.kt     # Outbound webhook integration
 │   └── repository/TrackRepository.kt # Single source of truth
 ├── di/AppModule.kt              # Hilt DI bindings
-├── service/TrackingService.kt   # Foreground location service
+├── service/
+│   ├── TrackingService.kt       # Foreground location service
+│   └── ModelDownloadService.kt  # Background model downloads
 └── ui/
     ├── MainActivity.kt          # Navigation host
+    ├── TrackingStateViewModel.kt # Global tracking state
     ├── theme/Theme.kt           # Material 3 theming
     ├── navigation/Screen.kt     # Route definitions
     ├── components/OsmMapView.kt # OSM composable wrapper
     └── screens/
         ├── map/                 # Live tracking map
         ├── tracks/              # Track history list
-        ├── analysis/            # AI insights dashboard
-        └── settings/            # Configuration
+        ├── dashboard/           # Summary dashboard
+        ├── analysis/            # AI insights
+        ├── aiengine/            # AI engine configuration
+        ├── aiwizard/            # First-run AI setup wizard
+        ├── onboarding/          # Onboarding flow
+        ├── subscription/        # Subscription management
+        └── settings/            # App configuration
 ```
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| UI | Jetpack Compose + Material 3 |
-| Map | osmdroid 6.1.18 (OpenStreetMap) |
-| Database | Room 2.6.1 |
-| DI | Hilt 2.50 |
-| Location | Fused Location Provider (Play Services) |
-| Bluetooth | Android BLE GATT API + Nordic BLE library |
-| AI/ML | TensorFlow Lite 2.14 + rule-based engine |
-| Settings | DataStore Preferences |
-| Background | Foreground Service + WorkManager |
-| Serialization | Gson |
+| UI | Jetpack Compose + Material 3 (BOM 2025.04.01) |
+| Map | osmdroid 6.1.20 (OpenStreetMap) |
+| Database | Room 2.8.4 |
+| DI | Hilt 2.59.2 |
+| Location | Fused Location Provider (Play Services 21.3.0) |
+| Bluetooth | Android BLE GATT API + Nordic BLE 2.11.0 |
+| AI/ML | MediaPipe LLM Inference 0.10.33 + rule-based engine |
+| Settings | DataStore Preferences 1.2.1 |
+| Background | Foreground Service + WorkManager 2.11.2 |
+| Serialization | Gson 2.13.2 |
+| Billing | Google Play Billing 8.3.0 |
 
 ## Setup
 
-1. **Clone and open** in Android Studio Hedgehog or later
+1. **Clone and open** in Android Studio Ladybug or later
 2. **Sync Gradle** — all dependencies are from Maven Central / Google
-3. **Garmin SDK (optional)**: Download Connect IQ Mobile SDK from [developer.garmin.com](https://developer.garmin.com), place `.aar` in `app/libs/`, uncomment the dependency in `build.gradle.kts`
-4. **TFLite model (optional)**: Place `activity_classifier.tflite` in `app/src/main/assets/`. The app works without it using rule-based classification
-5. **Run** on a physical device (BLE and GPS require real hardware)
+3. **API keys (optional)**: Create `local.properties` in the project root and add any cloud AI keys you want to use:
+   ```properties
+   DEEPSEEK_API_KEY=sk-...
+   OPENAI_API_KEY=sk-...
+   ANTHROPIC_API_KEY=sk-ant-...
+   GEMINI_API_KEY=AIza...
+   ```
+   The app works without any keys using the on-device rule-based classifier or a downloaded local model.
+4. **Run** on a physical device (BLE and GPS require real hardware)
 
 ## Permissions Required
 
 | Permission | Reason |
 |-----------|--------|
 | ACCESS_FINE_LOCATION | GPS tracking |
+| ACCESS_COARSE_LOCATION | Fallback location |
 | ACCESS_BACKGROUND_LOCATION | Background tracking |
 | BLUETOOTH_SCAN / CONNECT | Smartwatch pairing |
-| FOREGROUND_SERVICE_LOCATION | Reliable background tracking |
+| FOREGROUND_SERVICE / FOREGROUND_SERVICE_LOCATION | Reliable background tracking |
+| FOREGROUND_SERVICE_DATA_SYNC | Background model downloads |
 | POST_NOTIFICATIONS | Tracking notification |
 | ACTIVITY_RECOGNITION | Android activity transitions |
+| INTERNET / ACCESS_NETWORK_STATE | Cloud AI providers and model downloads |
+| WAKE_LOCK | Prevent sleep during active tracking |
 
 ## JSON Export Format
 

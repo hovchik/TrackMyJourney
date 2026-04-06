@@ -2215,11 +2215,12 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "Pathwise is a privacy-first journey tracker that uses high-precision GPS " +
-                            "positioning with OpenStreetMap. It features on-device AI analysis for " +
-                            "smart trip insights, automatic activity detection, and vehicle tracking " +
-                            "with fuel cost estimation. All your data is stored locally on your " +
-                            "device — nothing is sent to external servers.",
+                        "Pathwise is a privacy-first GPS tracking and activity analysis app for " +
+                            "walkers, runners, cyclists, hikers, and commuters. It counts your steps, " +
+                            "predicts calories burned using MET-based calculations, and automatically " +
+                            "detects your activity type using on-device AI — no data leaves your device. " +
+                            "Export routes as GPX, CSV, or JSON, connect a Bluetooth wearable for live " +
+                            "cadence data, and track vehicle fuel costs across multiple car profiles.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 19.sp

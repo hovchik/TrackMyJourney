@@ -12,28 +12,30 @@
 - Foreground service for reliable background tracking
 
 ### ⌚ Smartwatch Integration (Bluetooth LE)
-- **Garmin watches** — Heart Rate via standard BLE GATT Heart Rate Service (0x180D)
-- **Samsung Galaxy watches** — Heart Rate + SpO2 via BLE GATT
-- Auto-detection of device type from BLE advertisement name
-- Real-time heart rate (BPM) and blood oxygen saturation (SpO2 %) display
-- Health data stored alongside GPS points in each track
+- **Wide device support** — Garmin, Samsung, Polar, Wahoo, Suunto, Fitbit, Xiaomi/Amazfit, Huawei, COROS, WHOOP, Apple Watch, Wear OS, Generic BLE
+- Auto-detection of device brand from BLE advertisement name
+- **Battery level** monitoring via BLE Battery Service (0x180F)
+- **Running cadence** (steps/min) via Running Speed & Cadence Service (0x1814)
+- **Cycling cadence** (RPM) via Cycling Speed & Cadence Service (0x1816)
+- Device manufacturer and model read from Device Information Service (0x180A)
+- Cadence data stored alongside GPS points in each track
 
 ### 🤖 AI Analysis
-- **Real-time activity detection**: Walking, Running, Cycling, Driving, Flying, Stationary
-- **Rule-based classifier** works immediately with speed + altitude heuristics
-- **Multiple AI providers**:
-  - On-device inference via MediaPipe LLM (no data leaves the device)
-  - System AI runtime (Android AICore)
-  - Custom local models via LiteRt/ONNX runtime
-  - Cloud providers: Deepseek, OpenAI, Anthropic, Gemini (API key required)
+- **Real-time activity detection**: Walking, Running, Hiking, Cycling, Driving, Flying, Stationary
+- **Configurable AI mode** — choose per session:
+  - `Rule-Based` — immediate classification from speed/altitude thresholds (always available)
+  - `TFLite Model` — on-device ML model for nuanced classification
+  - `Local AI Model` — uses phone's built-in AI (Android AICore / MediaPipe LLM)
+  - `Cloud AI` — Deepseek, OpenAI, Anthropic, Gemini (API key required)
+  - `Off` — disable automatic detection
 - **Model catalog**: browse, download, and manage on-device models
-- **Post-trip analysis**: track segmentation, health insights, trip suggestions
-- **Best trip suggestions** across your history (best cardio, most scenic, longest, etc.)
+- **Post-trip analysis**: track segmentation, segment-level activity breakdown, trip suggestions
+- **Calorie estimation** based on user weight and activity MET values
 
-### 💾 Local JSON Storage
+### 💾 Local Storage & Export
 - Room database for structured persistence
-- One-tap export to pretty-printed JSON files
-- Export includes session metadata, all GPS points, health readings, and AI analysis
+- One-tap export to pretty-printed JSON, GPX, or CSV files
+- Export includes session metadata, all GPS points, and AI analysis
 - Files saved to `Android/data/com.trackjourney/files/tracks/`
 
 ### 🔔 Webhooks
@@ -144,8 +146,12 @@ com.trackjourney/
     "avg_speed_kmh": 5.2,
     "max_speed_kmh": 6.8,
     "activity_type": "WALKING",
-    "avg_heart_rate": 92,
-    "avg_spo2": 97
+    "start_place_name": "Central Park",
+    "end_place_name": "Times Square",
+    "calories_burned": 312.5,
+    "battery_start": 85,
+    "battery_end": 78,
+    "ride_cost": null
   },
   "points": [
     {
@@ -156,43 +162,40 @@ com.trackjourney/
       "bearing": 127.5,
       "accuracy": 3.2,
       "timestamp": 1708531203000,
-      "heart_rate": 88,
-      "spo2": 97,
-      "activity_type": "WALKING"
-    }
-  ],
-  "health_data": [
-    {
-      "timestamp": 1708531203000,
-      "heart_rate": 88,
-      "spo2": 97,
-      "device_name": "Garmin Venu 3",
-      "device_type": "GARMIN"
+      "cadence": 92,
+      "activity_type": "WALKING",
+      "place_name": null,
+      "satellites_used": 12,
+      "is_accurate": true
     }
   ],
   "ai_analysis": {
     "detected_activity": "WALKING",
     "confidence": 0.92,
-    "summary": "📍 Trip Summary\nActivity: Walking (92% confidence)\nDistance: 4.52km | Duration: 60min\nAvg Speed: 5.2 km/h",
-    "suggestions": [
-      "Great short trip!",
-      "Heart rate in optimal zone"
-    ],
-    "health_insights": "Heart Rate: avg 92 bpm, range 78-112 bpm\nGood cardio zone\nSpO2: avg 97%, healthy range"
+    "summary": "Activity: Walking (92% confidence)\nDistance: 4.52km | Duration: 60min\nAvg Speed: 5.2 km/h",
+    "suggestions": ["Great short trip!", "Try a longer route next time"],
+    "segment_activities": [
+      { "start_index": 0, "end_index": 45, "activity_type": "WALKING", "confidence": 0.95 }
+    ]
   }
 }
 ```
 
 ## Activity Detection Thresholds
 
-| Activity | Speed Range | Additional Signals |
-|----------|-----------|-------------------|
-| Stationary | < 0.5 km/h | — |
-| Walking | 0.5 – 7 km/h | — |
-| Running | 7 – 15 km/h | — |
-| Cycling | 15 – 40 km/h | Lower speed variance |
-| Driving | 40 – 250 km/h | Stop-and-go patterns |
-| Flying | > 250 km/h | Rapid altitude change |
+Default speed ranges used by the rule-based classifier (fully configurable in settings):
+
+| Activity | Speed Range | MET Value | Enabled by Default |
+|----------|------------|-----------|-------------------|
+| Stationary | < 0.5 km/h | 1.0 | Yes |
+| Walking | 0.5 – 6 km/h | 3.5 | Yes |
+| Hiking | 2 – 6 km/h | 4.5 | No |
+| Running | 6 – 15 km/h | 8.0 | Yes |
+| Cycling | 15 – 35 km/h | 6.0 | Yes |
+| Driving | 35 – 200 km/h | 0.0 | Yes |
+| Flying | > 200 km/h | 1.0 | Yes |
+
+MET values are used for calorie estimation based on user weight.
 
 ## License
 

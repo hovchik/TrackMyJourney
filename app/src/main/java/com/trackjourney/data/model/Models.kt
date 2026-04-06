@@ -34,9 +34,6 @@ data class TrackSession(
     @ColumnInfo(name = "activity_type")
     val activityType: ActivityType = ActivityType.UNKNOWN,
 
-    @ColumnInfo(name = "avg_heart_rate")
-    val avgHeartRate: Int? = null,
-
     @ColumnInfo(name = "ai_summary")
     val aiSummary: String? = null,
 
@@ -110,9 +107,6 @@ data class TrackPoint(
     @ColumnInfo(name = "timestamp")
     val timestamp: Long = System.currentTimeMillis(),
 
-    @ColumnInfo(name = "heart_rate")
-    val heartRate: Int? = null,           // BPM from wearable
-
     @ColumnInfo(name = "cadence")
     val cadence: Int? = null,            // steps/min or cycling rpm
 
@@ -127,46 +121,6 @@ data class TrackPoint(
 
     @ColumnInfo(name = "is_accurate")
     val isAccurate: Boolean = true
-)
-
-// ─────────────────────────────────────────────────────────
-//  HEALTH DATA SNAPSHOT — from smartwatch
-// ─────────────────────────────────────────────────────────
-
-@Entity(
-    tableName = "health_data",
-    foreignKeys = [ForeignKey(
-        entity = TrackSession::class,
-        parentColumns = ["id"],
-        childColumns = ["track_id"],
-        onDelete = ForeignKey.CASCADE
-    )],
-    indices = [Index(value = ["track_id"])]
-)
-data class HealthData(
-    @PrimaryKey
-    val id: String = UUID.randomUUID().toString(),
-
-    @ColumnInfo(name = "track_id")
-    val trackId: String,
-
-    @ColumnInfo(name = "timestamp")
-    val timestamp: Long = System.currentTimeMillis(),
-
-    @ColumnInfo(name = "heart_rate")
-    val heartRate: Int? = null,
-
-    @ColumnInfo(name = "battery_level")
-    val batteryLevel: Int? = null,
-
-    @ColumnInfo(name = "cadence")
-    val cadence: Int? = null,
-
-    @ColumnInfo(name = "device_name")
-    val deviceName: String? = null,
-
-    @ColumnInfo(name = "device_type")
-    val deviceType: WearableType = WearableType.UNKNOWN
 )
 
 // ─────────────────────────────────────────────────────────
@@ -204,9 +158,6 @@ data class AiAnalysis(
 
     @ColumnInfo(name = "suggestions")
     val suggestions: String = "",             // JSON array of suggestions
-
-    @ColumnInfo(name = "health_insights")
-    val healthInsights: String? = null,
 
     @ColumnInfo(name = "segment_activities")
     val segmentActivities: String? = null,     // JSON: [{start, end, activity}]
@@ -360,8 +311,6 @@ data class TrackExport(
     val session: TrackSessionExport,
     @SerializedName("points")
     val points: List<TrackPointExport>,
-    @SerializedName("health_data")
-    val healthData: List<HealthDataExport>,
     @SerializedName("ai_analysis")
     val aiAnalysis: AiAnalysisExport?
 )
@@ -375,7 +324,6 @@ data class TrackSessionExport(
     @SerializedName("avg_speed_kmh") val avgSpeedKmh: Double,
     @SerializedName("max_speed_kmh") val maxSpeedKmh: Double,
     @SerializedName("activity_type") val activityType: String,
-    @SerializedName("avg_heart_rate") val avgHeartRate: Int?,
     @SerializedName("start_place_name") val startPlaceName: String?,
     @SerializedName("end_place_name") val endPlaceName: String?,
     @SerializedName("calories_burned") val caloriesBurned: Double = 0.0,
@@ -392,7 +340,6 @@ data class TrackPointExport(
     val bearing: Float?,
     val accuracy: Float?,
     val timestamp: Long,
-    @SerializedName("heart_rate") val heartRate: Int?,
     val cadence: Int?,
     @SerializedName("activity_type") val activityType: String,
     @SerializedName("place_name") val placeName: String?,
@@ -400,21 +347,11 @@ data class TrackPointExport(
     @SerializedName("is_accurate") val isAccurate: Boolean
 )
 
-data class HealthDataExport(
-    val timestamp: Long,
-    @SerializedName("heart_rate") val heartRate: Int?,
-    @SerializedName("battery_level") val batteryLevel: Int?,
-    val cadence: Int?,
-    @SerializedName("device_name") val deviceName: String?,
-    @SerializedName("device_type") val deviceType: String
-)
-
 data class AiAnalysisExport(
     @SerializedName("detected_activity") val detectedActivity: String,
     val confidence: Float,
     val summary: String,
     val suggestions: List<String>,
-    @SerializedName("health_insights") val healthInsights: String?,
     @SerializedName("segment_activities") val segmentActivities: List<ActivitySegment>?
 )
 
@@ -452,7 +389,6 @@ data class WebhookLocationPayload(
     @SerializedName("bearing") val bearing: Float?,
     @SerializedName("accuracy_m") val accuracyM: Float?,
     @SerializedName("activity") val activity: String,
-    @SerializedName("heart_rate") val heartRate: Int?,
     @SerializedName("battery") val battery: Int?
 )
 
@@ -463,9 +399,7 @@ data class WebhookLocationPayload(
 data class TrackWithPoints(
     @Embedded val track: TrackSession,
     @Relation(parentColumn = "id", entityColumn = "track_id")
-    val points: List<TrackPoint>,
-    @Relation(parentColumn = "id", entityColumn = "track_id")
-    val healthData: List<HealthData>
+    val points: List<TrackPoint>
 )
 
 // ─────────────────────────────────────────────────────────

@@ -186,8 +186,7 @@ class LocalAiEngine(
     // ═══════════════════════════════════════════════════════
 
     suspend fun analyzeTrack(
-        points: List<TrackPoint>,
-        healthData: List<HealthData>
+        points: List<TrackPoint>
     ): AiAnalysis = withContext(Dispatchers.Default) {
         if (points.isEmpty()) {
             return@withContext AiAnalysis(
@@ -209,13 +208,10 @@ class LocalAiEngine(
         // 3. Calculate statistics
         val stats = calculateTrackStats(points)
 
-        // 4. Generate health insights
-        val healthInsights = analyzeHealthData(healthData, stats)
+        // 4. Generate trip suggestions
+        val suggestions = generateSuggestions(stats, segments)
 
-        // 5. Generate trip suggestions
-        val suggestions = generateSuggestions(stats, segments, healthData)
-
-        // 6. Build summary
+        // 5. Build summary
         val summary = buildSummary(stats, dominantActivity, segments)
 
         AiAnalysis(
@@ -224,7 +220,6 @@ class LocalAiEngine(
             confidence = dominantActivity.confidence,
             summary = summary,
             suggestions = suggestions.joinToString("|"),
-            healthInsights = healthInsights,
             segmentActivities = buildSegmentJson(segments)
         )
     }
@@ -433,67 +428,11 @@ class LocalAiEngine(
         )
     }
 
-    // ─── HEALTH ANALYSIS ────────────────────────────────
-
-    private fun analyzeHealthData(healthData: List<HealthData>, stats: TrackStats): String? {
-        if (healthData.isEmpty()) return null
-
-        val heartRates = healthData.mapNotNull { it.heartRate }
-        val cadenceValues = healthData.mapNotNull { it.cadence }
-
-        val insights = mutableListOf<String>()
-
-        if (heartRates.isNotEmpty()) {
-            val avgHr = heartRates.average().toInt()
-            val maxHr = heartRates.max()
-            val minHr = heartRates.min()
-
-            insights.add("Heart Rate: avg $avgHr bpm, range $minHr-$maxHr bpm")
-
-            // Heart rate zone analysis
-            val zone1 = heartRates.count { it < 100 } * 100 / heartRates.size  // Recovery
-            val zone2 = heartRates.count { it in 100..119 } * 100 / heartRates.size  // Fat burn
-            val zone3 = heartRates.count { it in 120..139 } * 100 / heartRates.size  // Aerobic
-            val zone4 = heartRates.count { it in 140..159 } * 100 / heartRates.size  // Threshold
-            val zone5 = heartRates.count { it >= 160 } * 100 / heartRates.size  // Anaerobic
-
-            if (zone3 + zone4 > 50) {
-                insights.add("${ zone3 + zone4 }% of time in aerobic/threshold zones (HR 120-159) — effective for building endurance")
-            }
-            if (zone5 > 20) {
-                insights.add("${zone5}% of time in high-intensity zone (HR 160+) — ensure adequate recovery between sessions")
-            }
-
-            when {
-                avgHr > 170 -> insights.add("Very high average HR of $avgHr bpm — this intensity level is unsustainable for long sessions. Consider slowing pace to keep HR below 150.")
-                avgHr in 150..170 -> insights.add("Average HR of $avgHr bpm indicates high-intensity effort. This is good for short intervals but aim for 120-140 bpm for longer endurance sessions.")
-                avgHr in 120..149 -> insights.add("Average HR of $avgHr bpm — solid aerobic training zone for cardiovascular improvement")
-                avgHr in 100..119 -> insights.add("Average HR of $avgHr bpm — light activity zone, good for recovery days or warm-ups")
-                avgHr < 60 && stats.avgSpeedKmh > 5 -> insights.add("Resting-level HR of $avgHr bpm during activity — indicates excellent cardiovascular fitness")
-            }
-        }
-
-        if (cadenceValues.isNotEmpty()) {
-            val avgCadence = cadenceValues.average().toInt()
-            insights.add("Cadence: avg $avgCadence steps/min")
-
-            when {
-                avgCadence in 170..185 -> insights.add("Cadence of $avgCadence spm is in the optimal range for efficient running form and injury prevention")
-                avgCadence < 160 && stats.avgSpeedKmh > 8 -> insights.add("Cadence of $avgCadence spm is low for your speed of ${"%.1f".format(stats.avgSpeedKmh)} km/h — try shorter, quicker steps (aim for 170+) to reduce impact forces")
-                avgCadence > 190 -> insights.add("High cadence of $avgCadence spm — efficient for speed work, but ensure stride length isn't too short for your target pace")
-                avgCadence < 150 -> insights.add("Cadence of $avgCadence spm is quite low — increasing to 160-170 can improve efficiency and reduce joint stress")
-            }
-        }
-
-        return insights.joinToString("\n")
-    }
-
     // ─── TRIP SUGGESTIONS ───────────────────────────────
 
     private fun generateSuggestions(
         stats: TrackStats,
-        segments: List<DetectedSegment>,
-        healthData: List<HealthData>
+        segments: List<DetectedSegment>
     ): List<String> {
         val suggestions = mutableListOf<String>()
 
@@ -545,16 +484,6 @@ class LocalAiEngine(
             }
             stats.durationMinutes > 120 -> {
                 suggestions.add("${stats.durationMinutes.toInt()}-minute session — for activities over 2 hours, consider pacing more conservatively and adding a rest day after")
-            }
-        }
-
-        // Health-based suggestions with specifics
-        val avgHr = healthData.mapNotNull { it.heartRate }.average().takeIf { !it.isNaN() }
-        if (avgHr != null) {
-            when {
-                avgHr > 170 -> suggestions.add("Average HR of ${avgHr.toInt()} bpm is very high — try alternating 2 min easy / 1 min hard to build fitness while managing intensity")
-                avgHr > 150 -> suggestions.add("Average HR of ${avgHr.toInt()} bpm — try slowing your pace slightly to stay in the 130-150 bpm zone for better aerobic development")
-                avgHr < 100 && stats.avgSpeedKmh > 5 -> suggestions.add("Low HR of ${avgHr.toInt()} bpm suggests this intensity is easy for you — try adding speed intervals or hills to challenge your cardiovascular system")
             }
         }
 
@@ -675,20 +604,6 @@ class LocalAiEngine(
                 score = 0.85f,
                 trackId = it.track.id
             ))
-        }
-
-        // Find healthiest trip (best heart rate data)
-        val healthyTrips = allTracks.filter { it.track.avgHeartRate != null }
-        if (healthyTrips.isNotEmpty()) {
-            val bestCardio = healthyTrips.minByOrNull { abs((it.track.avgHeartRate ?: 0) - 130) }
-            bestCardio?.let {
-                suggestions.add(TripSuggestion(
-                    title = "❤️ Best Cardio Route",
-                    description = "Optimal heart rate zone (avg ${it.track.avgHeartRate} bpm) — ${it.track.name.ifEmpty { "Unnamed route" }}",
-                    score = 0.88f,
-                    trackId = it.track.id
-                ))
-            }
         }
 
         // Longest trip

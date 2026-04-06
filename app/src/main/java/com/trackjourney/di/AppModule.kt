@@ -41,7 +41,6 @@ object AppModule {
 
     @Provides fun provideTrackDao(db: TrackDatabase) = db.trackDao()
     @Provides fun provideTrackPointDao(db: TrackDatabase) = db.trackPointDao()
-    @Provides fun provideHealthDataDao(db: TrackDatabase) = db.healthDataDao()
     @Provides fun provideAiAnalysisDao(db: TrackDatabase) = db.aiAnalysisDao()
     @Provides fun provideCarProfileDao(db: TrackDatabase) = db.carProfileDao()
     @Provides fun provideLocalAiModelDao(db: TrackDatabase) = db.localAiModelDao()
@@ -171,7 +170,6 @@ object AppModule {
         @ApplicationContext context: Context,
         trackDao: TrackDao,
         trackPointDao: TrackPointDao,
-        healthDataDao: HealthDataDao,
         aiAnalysisDao: AiAnalysisDao,
         carProfileDao: CarProfileDao,
         locationTracker: LocationTracker,
@@ -181,7 +179,7 @@ object AppModule {
         gpsSatelliteTracker: GpsSatelliteTracker,
         motionSensorManager: MotionSensorManager
     ) = TrackRepository(
-        context, trackDao, trackPointDao, healthDataDao,
+        context, trackDao, trackPointDao,
         aiAnalysisDao, carProfileDao, locationTracker, aiEngine, aiProviderSelector,
         settingsDataStore, gpsSatelliteTracker, motionSensorManager
     )

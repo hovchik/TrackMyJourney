@@ -372,7 +372,7 @@ class TrackingService : Service() {
         // Build the latest webhook payload so the independent ticker always
         // has fresh data to send, regardless of GPS update cadence.
         if (settings.webhookEnabled && settings.webhookUrl.isNotBlank()) {
-            updateWebhookPayload(location, settings, wearableReading?.heartRate)
+            updateWebhookPayload(location, settings)
         }
 
         // Throttle notification updates to at most once per 2 seconds
@@ -380,14 +380,13 @@ class TrackingService : Service() {
             val satInfo = satelliteTracker.satelliteInfo.value
             val speedKmh = LocationTracker.msToKmh(location.speed)
             val accuracyStr = if (point?.isAccurate == false) " [!]" else ""
-            val hrStr = wearableReading?.heartRate?.let { " | HR $it" } ?: ""
             val modeStr = when (settings.trackingMode) {
                 TrackingMode.HIGH_ACCURACY -> ""
                 TrackingMode.ENERGY_EFFICIENCY -> " | ECO"
                 TrackingMode.AI_BATTERY_SAVER -> " | AI"
             }
             updateNotification(
-                "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}$hrStr$modeStr$accuracyStr"
+                "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}$modeStr$accuracyStr"
             )
             return now
         }
@@ -396,8 +395,7 @@ class TrackingService : Service() {
 
     private fun updateWebhookPayload(
         location: android.location.Location,
-        settings: TrackingSettings,
-        heartRate: Int? = null
+        settings: TrackingSettings
     ) {
         val speedKmh = LocationTracker.msToKmh(location.speed)
         val activity = ActivityType.fromSpeed(speedKmh, settings.activityConfigs)
@@ -411,7 +409,6 @@ class TrackingService : Service() {
             bearing = if (location.hasBearing()) location.bearing else null,
             accuracyM = if (location.hasAccuracy()) location.accuracy else null,
             activity = activity.name.lowercase(),
-            heartRate = heartRate,
             battery = getBatteryLevel()
         )
     }

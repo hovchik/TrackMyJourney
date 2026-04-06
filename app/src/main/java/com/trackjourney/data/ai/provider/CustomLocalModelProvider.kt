@@ -206,7 +206,6 @@ class CustomLocalModelProvider @Inject constructor(
             put("confidence", 0.3)
             put("summary", summary)
             put("suggestions", org.json.JSONArray())
-            put("healthInsights", JSONObject.NULL)
         }
         Log.w(TAG, "Built fallback JSON from plain-text response, detected activity: $activity")
         return fallback.toString()
@@ -251,17 +250,9 @@ class CustomLocalModelProvider @Inject constructor(
     private fun buildDailyPrompt(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext? = null): String {
         val track = snapshot.track
         val points = snapshot.points
-        val healthData = snapshot.healthData
 
         val durationMs = (track.endTime ?: System.currentTimeMillis()) - track.startTime
         val durationMin = TimeUnit.MILLISECONDS.toMinutes(durationMs)
-
-        // Heart rate
-        val heartRates = points.mapNotNull { it.heartRate } +
-                healthData.mapNotNull { it.heartRate }
-        val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
-        val maxHr = heartRates.maxOrNull()
-        val minHr = heartRates.minOrNull()
 
         // Speed
         val speeds = points.map { it.speedKmh }.filter { it > 0 }
@@ -325,14 +316,11 @@ class CustomLocalModelProvider @Inject constructor(
             kotlin.math.sqrt(bearings.map { (it - mean) * (it - mean) }.average()).toFloat()
         } else null
 
-        // Wearable
-        val wearableDevice = snapshot.healthData.firstOrNull { it.deviceName != null }
-
         // Build a compact structured prompt that fits in small context windows
         // IMPORTANT: instruct model to output ONLY a JSON object, no prose
         return buildString {
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Return: {\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"healthInsights\":\"heart rate zone analysis or null\",\"lifetimeInsights\":\"comparison vs history or null\"}")
+            appendLine("Return: {\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"lifetimeInsights\":\"comparison vs history or null\"}")
             appendLine("Speed guide: STATIONARY<0.5 WALKING<7 RUNNING<15 CYCLING<40 DRIVING<200 FLYING>200 km/h")
             appendLine("---")
             // Show user's manual override if set
@@ -354,9 +342,6 @@ class CustomLocalModelProvider @Inject constructor(
                 if (minAlt != null && maxAlt != null) append(" range:${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m")
                 appendLine()
             }
-            if (avgHr != null) {
-                appendLine("hr avg:$avgHr max:$maxHr min:$minHr bpm")
-            }
             if (avgCadence != null) appendLine("cadence:$avgCadence spm")
             if (track.startPlaceName != null || track.endPlaceName != null) {
                 appendLine("route:${track.startPlaceName ?: "?"}→${track.endPlaceName ?: "?"}")
@@ -370,9 +355,6 @@ class CustomLocalModelProvider @Inject constructor(
             if (bearingStdDev != null) appendLine("turns:${"%.0f".format(bearingStdDev)}°")
             if (track.batteryStart != null && track.batteryEnd != null) {
                 appendLine("bat:${track.batteryStart}→${track.batteryEnd}%")
-            }
-            if (wearableDevice?.deviceName != null) {
-                appendLine("wear:${wearableDevice.deviceName}")
             }
             // Compact lifetime context
             if (lifetimeContext != null && lifetimeContext.totalTracks >= 2) {
@@ -395,8 +377,7 @@ class CustomLocalModelProvider @Inject constructor(
                 val t = twp.track
                 val dur = TimeUnit.MILLISECONDS.toMinutes((t.endTime ?: System.currentTimeMillis()) - t.startTime)
                 totalDist += t.distanceMeters; totalCal += t.caloriesBurned; totalDurMin += dur
-                val hrPart = t.avgHeartRate?.let { " hr:${it}" } ?: ""
-                appendLine("${i+1}.${t.activityType} ${"%.1f".format(t.distanceMeters/1000)}km ${dur}m ${"%.1f".format(t.avgSpeedKmh)}km/h ${"%.0f".format(t.caloriesBurned)}cal$hrPart")
+                appendLine("${i+1}.${t.activityType} ${"%.1f".format(t.distanceMeters/1000)}km ${dur}m ${"%.1f".format(t.avgSpeedKmh)}km/h ${"%.0f".format(t.caloriesBurned)}cal")
             }
             appendLine("Tot:${"%.1f".format(totalDist/1000)}km ${"%.0f".format(totalCal)}cal ${totalDurMin}min")
         }

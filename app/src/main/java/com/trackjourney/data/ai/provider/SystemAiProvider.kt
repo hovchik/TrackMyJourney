@@ -45,7 +45,6 @@ class SystemAiProvider @Inject constructor(
     private fun buildDailyPrompt(snapshot: TrackWithPoints, lifetimeContext: LifetimeContext? = null): String {
         val track = snapshot.track
         val points = snapshot.points
-        val healthData = snapshot.healthData
 
         val durationMs = (track.endTime ?: System.currentTimeMillis()) - track.startTime
         val durationMin = TimeUnit.MILLISECONDS.toMinutes(durationMs)
@@ -56,13 +55,6 @@ class SystemAiProvider @Inject constructor(
         val elevationLoss = computeElevationLoss(altitudes)
         val minAlt = altitudes.minOrNull()
         val maxAlt = altitudes.maxOrNull()
-
-        // Heart rate
-        val heartRates = points.mapNotNull { it.heartRate } +
-                healthData.mapNotNull { it.heartRate }
-        val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
-        val maxHr = heartRates.maxOrNull()
-        val minHr = heartRates.minOrNull()
 
         // Speed
         val speeds = points.map { it.speedKmh }.filter { it > 0 }
@@ -124,23 +116,10 @@ class SystemAiProvider @Inject constructor(
             kotlin.math.sqrt(bearings.map { (it - mean) * (it - mean) }.average()).toFloat()
         } else null
 
-        // Wearable device
-        val wearableDevice = healthData.firstOrNull { it.deviceName != null }
-
-        // HR zones
-        val hrZones = if (heartRates.size >= 5) {
-            val z1 = heartRates.count { it < 100 } * 100 / heartRates.size
-            val z2 = heartRates.count { it in 100..119 } * 100 / heartRates.size
-            val z3 = heartRates.count { it in 120..139 } * 100 / heartRates.size
-            val z4 = heartRates.count { it in 140..159 } * 100 / heartRates.size
-            val z5 = heartRates.count { it >= 160 } * 100 / heartRates.size
-            "Z1(<100):${z1}% Z2(100-119):${z2}% Z3(120-139):${z3}% Z4(140-159):${z4}% Z5(160+):${z5}%"
-        } else null
-
         return buildString {
             appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked journey data.")
             appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Return JSON with keys: activity (just the word: STATIONARY, WALKING, RUNNING, CYCLING, DRIVING, or FLYING — no speed ranges in the value), confidence (0.0-1.0), summary (4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers), suggestions (3-5 actionable tips referencing actual metrics), healthInsights (heart rate zone analysis and fitness observations if HR data present, else null), lifetimeInsights (if lifetime data provided: 2-3 sentences comparing this trip to historical averages and personal bests, else null).")
+            appendLine("Return JSON with keys: activity (just the word: STATIONARY, WALKING, RUNNING, CYCLING, DRIVING, or FLYING — no speed ranges in the value), confidence (0.0-1.0), summary (4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers), suggestions (3-5 actionable tips referencing actual metrics), lifetimeInsights (if lifetime data provided: 2-3 sentences comparing this trip to historical averages and personal bests, else null).")
             appendLine("Activity speed guide: STATIONARY <0.5, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h.")
             appendLine()
             appendLine("Journey:")
@@ -160,10 +139,6 @@ class SystemAiProvider @Inject constructor(
 
             if (minAlt != null && maxAlt != null) {
                 appendLine("- Elevation: ${"%.0f".format(minAlt)}-${"%.0f".format(maxAlt)}m, gain: ${"%.0f".format(elevationGain)}m, loss: ${"%.0f".format(elevationLoss)}m")
-            }
-            if (avgHr != null) {
-                appendLine("- Heart Rate: avg $avgHr, max $maxHr, min $minHr bpm")
-                if (hrZones != null) appendLine("- HR Zones: $hrZones")
             }
             if (avgCadence != null) {
                 appendLine("- Cadence: avg $avgCadence, min ${cadences.minOrNull()}, max ${cadences.maxOrNull()} spm")
@@ -191,10 +166,6 @@ class SystemAiProvider @Inject constructor(
             if (track.batteryStart != null || track.batteryEnd != null) {
                 appendLine("- Phone battery: ${track.batteryStart ?: "?"}% → ${track.batteryEnd ?: "?"}%")
             }
-            if (wearableDevice?.deviceName != null) {
-                appendLine("- Wearable: ${wearableDevice.deviceName} (${wearableDevice.deviceType.name})")
-            }
-
             // Lifetime context
             if (lifetimeContext != null && lifetimeContext.totalTracks >= 2) {
                 appendLine()
@@ -233,13 +204,9 @@ class SystemAiProvider @Inject constructor(
 
                 val altitudes = twp.points.mapNotNull { it.altitude }
                 val elevGain = computeElevationGain(altitudes)
-                val heartRates = twp.points.mapNotNull { it.heartRate } +
-                        twp.healthData.mapNotNull { it.heartRate }
-                val avgHr = heartRates.takeIf { it.isNotEmpty() }?.average()?.toInt()
 
                 append("${i + 1}. ${track.activityType}: ${"%.2f".format(track.distanceMeters / 1000)}km, ${durationMin}min, ${"%.1f".format(track.avgSpeedKmh)}km/h, ${"%.0f".format(track.caloriesBurned)}cal")
                 if (elevGain > 0) append(", elev+${"%.0f".format(elevGain)}m")
-                if (avgHr != null) append(", hr:${avgHr}bpm")
                 if (track.startPlaceName != null) append(", from:${track.startPlaceName}")
                 appendLine()
             }

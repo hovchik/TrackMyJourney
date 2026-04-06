@@ -484,16 +484,6 @@ private fun RecentAnalysisCard(
                     color = color
                 )
             }
-            if (!analysis.healthInsights.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    analysis.healthInsights.split("\n").first(),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
             if (!analysis.lifetimeInsights.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(

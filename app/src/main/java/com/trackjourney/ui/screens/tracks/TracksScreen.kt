@@ -742,14 +742,7 @@ private fun TrackCard(
                         label = "km/h avg",
                         color = Walking
                     )
-                    track.avgHeartRate?.let {
-                        StatChip(
-                            icon = Icons.Filled.Favorite,
-                            value = "$it",
-                            label = "bpm",
-                            color = Running
-                        )
-                    } ?: StatChip(
+                    StatChip(
                         icon = Icons.Filled.FlashOn,
                         value = String.format(Locale.US, "%.1f", track.maxSpeedKmh),
                         label = "km/h max",
@@ -785,13 +778,6 @@ private fun TrackCard(
                             label = "Max Speed",
                             value = String.format(Locale.US, "%.1f km/h", track.maxSpeedKmh)
                         )
-                        track.avgHeartRate?.let {
-                            DetailItem(
-                                modifier = Modifier.weight(1f),
-                                label = "Avg Heart Rate",
-                                value = "$it bpm"
-                            )
-                        }
                     }
 
                     // Ride Cost
@@ -1266,41 +1252,6 @@ private fun AiInsightDialog(
                                     )
                                     Text(
                                         suggestion,
-                                        fontSize = 13.sp,
-                                        lineHeight = 18.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Health insights
-                    if (!analysis.healthInsights.isNullOrBlank()) {
-                        Surface(
-                            color = Running.copy(alpha = 0.08f),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                Icon(
-                                    Icons.Filled.Favorite,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = Running
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        "Health Insights",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Running
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        analysis.healthInsights,
                                         fontSize = 13.sp,
                                         lineHeight = 18.sp
                                     )

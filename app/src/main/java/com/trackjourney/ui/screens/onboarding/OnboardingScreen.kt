@@ -235,7 +235,7 @@ private fun ActivityDetectionPage() {
             HowToStep(
                 Icons.Filled.Watch,
                 "Wearable Integration",
-                "Connect a Bluetooth smartwatch for heart rate, cadence, and more precise data."
+                "Connect a Bluetooth smartwatch for cadence, step count, and more precise activity data."
             )
         )
     )

@@ -18,8 +18,8 @@ Get trip summaries, performance analysis, health insights, and smart suggestions
 ● Real-Time GPS Tracking
 Watch your route unfold on a live map with speed, distance, elevation, and satellite accuracy displayed in real time.
 
-● Health & Wearable Integration
-Connect Bluetooth heart rate monitors and wearables to capture heart rate and cadence alongside your GPS data.
+● Wearable Integration
+Connect Bluetooth wearables to capture cadence, step count, and activity data alongside your GPS tracking.
 
 ● Detailed Trip History
 Browse every trip with full route playback, speed graphs, and per-track AI analysis including detected activity, confidence scores, and health insights.

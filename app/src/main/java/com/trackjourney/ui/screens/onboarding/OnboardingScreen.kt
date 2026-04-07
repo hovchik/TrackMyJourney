@@ -264,7 +264,7 @@ private fun InsightsAndMapsPage() {
             HowToStep(
                 Icons.Filled.BarChart,
                 "Statistics & Trends",
-                "Track calories, distance, speed trends, and health metrics over time."
+                "Track distance, speed trends, elevation, and activity statistics over time."
             ),
             HowToStep(
                 Icons.Filled.Share,

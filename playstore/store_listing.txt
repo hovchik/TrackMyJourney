@@ -13,7 +13,7 @@ KEY FEATURES
 Pathwise uses speed, altitude, and motion sensors to recognize what you're doing. No manual tagging required — just start tracking and go.
 
 ● AI-Powered Insights
-Get trip summaries, performance analysis, health insights, and smart suggestions generated entirely on-device. See activity breakdowns, elevation gain, calorie estimates, and trends across all your journeys.
+Get trip summaries, performance analysis, and smart suggestions generated entirely on-device. See activity breakdowns, elevation gain, and trends across all your journeys.
 
 ● Real-Time GPS Tracking
 Watch your route unfold on a live map with speed, distance, elevation, and satellite accuracy displayed in real time.
@@ -22,7 +22,7 @@ Watch your route unfold on a live map with speed, distance, elevation, and satel
 Connect Bluetooth wearables to capture cadence, step count, and activity data alongside your GPS tracking.
 
 ● Detailed Trip History
-Browse every trip with full route playback, speed graphs, and per-track AI analysis including detected activity, confidence scores, and health insights.
+Browse every trip with full route playback, speed graphs, and per-track AI analysis including detected activity, confidence scores, and trip insights.
 
 ● Car Profiles & Ride Cost
 Add your vehicles with fuel type, consumption rate, and fuel price to automatically calculate the cost of each drive.
@@ -42,4 +42,4 @@ Free users get unlimited tracking and AI insights. Subscribe to unlock track pla
 Download Pathwise and start discovering the patterns in your everyday journeys.
 
 ⚠️ DISCLAIMER
-Pathwise is not a medical device and is not intended to diagnose, treat, cure, or prevent any disease or medical condition. Health-related data displayed in the app (including heart rate, blood oxygen saturation, and calorie estimates) is derived from consumer-grade sensors and is provided for general fitness and informational purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare professional before making any health-related decisions.
+Pathwise is a journey tracking app and is not a medical or health device. Activity data displayed in the app (including distance, speed, and calorie estimates) is derived from GPS and consumer-grade sensors and is provided for general fitness and informational purposes only.

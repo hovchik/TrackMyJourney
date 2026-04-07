@@ -2,7 +2,7 @@
 
 **Last updated: March 10, 2026**
 
-Welcome to **Pathwise Tracker** ("the App"), an Android application developed and published under the package name **com.trackjourney**. By downloading, installing, or using the App, you agree to be bound by these Terms of Use ("Terms"). If you do not agree to these Terms, do not use the App.
+Welcome to **Pathwise Tracker** ("the App"), an Android application developed and published under the package name **com.trackmyjourney**. By downloading, installing, or using the App, you agree to be bound by these Terms of Use ("Terms"). If you do not agree to these Terms, do not use the App.
 
 ## 1. Acceptance of Terms
 

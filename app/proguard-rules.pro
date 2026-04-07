@@ -1,5 +1,5 @@
 # Keep Room entities
--keep class com.trackjourney.data.model.** { *; }
+-keep class com.trackmyjourney.data.model.** { *; }
 
 # Keep Gson serialization
 -keepattributes Signature

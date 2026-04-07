@@ -36,7 +36,7 @@
 - Room database for structured persistence
 - One-tap export to pretty-printed JSON, GPX, or CSV files
 - Export includes session metadata, all GPS points, and AI analysis
-- Files saved to `Android/data/com.trackjourney/files/tracks/`
+- Files saved to `Android/data/com.trackmyjourney/files/tracks/`
 
 ### 🔔 Webhooks
 - Push track data to a custom endpoint on trip completion
@@ -44,7 +44,7 @@
 ## Architecture
 
 ```
-com.trackjourney/
+com.trackmyjourney/
 ├── TrackMyJourneyApp.kt         # Hilt Application
 ├── data/
 │   ├── model/Models.kt          # Entities, enums, export models

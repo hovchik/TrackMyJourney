@@ -15,11 +15,11 @@ val localProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.trackjourney"
+    namespace = "com.trackmyjourney"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.trackjourney"
+        applicationId = "com.trackmyjourney"
         minSdk = 26
         targetSdk = 36
         versionCode = 11

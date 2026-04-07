@@ -235,7 +235,7 @@ private fun ActivityDetectionPage() {
             HowToStep(
                 Icons.Filled.Watch,
                 "Wearable Integration",
-                "Connect a Bluetooth smartwatch for heart rate, cadence, and more precise data."
+                "Connect a Bluetooth smartwatch for cadence, step count, and more precise activity data."
             )
         )
     )
@@ -264,7 +264,7 @@ private fun InsightsAndMapsPage() {
             HowToStep(
                 Icons.Filled.BarChart,
                 "Statistics & Trends",
-                "Track calories, distance, speed trends, and health metrics over time."
+                "Track distance, speed trends, elevation, and activity statistics over time."
             ),
             HowToStep(
                 Icons.Filled.Share,

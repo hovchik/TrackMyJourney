@@ -473,7 +473,7 @@ enum class SubscriptionPlan(
     val savings: String
 ) {
     MONTHLY(
-        basePlanId = "sub-monthly",
+        basePlanId = "flowsense-premium-monthly",
         label = "1 Month",
         price = "$2.99",
         periodLabel = "/month",
@@ -481,7 +481,7 @@ enum class SubscriptionPlan(
         savings = ""
     ),
     SEMI_ANNUAL(
-        basePlanId = "sub-semi-annual",
+        basePlanId = "flowsense-premium-6months",
         label = "6 Months",
         price = "$14.99",
         periodLabel = "/6 months",
@@ -489,7 +489,7 @@ enum class SubscriptionPlan(
         savings = "Save 16%"
     ),
     ANNUAL(
-        basePlanId = "sub-annual",
+        basePlanId = "flowsense-premium-annual",
         label = "1 Year",
         price = "$30.00",
         periodLabel = "/year",
@@ -498,7 +498,7 @@ enum class SubscriptionPlan(
     );
 
     companion object {
-        const val PRODUCT_ID = "sub_monthly"
+        const val PRODUCT_ID = "flowsense_premium"
 
         fun fromBasePlanId(basePlanId: String): SubscriptionPlan? =
             entries.firstOrNull { it.basePlanId == basePlanId }

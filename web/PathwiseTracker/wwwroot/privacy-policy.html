@@ -71,7 +71,7 @@
     <a href="/" class="back-link">&larr; Back to Pathwise Tracker</a>
 
     <h1>Privacy Policy</h1>
-    <p class="last-updated">Last updated: April 4, 2026</p>
+    <p class="last-updated">Last updated: April 7, 2026</p>
 
     <p>This Privacy Policy describes how <strong>Pathwise Tracker</strong> ("the App", package name <strong>com.trackjourney</strong>) collects, uses, stores, retains, and deletes your information. We are committed to safeguarding your privacy and ensuring full transparency about our data practices.</p>
 
@@ -91,13 +91,15 @@
     <p>The App requires background location access (<code>ACCESS_BACKGROUND_LOCATION</code>) to continue tracking when the App is minimized or the screen is off. This permission is used <strong>only during active tracking sessions</strong> that you explicitly start by pressing the record button. The App does not access your location at any other time.</p>
 
     <h3 style="font-size:17px; margin-top:20px; margin-bottom:8px;">1.2 Health Data</h3>
-    <p>When a compatible Bluetooth LE smartwatch (Garmin or Samsung) is connected, the App collects:</p>
+    <p>When a compatible Bluetooth LE wearable (including Garmin, Samsung, Polar, Wahoo, Suunto, Fitbit, Xiaomi/Amazfit, Huawei, COROS, WHOOP, Wear OS, and other BLE-compatible devices) is connected, the App may collect:</p>
     <ul>
-        <li>Heart rate (BPM)</li>
-        <li>Blood oxygen saturation (SpO2 %)</li>
-        <li>Device name and type</li>
+        <li>Running cadence (steps per minute) and cycling cadence (RPM)</li>
+        <li>Heart rate (BPM) — if supported by the connected device</li>
+        <li>Blood oxygen saturation (SpO2 %) — if supported by the connected device</li>
+        <li>Device battery level</li>
+        <li>Device name, manufacturer, and model</li>
     </ul>
-    <p>Health data is collected <strong>only during active tracking sessions</strong> and only from devices you explicitly pair. It is stored locally on your device and used to display health metrics alongside your route.</p>
+    <p>Wearable sensor data is collected <strong>only during active tracking sessions</strong> and only from devices you explicitly pair. It is stored locally on your device and used to display sensor readings alongside your route.</p>
 
     <h3 style="font-size:17px; margin-top:20px; margin-bottom:8px;">1.3 Activity Data</h3>
     <p>The App uses the <code>ACTIVITY_RECOGNITION</code> permission and on-device AI to detect your movement type (walking, running, cycling, driving, flying, or stationary). This classification is performed entirely on your device and is used to annotate and color-code your route segments. This data is never transmitted externally.</p>
@@ -126,8 +128,8 @@
                 <td>Local device only</td>
             </tr>
             <tr>
-                <td>Health metrics (heart rate, SpO2)</td>
-                <td>Display heart rate and SpO2 alongside your route, generate health insights</td>
+                <td>Wearable sensor data (cadence, heart rate, SpO2, battery)</td>
+                <td>Display sensor readings from connected wearables alongside your route</td>
                 <td>Local device only</td>
             </tr>
             <tr>
@@ -151,14 +153,29 @@
     </ul>
 
     <h2>4. Data Sharing</h2>
-    <p><strong>We do not share your data with any third parties.</strong></p>
-    <p>The only scenario in which your data leaves your device is if you voluntarily enable the <strong>webhook live-tracking feature</strong>, which transmits location data in real time to a web server URL that you configure. You have full control over when this feature is active and which server receives the data. We do not operate or have access to that server.</p>
+    <p><strong>We do not share your data with any third parties by default.</strong> Your data may leave your device only if you voluntarily enable one of the following optional features:</p>
+
+    <h3 style="font-size:17px; margin-top:20px; margin-bottom:8px;">4.1 Webhook Live-Tracking (Optional)</h3>
+    <p>If you enable the webhook live-tracking feature, the App transmits your current location data (latitude, longitude, altitude, speed, bearing, accuracy, activity type, and battery level) in real time to a web server URL that you configure. You have full control over when this feature is active and which server receives the data. We do not operate or have access to that server.</p>
+
+    <h3 style="font-size:17px; margin-top:20px; margin-bottom:8px;">4.2 Cloud AI Analysis (Optional)</h3>
+    <p>If you configure a Cloud AI provider in the App's settings, you can request AI-generated trip analysis from one of the following third-party services:</p>
+    <ul>
+        <li><strong>OpenAI</strong> — governed by the <a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener">OpenAI Privacy Policy</a></li>
+        <li><strong>Anthropic (Claude)</strong> — governed by the <a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener">Anthropic Privacy Policy</a></li>
+        <li><strong>Google Gemini</strong> — governed by <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a></li>
+        <li><strong>DeepSeek</strong> — governed by the <a href="https://www.deepseek.com/privacy" target="_blank" rel="noopener">DeepSeek Privacy Policy</a></li>
+    </ul>
+    <p>When you request a Cloud AI analysis, the App sends <strong>summarized trip statistics</strong> to the selected provider. This includes: activity type, duration, distance, speed statistics, elevation data, cadence, calorie estimate, start/end place names, and lifetime trip summaries. <strong>Raw GPS coordinates are not sent.</strong> This data is transmitted only when you explicitly request an analysis, using an API key that you provide. We do not store or have access to your API keys on any server.</p>
 
     <h2>5. Third-Party Services</h2>
-    <p>The App uses the following third-party services that may process limited data:</p>
+    <p>The App uses or integrates with the following third-party services:</p>
     <ul>
         <li><strong>OpenStreetMap tile servers:</strong> When you view the map, your device downloads map tiles based on the visible area. The tile server may log standard HTTP request data (IP address, requested tile coordinates). This is governed by the <a href="https://wiki.osmfoundation.org/wiki/Privacy_Policy" target="_blank" rel="noopener">OpenStreetMap Foundation Privacy Policy</a>.</li>
         <li><strong>Google Play Services (Fused Location Provider):</strong> Used to obtain GPS coordinates on Android devices. Subject to <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
+        <li><strong>Google Play Billing:</strong> Used for subscription management. Purchase and subscription data is handled by Google Play. Subject to <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
+        <li><strong>Hugging Face (model downloads):</strong> If you choose to download an on-device AI model, the model file is fetched from Hugging Face servers. No personal data is sent — only standard HTTP request data (IP address). Governed by the <a href="https://huggingface.co/privacy" target="_blank" rel="noopener">Hugging Face Privacy Policy</a>.</li>
+        <li><strong>Cloud AI providers (optional):</strong> If you configure Cloud AI analysis, summarized trip data is sent to the provider you select (OpenAI, Anthropic, Google Gemini, or DeepSeek). See Section 4.2 for details.</li>
     </ul>
 
     <h2>6. Data Retention</h2>
@@ -175,9 +192,9 @@
     <p>Because all data is stored locally on your device, deletion is immediate and permanent. There is no server-side copy to delete.</p>
     <p>To request assistance with data deletion, contact us at <strong>support@pathwisetracker.com</strong>.</p>
 
-    <h2>8. Health Data Disclaimer</h2>
-    <p><strong>Pathwise Tracker is not a medical device</strong> and is not intended to diagnose, treat, cure, or prevent any disease or medical condition. The App is not approved or cleared by any regulatory authority (such as the FDA or CE) as a medical device.</p>
-    <p>Health-related data displayed in the App — including heart rate, blood oxygen saturation (SpO2), and calorie estimates — is derived from consumer-grade Bluetooth sensors and on-device calculations. This data is provided for general fitness and informational purposes only and may not be accurate or reliable for medical use.</p>
+    <h2>8. Sensor Data Disclaimer</h2>
+    <p><strong>Pathwise Tracker is not a medical device</strong> and is not intended to diagnose, treat, cure, or prevent any disease or medical condition.</p>
+    <p>Sensor data displayed in the App — including readings from connected Bluetooth wearables (such as heart rate and SpO2) and on-device calculations (such as calorie estimates) — is derived from consumer-grade sensors and algorithms. This data is provided for general informational purposes only and may not be accurate or reliable.</p>
     <p>Do not rely on data from this App to make medical decisions. Always consult a qualified healthcare professional for medical advice, diagnosis, or treatment.</p>
 
     <h2>9. Children's Privacy</h2>

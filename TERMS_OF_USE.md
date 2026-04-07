@@ -1,6 +1,6 @@
 # Terms of Use
 
-**Last updated: March 10, 2026**
+**Last updated: April 7, 2026**
 
 Welcome to **Pathwise Tracker** ("the App"), an Android application developed and published under the package name **com.trackjourney**. By downloading, installing, or using the App, you agree to be bound by these Terms of Use ("Terms"). If you do not agree to these Terms, do not use the App.
 
@@ -13,7 +13,7 @@ By accessing or using Pathwise Tracker, you confirm that you are at least 13 yea
 Pathwise Tracker is a GPS tracking and journey logging application that provides:
 
 - Real-time GPS location tracking displayed on OpenStreetMap
-- Bluetooth LE integration with compatible Garmin and Samsung smartwatches for heart rate and SpO2 monitoring
+- Bluetooth LE integration with compatible wearables (Garmin, Samsung, Polar, Wahoo, Suunto, Fitbit, Xiaomi/Amazfit, Huawei, COROS, WHOOP, Wear OS, and other BLE devices) for cadence and sensor data
 - On-device AI-powered activity detection (walking, running, cycling, driving, flying, stationary)
 - Local storage and JSON export of tracking sessions and health data
 - Web-based live tracking and data explorer via webhook connectivity
@@ -22,12 +22,13 @@ Pathwise Tracker is a GPS tracking and journey logging application that provides
 
 Pathwise Tracker is designed with a privacy-first approach:
 
-- **Local processing:** All GPS data, health metrics, and AI analysis are processed and stored locally on your device. No personal data is sent to external servers unless you explicitly use the webhook live-tracking feature.
+- **Local processing:** All GPS data, sensor metrics, and AI analysis are processed and stored locally on your device by default. No personal data is sent to external servers unless you explicitly enable the webhook live-tracking feature or configure Cloud AI analysis.
 - **Location data:** The App collects precise GPS location data (latitude, longitude, altitude, speed, bearing) only while a tracking session is active. Background location access is used solely to maintain tracking accuracy when the App is not in the foreground.
-- **Health data:** Heart rate and SpO2 data are collected from connected Bluetooth LE devices only during active tracking sessions and stored locally on your device.
+- **Wearable sensor data:** Cadence, heart rate, SpO2, and battery data may be collected from connected Bluetooth LE wearables only during active tracking sessions and stored locally on your device.
 - **Webhook feature:** If you choose to use the live-tracking webhook feature, location and session data will be transmitted to the connected web server. You are responsible for the security of your webhook key.
+- **Cloud AI feature:** If you configure a Cloud AI provider (OpenAI, Anthropic, Google Gemini, or DeepSeek) with your own API key, summarized trip statistics (no raw GPS coordinates) are sent to the selected provider when you request an analysis. You are responsible for your API key and your agreement with the chosen provider.
 - **No third-party sharing:** We do not sell, rent, or share your personal data with third parties.
-- **Data export:** You may export your tracking data as JSON files at any time. Exported files are saved to your device's local storage.
+- **Data export:** You may export your tracking data as JSON, GPX, or CSV files at any time. Exported files are saved to your device's local storage.
 
 For more details, please refer to our [Privacy Policy](PRIVACY_POLICY.md).
 
@@ -56,7 +57,7 @@ You agree to use the App only for lawful purposes. You shall not:
 
 ## 6. Health Data Disclaimer
 
-The health metrics provided by the App (heart rate, SpO2, activity detection) are for **informational and fitness purposes only**. They are not intended to diagnose, treat, cure, or prevent any medical condition. The accuracy of health data depends on your connected wearable device. Do not rely on the App for medical decisions. Always consult a qualified healthcare professional for health concerns.
+Sensor readings provided by the App (including wearable data such as heart rate and SpO2, as well as calculated values such as calorie estimates) are for **general informational purposes only**. They are not intended to diagnose, treat, cure, or prevent any medical condition. The accuracy of sensor data depends on your connected wearable device and environmental conditions. Do not rely on the App for medical decisions. Always consult a qualified healthcare professional for health concerns.
 
 ## 7. Location Accuracy Disclaimer
 
@@ -71,8 +72,10 @@ All rights, title, and interest in and to the App, including its source code, de
 The App integrates with or relies on the following third-party services:
 
 - **OpenStreetMap:** Map tiles and geographic data are provided by OpenStreetMap contributors.
-- **Google Play Services:** Used for the Fused Location Provider.
-- **Garmin / Samsung:** Smartwatch connectivity is provided via standard Bluetooth LE protocols. The App is not affiliated with or endorsed by Garmin Ltd. or Samsung Electronics.
+- **Google Play Services:** Used for the Fused Location Provider and Google Play Billing.
+- **Hugging Face:** On-device AI models may be downloaded from Hugging Face servers.
+- **Cloud AI providers (optional):** OpenAI, Anthropic (Claude), Google Gemini, and DeepSeek are available for optional cloud-based trip analysis. Use of these services is subject to their respective terms and privacy policies.
+- **Wearable manufacturers:** Bluetooth LE connectivity with devices from Garmin, Samsung, Polar, Wahoo, Suunto, Fitbit, Xiaomi/Amazfit, Huawei, COROS, WHOOP, and others is provided via standard Bluetooth LE protocols. The App is not affiliated with or endorsed by any wearable manufacturer.
 
 Your use of these third-party services is subject to their respective terms and conditions.
 

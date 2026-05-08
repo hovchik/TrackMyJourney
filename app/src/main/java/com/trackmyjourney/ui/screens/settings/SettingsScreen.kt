@@ -1828,6 +1828,18 @@ fun SettingsScreen(
         item {
             SettingsCard {
                 SettingsSwitch(
+                    icon = Icons.Filled.DirectionsRun,
+                    title = "Auto-Start Tracking",
+                    subtitle = "Detect movement and start/stop tracks automatically",
+                    checked = settings.autoStartTracking,
+                    onCheckedChange = { viewModel.updateAutoStartTracking(it) }
+                )
+            }
+        }
+
+        item {
+            SettingsCard {
+                SettingsSwitch(
                     icon = Icons.Filled.ScreenLockPortrait,
                     title = "Keep Screen On",
                     subtitle = "Prevent screen from turning off while tracking",

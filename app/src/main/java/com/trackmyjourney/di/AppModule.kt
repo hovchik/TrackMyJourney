@@ -9,6 +9,7 @@ import com.trackmyjourney.data.ai.provider.*
 import com.trackmyjourney.data.billing.BillingManager
 import com.trackmyjourney.data.bluetooth.WearableManager
 import com.trackmyjourney.data.local.*
+import com.trackmyjourney.data.location.AutoTrackDetector
 import com.trackmyjourney.data.location.BatteryMonitor
 import com.trackmyjourney.data.location.GpsSatelliteTracker
 import com.trackmyjourney.data.location.LocationTracker
@@ -144,6 +145,14 @@ object AppModule {
     @Provides
     @Singleton
     fun provideMotionSensorManager(@ApplicationContext context: Context) = MotionSensorManager(context)
+
+    @Provides
+    @Singleton
+    fun provideAutoTrackDetector(
+        @ApplicationContext context: Context,
+        settingsDataStore: SettingsDataStore,
+        motionSensorManager: MotionSensorManager
+    ) = AutoTrackDetector(context, settingsDataStore, motionSensorManager)
 
     @Provides
     @Singleton

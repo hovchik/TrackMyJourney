@@ -1,12 +1,17 @@
 package com.trackmyjourney
 
 import android.app.Application
+import com.trackmyjourney.data.location.AutoTrackDetector
 import dagger.hilt.android.HiltAndroidApp
 import org.osmdroid.config.Configuration
 import java.io.File
+import javax.inject.Inject
 
 @HiltAndroidApp
 class TrackMyJourneyApp : Application() {
+
+    @Inject lateinit var autoTrackDetector: AutoTrackDetector
+
     override fun onCreate() {
         super.onCreate()
 
@@ -18,5 +23,7 @@ class TrackMyJourneyApp : Application() {
             osmdroidBasePath = File(cacheDir, "osmdroid")
             osmdroidTileCache = File(cacheDir, "osmdroid/tiles")
         }
+
+        autoTrackDetector.attach()
     }
 }

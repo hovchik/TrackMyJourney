@@ -76,6 +76,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateAutoStartTracking(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateSettings { updateAutoStartTracking(enabled) }
+        }
+    }
+
     fun updateKeepScreenOn(enabled: Boolean) {
         viewModelScope.launch {
             repository.updateSettings { updateKeepScreenOn(enabled) }

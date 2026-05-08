@@ -20,6 +20,7 @@ class SettingsDataStore(
         val RECORD_INTERVAL_MS = longPreferencesKey("record_interval_ms")
         val MIN_DISTANCE_METERS = floatPreferencesKey("min_distance_meters")
         val AUTO_DETECT_ACTIVITY = booleanPreferencesKey("auto_detect_activity")
+        val AUTO_START_TRACKING = booleanPreferencesKey("auto_start_tracking")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val EXPORT_FORMAT = stringPreferencesKey("export_format")
         val USER_NAME = stringPreferencesKey("user_name")
@@ -61,6 +62,7 @@ class SettingsDataStore(
             recordIntervalMs = prefs[RECORD_INTERVAL_MS] ?: 3000L,
             minDistanceMeters = prefs[MIN_DISTANCE_METERS] ?: 5f,
             autoDetectActivity = prefs[AUTO_DETECT_ACTIVITY] ?: true,
+            autoStartTracking = prefs[AUTO_START_TRACKING] ?: false,
             keepScreenOn = prefs[KEEP_SCREEN_ON] ?: false,
             exportFormat = try {
                 ExportFormat.valueOf(prefs[EXPORT_FORMAT] ?: "JSON")
@@ -102,6 +104,10 @@ class SettingsDataStore(
 
     suspend fun updateAutoDetectActivity(enabled: Boolean) {
         context.dataStore.edit { it[AUTO_DETECT_ACTIVITY] = enabled }
+    }
+
+    suspend fun updateAutoStartTracking(enabled: Boolean) {
+        context.dataStore.edit { it[AUTO_START_TRACKING] = enabled }
     }
 
     suspend fun updateKeepScreenOn(enabled: Boolean) {
@@ -231,6 +237,7 @@ class SettingsDataStore(
             prefs[RECORD_INTERVAL_MS] = settings.recordIntervalMs
             prefs[MIN_DISTANCE_METERS] = settings.minDistanceMeters
             prefs[AUTO_DETECT_ACTIVITY] = settings.autoDetectActivity
+            prefs[AUTO_START_TRACKING] = settings.autoStartTracking
             prefs[KEEP_SCREEN_ON] = settings.keepScreenOn
             prefs[EXPORT_FORMAT] = settings.exportFormat.name
             prefs[USER_NAME] = settings.userName

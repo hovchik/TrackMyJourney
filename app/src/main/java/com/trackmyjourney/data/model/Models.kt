@@ -410,6 +410,7 @@ data class TrackingSettings(
     val recordIntervalMs: Long = 3000L,           // 3 seconds default
     val minDistanceMeters: Float = 5f,            // minimum displacement
     val autoDetectActivity: Boolean = true,
+    val autoStartTracking: Boolean = false,
     val keepScreenOn: Boolean = false,
     val exportFormat: ExportFormat = ExportFormat.JSON,
     val userName: String = "",

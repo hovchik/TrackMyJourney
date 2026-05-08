@@ -7,6 +7,8 @@ import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.trackmyjourney.data.local.SettingsDataStore
+import com.trackmyjourney.receiver.BootReceiver
+import com.trackmyjourney.service.AutoStartMonitorService
 import com.trackmyjourney.service.TrackingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,8 +63,20 @@ class AutoTrackDetector @Inject constructor(
                 .map { it.autoStartTracking }
                 .distinctUntilChanged()
                 .collect { on ->
+                    // Cache in SharedPreferences so BootReceiver can read it
+                    // synchronously after a device reboot without needing DataStore.
+                    appContext.getSharedPreferences(BootReceiver.PREFS_NAME, Context.MODE_PRIVATE)
+                        .edit().putBoolean(BootReceiver.KEY_AUTO_START, on).apply()
+
                     enabled = on
-                    if (on) startDetection() else stopDetection()
+                    if (on) {
+                        // Keep the process alive for background motion monitoring
+                        AutoStartMonitorService.start(appContext)
+                        startDetection()
+                    } else {
+                        stopDetection()
+                        AutoStartMonitorService.stop(appContext)
+                    }
                 }
         }
         // Re-arm sensors whenever a tracking session ends while the

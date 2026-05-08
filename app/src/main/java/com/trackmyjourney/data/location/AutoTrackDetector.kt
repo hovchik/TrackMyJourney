@@ -70,7 +70,6 @@ class AutoTrackDetector @Inject constructor(
         if (rearmJob?.isActive != true) {
             rearmJob = scope.launch {
                 TrackingService.isRunning
-                    .distinctUntilChanged()
                     .collect { running ->
                         if (!running && enabled) startDetection()
                     }

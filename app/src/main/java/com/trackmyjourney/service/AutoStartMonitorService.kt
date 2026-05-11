@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -23,6 +24,11 @@ import javax.inject.Inject
  *   • Started when auto-start tracking is enabled (setting change or via [BootReceiver])
  *   • Stopped when auto-start tracking is disabled
  *
+ * Holds a [PowerManager.PARTIAL_WAKE_LOCK] for the lifetime of the service so the
+ * non-wakeup motion sensors (linear accel, gyro, step detector/counter) actually
+ * deliver events while the screen is off — without it, the CPU sleeps and the
+ * detector silently fails to notice the user starting to move.
+ *
  * Uses IMPORTANCE_MIN so its notification is as unobtrusive as possible.
  */
 @AndroidEntryPoint
@@ -32,6 +38,7 @@ class AutoStartMonitorService : Service() {
         private const val TAG = "AutoStartMonitorSvc"
         internal const val NOTIFICATION_ID = 1002
         internal const val CHANNEL_ID = "auto_start_monitor_channel"
+        private const val WAKE_LOCK_TAG = "Pathwise:AutoStartMonitor"
 
         fun start(context: Context) {
             val intent = Intent(context, AutoStartMonitorService::class.java)
@@ -44,6 +51,8 @@ class AutoStartMonitorService : Service() {
     }
 
     @Inject lateinit var autoTrackDetector: AutoTrackDetector
+
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -59,6 +68,7 @@ class AutoStartMonitorService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, buildNotification())
         }
+        acquireWakeLock()
         Log.i(TAG, "Auto-start monitor service started")
         // attach() is idempotent — safe to call even if the app is also open
         autoTrackDetector.attach()
@@ -70,8 +80,36 @@ class AutoStartMonitorService : Service() {
     }
 
     override fun onDestroy() {
+        releaseWakeLock()
         Log.i(TAG, "Auto-start monitor service stopped")
         super.onDestroy()
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                WAKE_LOCK_TAG
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            Log.i(TAG, "Partial wake lock acquired — motion sensors will fire while screen is off")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire wake lock: ${e.message}")
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.takeIf { it.isHeld }?.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to release wake lock: ${e.message}")
+        } finally {
+            wakeLock = null
+        }
     }
 
     private fun createNotificationChannel() {

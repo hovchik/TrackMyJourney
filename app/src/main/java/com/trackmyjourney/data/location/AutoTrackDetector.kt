@@ -45,22 +45,16 @@ class AutoTrackDetector @Inject constructor(
     companion object {
         private const val TAG = "AutoTrackDetector"
 
-        /** Minimum motion confidence to consider the user moving. */
-        private const val MOTION_CONFIDENCE_START = 0.5f
-
-        /** Sustained motion duration before tracking auto-starts. */
-        private const val MOTION_SUSTAIN_MS = 8_000L
-
         /**
-         * Confirmed steps required to auto-start tracking immediately.
-         * Hardware step events are a strong "real locomotion" signal — when
-         * the user has actually taken a few steps we don't need to wait for
-         * the [MOTION_SUSTAIN_MS] confidence window.
+         * Confirmed steps required to auto-start tracking.  Hardware step
+         * events are the only signal we trust for starting — generic motion
+         * (a phone shaken in hand, a buzzing notification) must not trigger
+         * a track.
          */
         private const val STEPS_TO_START = 3
 
-        /** Stillness duration before an auto-started track auto-stops. */
-        private const val STILL_TIMEOUT_MS = 2 * 60_000L
+        /** No new steps for this long while tracking → auto-stop. */
+        private const val STILL_TIMEOUT_MS = 60_000L
 
         private const val TRANSITION_REQUEST_CODE = 4231
     }
@@ -111,53 +105,44 @@ class AutoTrackDetector @Inject constructor(
         Log.i(TAG, "Beginning sensor motion watch")
 
         detectionLoop = scope.launch {
-            var movingSince = 0L
-            var stillSince = 0L
-            // Baseline step count for the current still→moving streak.
-            // -1 means "not yet captured"; set on the first sample where
-            // we're not already tracking.
-            var stepsBaseline = -1L
+            // Baseline step count for the current idle (not-tracking) phase.
+            // -1 = "not yet captured"; set on first sample while idle.
+            var idleStepsBaseline = -1L
+            // Last cumulative step count seen while tracking is active, and
+            // the wall-clock time we last observed it grow.  Used to decide
+            // when the user has stopped walking.
+            var lastTrackingStepCount = -1L
+            var lastStepIncreaseTime = 0L
 
             motionSensorManager.motionState.collect { state ->
                 val now = System.currentTimeMillis()
-                val isMoving = state.isDeviceMoving ||
-                        state.vehicleMotionDetected ||
-                        state.motionConfidence >= MOTION_CONFIDENCE_START
-
                 val tracking = TrackingService.isRunning.value
 
                 if (!tracking) {
-                    if (stepsBaseline < 0) stepsBaseline = state.steps
-                    val newSteps = state.steps - stepsBaseline
+                    if (idleStepsBaseline < 0) idleStepsBaseline = state.steps
+                    val newSteps = state.steps - idleStepsBaseline
                     if (newSteps >= STEPS_TO_START) {
                         Log.i(TAG, "$newSteps real steps detected — auto-starting tracking")
                         TrackingService.startTracking(appContext)
                     }
+                    // Reset tracking-phase state so the next session starts fresh.
+                    lastTrackingStepCount = -1L
+                    lastStepIncreaseTime = 0L
                 } else {
-                    // Reset baseline so the next still→moving streak starts fresh.
-                    stepsBaseline = -1L
-                }
+                    // Clear idle baseline; capture it fresh once tracking ends.
+                    idleStepsBaseline = -1L
 
-                if (isMoving) {
-                    stillSince = 0L
-                    if (movingSince == 0L) movingSince = now
-
-                    val sustained = now - movingSince >= MOTION_SUSTAIN_MS
-                    if (sustained && !tracking) {
-                        Log.i(TAG, "Sustained sensor motion — auto-starting tracking")
-                        TrackingService.startTracking(appContext)
-                    }
-                } else {
-                    movingSince = 0L
-                    if (tracking) {
-                        if (stillSince == 0L) stillSince = now
-                        if (now - stillSince >= STILL_TIMEOUT_MS) {
-                            Log.i(TAG, "Sensor stillness ${STILL_TIMEOUT_MS / 1000}s — auto-stopping tracking")
-                            TrackingService.stopTracking(appContext)
-                            stillSince = 0L
-                        }
-                    } else {
-                        stillSince = 0L
+                    if (lastTrackingStepCount < 0) {
+                        lastTrackingStepCount = state.steps
+                        lastStepIncreaseTime = now
+                    } else if (state.steps > lastTrackingStepCount) {
+                        lastTrackingStepCount = state.steps
+                        lastStepIncreaseTime = now
+                    } else if (now - lastStepIncreaseTime >= STILL_TIMEOUT_MS) {
+                        Log.i(TAG, "No new steps for ${STILL_TIMEOUT_MS / 1000}s — auto-stopping tracking")
+                        TrackingService.stopTracking(appContext)
+                        lastTrackingStepCount = -1L
+                        lastStepIncreaseTime = 0L
                     }
                 }
             }
@@ -199,15 +184,15 @@ class AutoTrackDetector @Inject constructor(
             return
         }
 
-        val motionTypes = listOf(
-            DetectedActivity.IN_VEHICLE,
-            DetectedActivity.ON_BICYCLE,
+        // Subscribe only to walking activities — vehicle/bicycle motion
+        // must not trigger a track.
+        val walkingTypes = listOf(
             DetectedActivity.ON_FOOT,
             DetectedActivity.RUNNING,
             DetectedActivity.WALKING
         )
         val transitions = buildList {
-            motionTypes.forEach {
+            walkingTypes.forEach {
                 add(
                     ActivityTransition.Builder()
                         .setActivityType(it)

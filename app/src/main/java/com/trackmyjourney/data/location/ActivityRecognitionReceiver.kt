@@ -23,9 +23,8 @@ class ActivityRecognitionReceiver : BroadcastReceiver() {
         private const val TAG = "AutoTrackReceiver"
         const val ACTION = "com.trackmyjourney.ACTION_ACTIVITY_TRANSITION"
 
-        private fun isMotionActivity(type: Int): Boolean = when (type) {
-            DetectedActivity.IN_VEHICLE,
-            DetectedActivity.ON_BICYCLE,
+        // Walking-only: vehicle and bicycle motion must not trigger a track.
+        private fun isWalkingActivity(type: Int): Boolean = when (type) {
             DetectedActivity.ON_FOOT,
             DetectedActivity.RUNNING,
             DetectedActivity.WALKING -> true
@@ -43,8 +42,8 @@ class ActivityRecognitionReceiver : BroadcastReceiver() {
 
             val tracking = TrackingService.isRunning.value
             when {
-                isMotionActivity(event.activityType) && !tracking -> {
-                    Log.i(TAG, "Motion transition (type=${event.activityType}) — starting tracking")
+                isWalkingActivity(event.activityType) && !tracking -> {
+                    Log.i(TAG, "Walking transition (type=${event.activityType}) — starting tracking")
                     try {
                         TrackingService.startTracking(context)
                     } catch (e: Exception) {

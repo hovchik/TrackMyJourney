@@ -1830,7 +1830,7 @@ fun SettingsScreen(
                 SettingsSwitch(
                     icon = Icons.Filled.DirectionsRun,
                     title = "Auto-Start Tracking",
-                    subtitle = "Detect movement and start/stop tracks automatically",
+                    subtitle = "Start a track when walking is detected, stop after a minute of no steps",
                     checked = settings.autoStartTracking,
                     onCheckedChange = { viewModel.updateAutoStartTracking(it) }
                 )

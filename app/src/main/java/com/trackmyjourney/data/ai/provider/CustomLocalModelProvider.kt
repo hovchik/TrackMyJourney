@@ -318,15 +318,22 @@ class CustomLocalModelProvider @Inject constructor(
 
         // Compact prompt for small-context local models.  Strict schema +
         // anti-fabrication rules to keep tiny models from inventing metrics.
+        // NOTE: schema example uses ONE concrete value per field (not a
+        // pipe-separated list) — tiny models copy the example verbatim.
         return buildString {
-            appendLine("Output ONE JSON object matching this exact schema.  No markdown, no code fences, no prose before or after:")
-            appendLine("{\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0,\"summary\":\"3-5 sentences citing numbers below\",\"suggestions\":[\"tip1\",\"tip2\",\"tip3\"],\"lifetimeInsights\":null}")
-            appendLine("Rules:")
-            appendLine("- Use ONLY the numbers below.  Never invent weather, heart rate, weight, mood, or any unlisted metric.")
-            appendLine("- Speed thresholds (km/h): STATIONARY<0.5, WALKING 0.5-7, RUNNING 7-15, CYCLING 15-35, DRIVING 35-200, FLYING>=200.")
+            appendLine("Output ONE JSON object exactly matching this shape — no markdown, no code fences, no comments, no prose before or after:")
+            appendLine("{\"activity\":\"WALKING\",\"confidence\":0.85,\"summary\":\"...\",\"suggestions\":[\"...\",\"...\",\"...\"],\"lifetimeInsights\":null}")
+            appendLine("Field rules:")
+            appendLine("- activity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (a single word, no pipes).")
+            appendLine("- confidence: a number between 0 and 1.")
+            appendLine("- summary: 3-5 sentences citing numbers below.")
+            appendLine("- suggestions: an array of 3-5 short, actionable tips.")
+            appendLine("- lifetimeInsights: 2-3 sentences only if a `history:` line is present below, otherwise the literal null (not the string \"null\").")
+            appendLine("Data rules:")
+            appendLine("- Use ONLY the numbers below. Never invent weather, heart rate, weight, mood, or any unlisted metric.")
+            appendLine("- Speed (km/h): STATIONARY<0.5, WALKING 0.5-7, RUNNING 7-15, CYCLING 15-35, DRIVING 35-200, FLYING>=200.")
             appendLine("- If userType is given, return that exact value as activity.")
-            appendLine("- lifetimeInsights: 2-3 sentences only if `history:` line is present, else the literal null (not the string \"null\").")
-            appendLine("- Valid JSON only: quoted keys, no trailing commas, no comments.")
+            appendLine("JSON rules: double-quoted keys and strings, no trailing commas, no comments, no extra keys, no text outside the object.")
             appendLine("---")
             // Show user's manual override if set
             if (track.customActivityType != null) {
@@ -372,10 +379,15 @@ class CustomLocalModelProvider @Inject constructor(
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("Output ONE JSON object matching this exact schema.  No markdown, no code fences, no prose before or after:")
-            appendLine("{\"totalDistance\":0,\"totalCalories\":0,\"dominantActivity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"weekSummary\":\"3-4 sentences citing numbers below\",\"improvements\":[\"tip1\",\"tip2\",\"tip3\"]}")
-            appendLine("Rules: Use ONLY the trips below.  Do not invent metrics.  Valid JSON only — quoted keys, no trailing commas, no comments.")
-            appendLine("totalDistance is meters.  totalCalories is kcal.  Both must equal the Tot: line.")
+            appendLine("Output ONE JSON object exactly matching this shape — no markdown, no code fences, no comments, no prose before or after:")
+            appendLine("{\"totalDistance\":1000,\"totalCalories\":120,\"dominantActivity\":\"WALKING\",\"weekSummary\":\"...\",\"improvements\":[\"...\",\"...\",\"...\"]}")
+            appendLine("Field rules:")
+            appendLine("- dominantActivity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (a single word, no pipes).")
+            appendLine("- totalDistance is meters and totalCalories is kcal; both must match the `Tot:` line below.")
+            appendLine("- weekSummary: 3-4 sentences citing numbers below.")
+            appendLine("- improvements: 3-5 short, actionable tips.")
+            appendLine("Data rule: Use ONLY the trips below. Do not invent metrics.")
+            appendLine("JSON rules: double-quoted keys and strings, no trailing commas, no comments, no extra keys, no text outside the object.")
             appendLine("---")
 
             var totalDist = 0.0
@@ -415,6 +427,10 @@ class CustomLocalModelProvider @Inject constructor(
 
     private fun extractJson(output: String): String {
         var cleaned = output.trim()
+
+        // Strip <think>…</think> blocks (DeepSeek-R1 / Qwen3-thinking emit them).
+        cleaned = cleaned.replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "").trim()
+
         // Strip markdown code blocks: ```json ... ``` or ``` ... ```
         if (cleaned.startsWith("```")) {
             val firstNewline = cleaned.indexOf('\n')
@@ -430,10 +446,82 @@ class CustomLocalModelProvider @Inject constructor(
         // Extract JSON object
         val jsonStart = cleaned.indexOf('{')
         val jsonEnd = cleaned.lastIndexOf('}')
-        return if (jsonStart >= 0 && jsonEnd > jsonStart) {
+        val extracted = if (jsonStart >= 0 && jsonEnd > jsonStart) {
             cleaned.substring(jsonStart, jsonEnd + 1)
         } else {
             cleaned
         }
+        return sanitizeJson(extracted)
+    }
+
+    /**
+     * Cleans up common malformations local models emit that org.json refuses:
+     *  - Smart/curly quotes  →  straight quotes
+     *  - // or # line comments  →  removed
+     *  - Trailing commas before ] or }  →  removed
+     *  - Bare-word constants (NaN, Infinity, None, True/False)  →  JSON equivalents
+     */
+    private fun sanitizeJson(input: String): String {
+        var s = input
+            .replace('“', '"').replace('”', '"')   // “ ”
+            .replace('‘', '\'').replace('’', '\'') // ‘ ’
+
+        // Strip // line comments (only outside strings) and full /* … */ blocks.
+        s = stripComments(s)
+
+        // Trailing commas before closing bracket / brace.
+        s = s.replace(Regex(",\\s*([}\\]])"), "$1")
+
+        // Python/JS literals that some models emit.
+        s = s
+            .replace(Regex("(?<![A-Za-z0-9_\"])None(?![A-Za-z0-9_])"), "null")
+            .replace(Regex("(?<![A-Za-z0-9_\"])True(?![A-Za-z0-9_])"), "true")
+            .replace(Regex("(?<![A-Za-z0-9_\"])False(?![A-Za-z0-9_])"), "false")
+            .replace(Regex("(?<![A-Za-z0-9_\"])NaN(?![A-Za-z0-9_])"), "0")
+            .replace(Regex("(?<![A-Za-z0-9_\"])Infinity(?![A-Za-z0-9_])"), "0")
+
+        return s
+    }
+
+    private fun stripComments(input: String): String {
+        val out = StringBuilder(input.length)
+        var i = 0
+        var inString = false
+        var escaped = false
+        while (i < input.length) {
+            val c = input[i]
+            if (inString) {
+                out.append(c)
+                if (escaped) escaped = false
+                else if (c == '\\') escaped = true
+                else if (c == '"') inString = false
+                i++
+                continue
+            }
+            // Outside a string
+            if (c == '"') { inString = true; out.append(c); i++; continue }
+            if (c == '/' && i + 1 < input.length) {
+                when (input[i + 1]) {
+                    '/' -> { // line comment
+                        val nl = input.indexOf('\n', i + 2)
+                        i = if (nl < 0) input.length else nl
+                        continue
+                    }
+                    '*' -> { // block comment
+                        val end = input.indexOf("*/", i + 2)
+                        i = if (end < 0) input.length else end + 2
+                        continue
+                    }
+                }
+            }
+            if (c == '#') { // python-style line comment
+                val nl = input.indexOf('\n', i + 1)
+                i = if (nl < 0) input.length else nl
+                continue
+            }
+            out.append(c)
+            i++
+        }
+        return out.toString()
     }
 }

@@ -316,12 +316,17 @@ class CustomLocalModelProvider @Inject constructor(
             kotlin.math.sqrt(bearings.map { (it - mean) * (it - mean) }.average()).toFloat()
         } else null
 
-        // Build a compact structured prompt that fits in small context windows
-        // IMPORTANT: instruct model to output ONLY a JSON object, no prose
+        // Compact prompt for small-context local models.  Strict schema +
+        // anti-fabrication rules to keep tiny models from inventing metrics.
         return buildString {
-            appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Return: {\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0-1.0,\"summary\":\"4-5 sentences analyzing performance, pace patterns, and nuances with specific numbers\",\"suggestions\":[\"3-4 actionable tips referencing actual metrics\"],\"lifetimeInsights\":\"comparison vs history or null\"}")
-            appendLine("Speed guide: STATIONARY<0.5 WALKING<7 RUNNING<15 CYCLING<40 DRIVING<200 FLYING>200 km/h")
+            appendLine("Output ONE JSON object matching this exact schema.  No markdown, no code fences, no prose before or after:")
+            appendLine("{\"activity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"confidence\":0.0,\"summary\":\"3-5 sentences citing numbers below\",\"suggestions\":[\"tip1\",\"tip2\",\"tip3\"],\"lifetimeInsights\":null}")
+            appendLine("Rules:")
+            appendLine("- Use ONLY the numbers below.  Never invent weather, heart rate, weight, mood, or any unlisted metric.")
+            appendLine("- Speed thresholds (km/h): STATIONARY<0.5, WALKING 0.5-7, RUNNING 7-15, CYCLING 15-35, DRIVING 35-200, FLYING>=200.")
+            appendLine("- If userType is given, return that exact value as activity.")
+            appendLine("- lifetimeInsights: 2-3 sentences only if `history:` line is present, else the literal null (not the string \"null\").")
+            appendLine("- Valid JSON only: quoted keys, no trailing commas, no comments.")
             appendLine("---")
             // Show user's manual override if set
             if (track.customActivityType != null) {
@@ -361,13 +366,16 @@ class CustomLocalModelProvider @Inject constructor(
                 appendLine("history: ${lifetimeContext.totalTracks}trips avg:${"%.1f".format(lifetimeContext.avgDistanceKm)}km ${"%.1f".format(lifetimeContext.avgSpeedKmh)}km/h best:${"%.1f".format(lifetimeContext.bestDistanceKm)}km ${"%.1f".format(lifetimeContext.bestSpeedKmh)}km/h")
             }
             appendLine("---")
-            appendLine("IMPORTANT: Output ONLY valid JSON. No explanations, no markdown code blocks, no ``` wrapping, no text before or after the JSON object.")
+            appendLine("Output the JSON object and nothing else.  No markdown, no code fences, no prose.")
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("Analyze ${snapshots.size} trips. JSON only: {\"totalDistance\":m,\"totalCalories\":n,\"dominantActivity\":\"...\",\"weekSummary\":\"...\",\"improvements\":[\"...\"]}")
+            appendLine("Output ONE JSON object matching this exact schema.  No markdown, no code fences, no prose before or after:")
+            appendLine("{\"totalDistance\":0,\"totalCalories\":0,\"dominantActivity\":\"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",\"weekSummary\":\"3-4 sentences citing numbers below\",\"improvements\":[\"tip1\",\"tip2\",\"tip3\"]}")
+            appendLine("Rules: Use ONLY the trips below.  Do not invent metrics.  Valid JSON only — quoted keys, no trailing commas, no comments.")
+            appendLine("totalDistance is meters.  totalCalories is kcal.  Both must equal the Tot: line.")
             appendLine("---")
 
             var totalDist = 0.0
@@ -379,7 +387,9 @@ class CustomLocalModelProvider @Inject constructor(
                 totalDist += t.distanceMeters; totalCal += t.caloriesBurned; totalDurMin += dur
                 appendLine("${i+1}.${t.activityType} ${"%.1f".format(t.distanceMeters/1000)}km ${dur}m ${"%.1f".format(t.avgSpeedKmh)}km/h ${"%.0f".format(t.caloriesBurned)}cal")
             }
-            appendLine("Tot:${"%.1f".format(totalDist/1000)}km ${"%.0f".format(totalCal)}cal ${totalDurMin}min")
+            appendLine("Tot:${"%.0f".format(totalDist)}m ${"%.0f".format(totalCal)}cal ${totalDurMin}min")
+            appendLine("---")
+            appendLine("Output the JSON object and nothing else.")
         }
     }
 

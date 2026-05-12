@@ -165,14 +165,14 @@ class CloudProvider @Inject constructor(
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "system")
-                    put("content", "You are a fitness and activity analysis AI. Always respond with valid JSON only, no markdown.")
+                    put("content", "You analyze GPS-tracked activity data and respond with a single JSON object that exactly matches the schema in the user prompt.  Use ONLY numbers from the user prompt — never invent metrics.  No markdown, no code fences, no prose before or after the JSON.")
                 })
                 put(JSONObject().apply {
                     put("role", "user")
                     put("content", prompt)
                 })
             })
-            put("temperature", 0.3)
+            put("temperature", 0.1)
             put("max_tokens", 2048)
         }
 
@@ -195,7 +195,8 @@ class CloudProvider @Inject constructor(
         val requestBody = JSONObject().apply {
             put("model", getModel())
             put("max_tokens", 2048)
-            put("system", "You are a fitness and activity analysis AI. Always respond with valid JSON only, no markdown.")
+            put("temperature", 0.1)
+            put("system", "You analyze GPS-tracked activity data and respond with a single JSON object that exactly matches the schema in the user prompt.  Use ONLY numbers from the user prompt — never invent metrics.  No markdown, no code fences, no prose before or after the JSON.")
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "user")
@@ -448,13 +449,21 @@ class CloudProvider @Inject constructor(
         val inaccuratePoints = points.count { !it.isAccurate }
 
         return buildString {
-            appendLine("Analyze this GPS-tracked activity in detail. Return a JSON object with these keys:")
-            appendLine("- activity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (just the word, no speed ranges)")
-            appendLine("  Speed guide: STATIONARY <0.5, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h")
-            appendLine("- confidence: 0.0 to 1.0")
-            appendLine("- summary: 4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers")
-            appendLine("- suggestions: array of 3-5 actionable tips referencing actual metrics from this trip")
-            appendLine("- lifetimeInsights: if lifetime data is provided, 2-3 sentences comparing this trip to the user's historical averages and personal bests (otherwise null)")
+            appendLine("Analyze the GPS-tracked activity below.  Return ONE JSON object that matches this schema exactly — no extra keys, no missing keys, no markdown, no prose before or after:")
+            appendLine("{")
+            appendLine("  \"activity\": \"STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING\",")
+            appendLine("  \"confidence\": 0.0,            // number in [0.0, 1.0]")
+            appendLine("  \"summary\": \"\",              // 3–5 sentences, ~60–110 words, cite numbers from TRACK DATA")
+            appendLine("  \"suggestions\": [\"\"],        // 3–5 short, actionable tips referencing actual metrics")
+            appendLine("  \"lifetimeInsights\": null     // string (2–3 sentences) ONLY if LIFETIME STATS is present, else literal null — never the string \"null\"")
+            appendLine("}")
+            appendLine()
+            appendLine("Rules:")
+            appendLine("- Use ONLY the numbers in TRACK DATA / LIFETIME STATS.  Do not invent metrics (weather, heart rate, mood, weight, etc.).")
+            appendLine("- Activity speed thresholds (km/h): STATIONARY <0.5, WALKING 0.5–7, RUNNING 7–15, CYCLING 15–35, DRIVING 35–200, FLYING ≥200.")
+            appendLine("- If a `User-set activity` is provided, return that exact value as `activity` and do not contradict the user's choice in the summary.")
+            appendLine("- Round numbers in prose to at most 1 decimal place.  Keep `confidence` between 0 and 1.")
+            appendLine("- The output MUST be parseable by JSON.parse — quotes around all keys, no trailing commas, no comments.")
             appendLine()
             appendLine("=== TRACK DATA ===")
             // Show user's manual override if set
@@ -517,19 +526,31 @@ class CloudProvider @Inject constructor(
             }
 
             appendLine()
-            appendLine("Be specific — reference the actual numbers. Identify nuances like pace drops, speed inconsistencies, or unusual patterns. Return valid JSON only, no markdown.")
+            appendLine("Reference the actual numbers above.  Call out concrete nuances (pace drops, speed inconsistencies, elevation effort, unusual stops) — never generic praise.  Output the JSON object and nothing else.")
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("Analyze ${snapshots.size} trips. Return JSON: {\"totalDistance\":meters,\"totalCalories\":num,\"dominantActivity\":\"...\",\"weekSummary\":\"3-4 sentences\",\"improvements\":[\"3-5 tips\"]}")
+            appendLine("Analyze the ${snapshots.size} trips below.  Return ONE JSON object that matches this schema exactly — no markdown, no prose before or after:")
+            appendLine("{")
+            appendLine("  \"totalDistance\": 0,           // meters, sum across listed trips")
+            appendLine("  \"totalCalories\": 0,           // kcal, sum across listed trips")
+            appendLine("  \"dominantActivity\": \"\",     // one of STATIONARY|WALKING|RUNNING|CYCLING|DRIVING|FLYING")
+            appendLine("  \"weekSummary\": \"\",          // 3–4 sentences citing numbers from the trip list")
+            appendLine("  \"improvements\": [\"\"]        // 3–5 short, actionable tips grounded in the listed metrics")
+            appendLine("}")
+            appendLine()
+            appendLine("Rules: Use ONLY the trip data below.  Do not invent metrics not listed.  Output parseable JSON (quoted keys, no trailing commas, no comments).")
+            appendLine()
+            appendLine("=== TRIPS ===")
             snapshots.forEachIndexed { i, twp ->
                 val t = twp.track
                 val dur = TimeUnit.MILLISECONDS.toMinutes((t.endTime ?: System.currentTimeMillis()) - t.startTime)
                 appendLine("${i+1}. ${t.activityType} ${"%.1f".format(t.distanceMeters/1000)}km ${dur}m ${"%.1f".format(t.avgSpeedKmh)}km/h ${"%.0f".format(t.caloriesBurned)}cal")
             }
-            appendLine("Return valid JSON only.")
+            appendLine()
+            appendLine("Output the JSON object and nothing else.")
         }
     }
 

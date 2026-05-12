@@ -465,12 +465,15 @@ class TrackingService : Service() {
             wearableScanJob = null
             currentTrackId = null
             latestWebhookPayload = null
-            _isRunning.value = false
+            // Stop sensors BEFORE updating isRunning so AutoTrackDetector.rearmJob
+            // fires after sensors are fully unregistered and can re-register them
+            // cleanly in its startDetection() call.
             locationTracker.stopTracking()
             satelliteTracker.stopMonitoring()
             motionSensorManager.stopMonitoring()
             batteryMonitor.stopMonitoring()
             wearableManager.disconnect()
+            _isRunning.value = false
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -536,7 +539,8 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
-        _isRunning.value = false
+        // Stop sensors first so AutoTrackDetector can cleanly re-register them
+        // in response to the isRunning=false signal emitted below.
         try { unregisterReceiver(locationProviderReceiver) } catch (_: Exception) {}
         serviceScope.cancel()
         locationTracker.stopTracking()
@@ -544,6 +548,7 @@ class TrackingService : Service() {
         motionSensorManager.stopMonitoring()
         batteryMonitor.stopMonitoring()
         wearableManager.disconnect()
+        _isRunning.value = false
         super.onDestroy()
     }
 }

@@ -57,6 +57,14 @@
             android:name=".service.ModelDownloadService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+
+        <receiver
+            android:name=".data.location.ActivityRecognitionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.trackmyjourney.ACTION_ACTIVITY_TRANSITION" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

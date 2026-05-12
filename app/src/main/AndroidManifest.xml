@@ -65,6 +65,14 @@
             android:exported="false" />
 
         <receiver
+            android:name=".data.location.ActivityRecognitionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.trackmyjourney.ACTION_ACTIVITY_TRANSITION" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".receiver.BootReceiver"
             android:exported="true">
             <intent-filter>

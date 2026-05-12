@@ -37,6 +37,12 @@ class CloudProvider @Inject constructor(
         private const val TAG = "CloudProvider"
         private const val CONNECT_TIMEOUT_MS = 30_000
         private const val READ_TIMEOUT_MS = 60_000
+
+        // App-bundled DeepSeek key — users don't need to bring their own.
+        // NOTE: anything baked into an APK can be extracted via reverse
+        // engineering, so usage from leaked copies of the app will bill
+        // this account.
+        private const val BUILTIN_DEEPSEEK_KEY = "sk-22b7971bba6c45ef86e2309721d85260"
     }
 
     override val executionMode: AiExecutionMode = AiExecutionMode.CLOUD
@@ -52,10 +58,9 @@ class CloudProvider @Inject constructor(
      * written by the Settings screen's Cloud AI wizard).
      * Always reloads to pick up any changes the user made.
      *
-     * Key resolution order for DeepSeek:
-     *   1. User-entered key in Settings (SettingsDataStore)
-     *   2. Legacy AiPreferences store
-     *   3. Built-in key baked into the build from local.properties (BuildConfig.DEEPSEEK_API_KEY)
+     * For DeepSeek the app ships a built-in key, so the user never needs
+     * to enter one — the hardcoded constant is used directly.
+     * For other providers, the user must supply a key via Settings.
      */
     suspend fun ensureConfigLoaded() {
         val settings = settingsDataStore.settings.first()
@@ -64,19 +69,24 @@ class CloudProvider @Inject constructor(
         customEndpoint = settings.cloudAiEndpoint
         customModel = settings.cloudAiModel
 
-        // Resolve API key: user-entered key takes priority, then the build-time
-        // constant baked in from local.properties. If both are absent the user
-        // must supply a key via Settings before the provider will work.
+        // For DeepSeek we ship a built-in key.  Other providers fall back to
+        // BuildConfig (populated from local.properties at build time) when the
+        // user hasn't entered one yet.
         val builtInKey = when (providerType) {
-            CloudProviderType.DEEPSEEK  -> BuildConfig.DEEPSEEK_API_KEY
+            CloudProviderType.DEEPSEEK  -> BUILTIN_DEEPSEEK_KEY
             CloudProviderType.OPENAI    -> BuildConfig.OPENAI_API_KEY
             CloudProviderType.CLAUDE    -> BuildConfig.ANTHROPIC_API_KEY
             CloudProviderType.GEMINI    -> BuildConfig.GEMINI_API_KEY
         }.takeIf { it.isNotBlank() }
 
-        apiKey = settings.cloudAiApiKey.takeIf { it.isNotBlank() }
-            ?: aiPreferences.getCloudApiKey()
-            ?: builtInKey
+        apiKey = if (providerType == CloudProviderType.DEEPSEEK) {
+            // DeepSeek always uses the bundled key — ignore any stored value.
+            builtInKey
+        } else {
+            settings.cloudAiApiKey.takeIf { it.isNotBlank() }
+                ?: aiPreferences.getCloudApiKey()
+                ?: builtInKey
+        }
 
         Log.d(TAG, "Config loaded: provider=${providerType.label}, keySet=${!apiKey.isNullOrBlank()}")
     }
@@ -165,14 +175,14 @@ class CloudProvider @Inject constructor(
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "system")
-                    put("content", "You are a fitness and activity analysis AI. Always respond with valid JSON only, no markdown.")
+                    put("content", "You analyze GPS-tracked activity data and respond with a single JSON object that exactly matches the schema in the user prompt.  Use ONLY numbers from the user prompt — never invent metrics.  No markdown, no code fences, no prose before or after the JSON.")
                 })
                 put(JSONObject().apply {
                     put("role", "user")
                     put("content", prompt)
                 })
             })
-            put("temperature", 0.3)
+            put("temperature", 0.1)
             put("max_tokens", 2048)
         }
 
@@ -195,7 +205,8 @@ class CloudProvider @Inject constructor(
         val requestBody = JSONObject().apply {
             put("model", getModel())
             put("max_tokens", 2048)
-            put("system", "You are a fitness and activity analysis AI. Always respond with valid JSON only, no markdown.")
+            put("temperature", 0.1)
+            put("system", "You analyze GPS-tracked activity data and respond with a single JSON object that exactly matches the schema in the user prompt.  Use ONLY numbers from the user prompt — never invent metrics.  No markdown, no code fences, no prose before or after the JSON.")
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "user")
@@ -448,13 +459,23 @@ class CloudProvider @Inject constructor(
         val inaccuratePoints = points.count { !it.isAccurate }
 
         return buildString {
-            appendLine("Analyze this GPS-tracked activity in detail. Return a JSON object with these keys:")
-            appendLine("- activity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (just the word, no speed ranges)")
-            appendLine("  Speed guide: STATIONARY <0.5, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h")
-            appendLine("- confidence: 0.0 to 1.0")
-            appendLine("- summary: 4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers")
-            appendLine("- suggestions: array of 3-5 actionable tips referencing actual metrics from this trip")
-            appendLine("- lifetimeInsights: if lifetime data is provided, 2-3 sentences comparing this trip to the user's historical averages and personal bests (otherwise null)")
+            appendLine("Analyze the GPS-tracked activity below.  Return ONE JSON object exactly matching this shape — no extra keys, no missing keys, no markdown, no comments, no prose before or after:")
+            appendLine("{\"activity\":\"WALKING\",\"confidence\":0.85,\"summary\":\"...\",\"suggestions\":[\"...\",\"...\",\"...\"],\"lifetimeInsights\":null}")
+            appendLine()
+            appendLine("Field rules:")
+            appendLine("- activity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (a single word, no pipes, no speed ranges).")
+            appendLine("- confidence: a number in [0.0, 1.0].")
+            appendLine("- summary: 3-5 sentences (~60-110 words) citing numbers from TRACK DATA.")
+            appendLine("- suggestions: an array of 3-5 short, actionable tips referencing actual metrics.")
+            appendLine("- lifetimeInsights: 2-3 sentences ONLY if a LIFETIME STATS block is present below, otherwise the literal null (never the string \"null\").")
+            appendLine()
+            appendLine("Data rules:")
+            appendLine("- Use ONLY the numbers in TRACK DATA / LIFETIME STATS.  Do not invent metrics (weather, heart rate, mood, weight, etc.).")
+            appendLine("- Speed thresholds (km/h): STATIONARY <0.5, WALKING 0.5-7, RUNNING 7-15, CYCLING 15-35, DRIVING 35-200, FLYING >=200.")
+            appendLine("- If a `User-set activity` is provided, return that exact value as activity and do not contradict the user's choice.")
+            appendLine("- Round numbers in prose to at most 1 decimal place.")
+            appendLine()
+            appendLine("JSON rules: double-quoted keys and strings, no trailing commas, no comments, no extra keys, no text outside the object.")
             appendLine()
             appendLine("=== TRACK DATA ===")
             // Show user's manual override if set
@@ -517,19 +538,33 @@ class CloudProvider @Inject constructor(
             }
 
             appendLine()
-            appendLine("Be specific — reference the actual numbers. Identify nuances like pace drops, speed inconsistencies, or unusual patterns. Return valid JSON only, no markdown.")
+            appendLine("Reference the actual numbers above.  Call out concrete nuances (pace drops, speed inconsistencies, elevation effort, unusual stops) — never generic praise.  Output the JSON object and nothing else.")
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("Analyze ${snapshots.size} trips. Return JSON: {\"totalDistance\":meters,\"totalCalories\":num,\"dominantActivity\":\"...\",\"weekSummary\":\"3-4 sentences\",\"improvements\":[\"3-5 tips\"]}")
+            appendLine("Analyze the ${snapshots.size} trips below.  Return ONE JSON object exactly matching this shape — no markdown, no comments, no prose before or after:")
+            appendLine("{\"totalDistance\":1000,\"totalCalories\":120,\"dominantActivity\":\"WALKING\",\"weekSummary\":\"...\",\"improvements\":[\"...\",\"...\",\"...\"]}")
+            appendLine()
+            appendLine("Field rules:")
+            appendLine("- totalDistance: meters, sum across listed trips.")
+            appendLine("- totalCalories: kcal, sum across listed trips.")
+            appendLine("- dominantActivity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (a single word).")
+            appendLine("- weekSummary: 3-4 sentences citing numbers from the trip list.")
+            appendLine("- improvements: an array of 3-5 short, actionable tips grounded in the listed metrics.")
+            appendLine()
+            appendLine("Data rule: Use ONLY the trip data below.  Do not invent metrics not listed.")
+            appendLine("JSON rules: double-quoted keys and strings, no trailing commas, no comments, no extra keys, no text outside the object.")
+            appendLine()
+            appendLine("=== TRIPS ===")
             snapshots.forEachIndexed { i, twp ->
                 val t = twp.track
                 val dur = TimeUnit.MILLISECONDS.toMinutes((t.endTime ?: System.currentTimeMillis()) - t.startTime)
                 appendLine("${i+1}. ${t.activityType} ${"%.1f".format(t.distanceMeters/1000)}km ${dur}m ${"%.1f".format(t.avgSpeedKmh)}km/h ${"%.0f".format(t.caloriesBurned)}cal")
             }
-            appendLine("Return valid JSON only.")
+            appendLine()
+            appendLine("Output the JSON object and nothing else.")
         }
     }
 

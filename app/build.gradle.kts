@@ -33,8 +33,7 @@ android {
         // Inject API keys from local.properties into BuildConfig.
         // Use an empty string as the default so the app still compiles on CI
         // without local.properties; the key is then supplied via user settings.
-        buildConfigField("String", "DEEPSEEK_API_KEY",
-            "\"${localProperties.getProperty("DEEPSEEK_API_KEY", "")}\"")
+        // (DeepSeek's key is bundled directly in CloudProvider.)
         buildConfigField("String", "OPENAI_API_KEY",
             "\"${localProperties.getProperty("OPENAI_API_KEY", "")}\"")
         buildConfigField("String", "ANTHROPIC_API_KEY",

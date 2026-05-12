@@ -117,10 +117,23 @@ class SystemAiProvider @Inject constructor(
         } else null
 
         return buildString {
-            appendLine("You are a fitness and journey analyst. Analyze this GPS-tracked journey data.")
-            appendLine("RESPOND WITH ONLY A JSON OBJECT. No other text before or after the JSON.")
-            appendLine("Return JSON with keys: activity (just the word: STATIONARY, WALKING, RUNNING, CYCLING, DRIVING, or FLYING — no speed ranges in the value), confidence (0.0-1.0), summary (4-5 sentences analyzing performance, terrain, pace consistency, speed patterns, and nuances with specific numbers), suggestions (3-5 actionable tips referencing actual metrics), lifetimeInsights (if lifetime data provided: 2-3 sentences comparing this trip to historical averages and personal bests, else null).")
-            appendLine("Activity speed guide: STATIONARY <0.5, WALKING <7, RUNNING 7-15, CYCLING 15-40, DRIVING 40-200, FLYING >200 km/h.")
+            appendLine("Analyze the GPS-tracked journey below.  Return ONE JSON object exactly matching this shape — no markdown, no code fences, no comments, no prose before or after:")
+            appendLine("{\"activity\":\"WALKING\",\"confidence\":0.85,\"summary\":\"...\",\"suggestions\":[\"...\",\"...\",\"...\"],\"lifetimeInsights\":null}")
+            appendLine()
+            appendLine("Field rules:")
+            appendLine("- activity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (a single word, no pipes, no speed ranges).")
+            appendLine("- confidence: a number in [0.0, 1.0].")
+            appendLine("- summary: 3-5 sentences (~60-110 words) citing numbers from Journey.")
+            appendLine("- suggestions: an array of 3-5 short, actionable tips.")
+            appendLine("- lifetimeInsights: 2-3 sentences ONLY if a Lifetime Stats block is present below, otherwise the literal null (never the string \"null\").")
+            appendLine()
+            appendLine("Data rules:")
+            appendLine("- Use ONLY the numbers in Journey / Lifetime Stats.  Do not invent metrics.")
+            appendLine("- Speed thresholds (km/h): STATIONARY <0.5, WALKING 0.5-7, RUNNING 7-15, CYCLING 15-35, DRIVING 35-200, FLYING >=200.")
+            appendLine("- If a `User-set activity` is shown, return that exact value as activity.")
+            appendLine("- Round numbers in prose to at most 1 decimal place.")
+            appendLine()
+            appendLine("JSON rules: double-quoted keys and strings, no trailing commas, no comments, no extra keys, no text outside the object.")
             appendLine()
             appendLine("Journey:")
             if (track.customActivityType != null) {
@@ -179,15 +192,24 @@ class SystemAiProvider @Inject constructor(
             }
 
             appendLine()
-            appendLine("Be specific — reference the actual numbers. Identify nuances like pace drops, speed inconsistencies, or unusual patterns.")
-            appendLine("IMPORTANT: Output ONLY valid JSON. No explanations, no markdown, no text before or after the JSON object.")
+            appendLine("Reference the actual numbers above.  Call out concrete nuances (pace drops, speed inconsistencies, elevation effort, unusual stops) — never generic praise.  Output the JSON object and nothing else.")
         }
     }
 
     private fun buildWeeklyPrompt(snapshots: List<TrackWithPoints>): String {
         return buildString {
-            appendLine("Analyze ${snapshots.size} GPS-tracked journeys from this week. Compare sessions, identify trends, and suggest improvements.")
-            appendLine("Return JSON: totalDistance (meters), totalCalories, dominantActivity, weekSummary (3-4 sentences comparing sessions and noting patterns), improvements (3-4 specific data-backed suggestions).")
+            appendLine("Analyze the ${snapshots.size} trips below.  Return ONE JSON object exactly matching this shape — no markdown, no comments, no prose before or after:")
+            appendLine("{\"totalDistance\":1000,\"totalCalories\":120,\"dominantActivity\":\"WALKING\",\"weekSummary\":\"...\",\"improvements\":[\"...\",\"...\",\"...\"]}")
+            appendLine()
+            appendLine("Field rules:")
+            appendLine("- totalDistance: meters, sum across listed trips.")
+            appendLine("- totalCalories: kcal, sum across listed trips.")
+            appendLine("- dominantActivity: one of WALKING, RUNNING, CYCLING, DRIVING, FLYING, STATIONARY (a single word).")
+            appendLine("- weekSummary: 3-4 sentences citing numbers from the trip list.")
+            appendLine("- improvements: an array of 3-5 short, actionable tips.")
+            appendLine()
+            appendLine("Data rule: Use ONLY the trip data below.")
+            appendLine("JSON rules: double-quoted keys and strings, no trailing commas, no comments, no extra keys, no text outside the object.")
             appendLine()
 
             var totalDist = 0.0
@@ -215,7 +237,7 @@ class SystemAiProvider @Inject constructor(
             appendLine()
             appendLine("Totals: ${"%.2f".format(totalDist / 1000)}km, ${totalDurationMin}min, ${"%.0f".format(totalCal)}cal")
             appendLine()
-            appendLine("Compare best vs weakest session. Suggest specific improvements using actual numbers. Return valid JSON only.")
+            appendLine("Compare strongest vs weakest session using the numbers above.  Output the JSON object and nothing else.")
         }
     }
 

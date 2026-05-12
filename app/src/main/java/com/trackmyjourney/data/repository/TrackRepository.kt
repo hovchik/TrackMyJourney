@@ -41,6 +41,10 @@ class TrackRepository(
         private const val TAG = "TrackRepository"
         const val MIN_SATELLITES_FOR_ACCURATE_FIX = 4
         const val MAX_ACCURACY_METERS = 50f // reject points worse than this
+        // The first fix of a track anchors its start position, so demand a
+        // tighter accuracy budget than mid-track points — a cold-start GPS
+        // can report 60–80 m accuracy that pins the track to the wrong spot.
+        const val MAX_FIRST_FIX_ACCURACY_METERS = 25f
     }
 
     private val gson = GsonBuilder().setPrettyPrinting().create()
@@ -248,6 +252,18 @@ class TrackRepository(
             return null
         }
 
+        // Defer the first point until GPS settles — a cold first fix can be
+        // 60–80 m off, which would anchor the whole track to the wrong place.
+        val isFirstPoint = lastPoint == null
+        if (isFirstPoint) {
+            val accuracyOk = accuracyMeters != null && accuracyMeters <= MAX_FIRST_FIX_ACCURACY_METERS
+            val satsOk = satInfo.usedInFix >= MIN_SATELLITES_FOR_ACCURATE_FIX
+            if (!accuracyOk || !satsOk) {
+                Log.i(TAG, "Deferring first fix: accuracy=${accuracyMeters}m, sats=${satInfo.usedInFix}")
+                return null
+            }
+        }
+
         // ── PRECISION SPEED FILTERING ──
         // Filter raw GPS speed by cross-validating against positional displacement,
         // limiting acceleration, EMA smoothing, and accuracy weighting.
@@ -302,7 +318,6 @@ class TrackRepository(
         val effectiveSpeedMs = if (shouldClampSpeed) 0f else filteredSpeedMs
 
         // Resolve place name for the first point of a track
-        val isFirstPoint = lastPoint == null
         val placeName = if (isFirstPoint) {
             withContext(Dispatchers.IO) { resolveplaceName(location.latitude, location.longitude) }
         } else null
@@ -326,12 +341,19 @@ class TrackRepository(
 
         trackPointDao.insert(point)
 
-        // Set start place name on the track session
-        if (isFirstPoint && placeName != null) {
+        // Set start place name on the track session and re-anchor its
+        // start time to the first accepted fix so duration excludes the
+        // GPS warm-up wait.
+        if (isFirstPoint) {
             trackDao.getTrackById(trackId)?.let { track ->
-                if (track.startPlaceName == null) {
-                    trackDao.update(track.copy(startPlaceName = placeName))
+                val updates = mutableListOf<TrackSession.() -> TrackSession>()
+                if (placeName != null && track.startPlaceName == null) {
+                    updates.add { copy(startPlaceName = placeName) }
                 }
+                updates.add { copy(startTime = now) }
+                var updated = track
+                updates.forEach { updated = it(updated) }
+                trackDao.update(updated)
             }
         }
 

@@ -385,9 +385,14 @@ class TrackingService : Service() {
                 TrackingMode.ENERGY_EFFICIENCY -> " | ECO"
                 TrackingMode.AI_BATTERY_SAVER -> " | AI"
             }
-            updateNotification(
+            val accuracy = if (location.hasAccuracy()) location.accuracy else null
+            val text = if (pointCount == 0) {
+                val accStr = accuracy?.let { " ±${String.format("%.0f", it)}m" } ?: ""
+                "Acquiring GPS… | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}$accStr$modeStr"
+            } else {
                 "Recording | ${pointCount} pts | ${String.format("%.1f", speedKmh)} km/h | SAT ${satInfo.usedInFix}/${satInfo.totalVisible}$modeStr$accuracyStr"
-            )
+            }
+            updateNotification(text)
             return now
         }
         return lastNotificationTime

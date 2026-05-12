@@ -51,6 +51,14 @@ class AutoTrackDetector @Inject constructor(
         /** Sustained motion duration before tracking auto-starts. */
         private const val MOTION_SUSTAIN_MS = 8_000L
 
+        /**
+         * Confirmed steps required to auto-start tracking immediately.
+         * Hardware step events are a strong "real locomotion" signal — when
+         * the user has actually taken a few steps we don't need to wait for
+         * the [MOTION_SUSTAIN_MS] confidence window.
+         */
+        private const val STEPS_TO_START = 3
+
         /** Stillness duration before an auto-started track auto-stops. */
         private const val STILL_TIMEOUT_MS = 2 * 60_000L
 
@@ -105,6 +113,10 @@ class AutoTrackDetector @Inject constructor(
         detectionLoop = scope.launch {
             var movingSince = 0L
             var stillSince = 0L
+            // Baseline step count for the current still→moving streak.
+            // -1 means "not yet captured"; set on the first sample where
+            // we're not already tracking.
+            var stepsBaseline = -1L
 
             motionSensorManager.motionState.collect { state ->
                 val now = System.currentTimeMillis()
@@ -113,6 +125,18 @@ class AutoTrackDetector @Inject constructor(
                         state.motionConfidence >= MOTION_CONFIDENCE_START
 
                 val tracking = TrackingService.isRunning.value
+
+                if (!tracking) {
+                    if (stepsBaseline < 0) stepsBaseline = state.steps
+                    val newSteps = state.steps - stepsBaseline
+                    if (newSteps >= STEPS_TO_START) {
+                        Log.i(TAG, "$newSteps real steps detected — auto-starting tracking")
+                        TrackingService.startTracking(appContext)
+                    }
+                } else {
+                    // Reset baseline so the next still→moving streak starts fresh.
+                    stepsBaseline = -1L
+                }
 
                 if (isMoving) {
                     stillSince = 0L

@@ -3154,6 +3154,10 @@ private fun CloudAiWizardDialog(
     var endpoint by remember { mutableStateOf(currentEndpoint) }
     var model by remember { mutableStateOf(currentModel) }
 
+    // DeepSeek ships with a built-in key — skip the key-entry step entirely.
+    val skipKeyStep = provider == CloudAiProvider.DEEPSEEK
+    val totalSteps = if (skipKeyStep) 2 else 3
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -3182,11 +3186,14 @@ private fun CloudAiWizardDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    repeat(3) { step ->
+                    // When the key step is skipped, the second logical step
+                    // (model) maps to dot index 1.
+                    val currentDot = if (skipKeyStep && wizardStep == 2) 1 else wizardStep
+                    repeat(totalSteps) { step ->
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp)
-                                .size(if (step == wizardStep) 10.dp else 8.dp)
+                                .size(if (step == currentDot) 10.dp else 8.dp)
                                 .then(
                                     Modifier
                                         .padding(0.dp) // placeholder for background
@@ -3195,11 +3202,11 @@ private fun CloudAiWizardDialog(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = if (step <= wizardStep)
+                                color = if (step <= currentDot)
                                     MaterialTheme.colorScheme.primary
                                 else
                                     MaterialTheme.colorScheme.outlineVariant,
-                                modifier = Modifier.size(if (step == wizardStep) 10.dp else 8.dp)
+                                modifier = Modifier.size(if (step == currentDot) 10.dp else 8.dp)
                             ) {}
                         }
                     }
@@ -3319,7 +3326,10 @@ private fun CloudAiWizardDialog(
         confirmButton = {
             if (wizardStep < 2) {
                 Button(
-                    onClick = { wizardStep++ },
+                    onClick = {
+                        // Skip the key step for DeepSeek (bundled key).
+                        wizardStep = if (wizardStep == 0 && skipKeyStep) 2 else wizardStep + 1
+                    },
                     enabled = when (wizardStep) {
                         1 -> apiKey.isNotBlank()
                         else -> true
@@ -3337,9 +3347,11 @@ private fun CloudAiWizardDialog(
                             CloudAiProvider.DEEPSEEK -> endpoint.ifBlank { "https://api.deepseek.com" }
                             CloudAiProvider.CUSTOM -> endpoint
                         }
+                        // For DeepSeek the provider falls back to the bundled
+                        // key, so we don't need a user-entered value here.
                         onSave(provider, apiKey, resolvedEndpoint, model)
                     },
-                    enabled = apiKey.isNotBlank() && model.isNotBlank()
+                    enabled = (skipKeyStep || apiKey.isNotBlank()) && model.isNotBlank()
                 ) {
                     Text("Save")
                 }
@@ -3347,7 +3359,10 @@ private fun CloudAiWizardDialog(
         },
         dismissButton = {
             if (wizardStep > 0) {
-                TextButton(onClick = { wizardStep-- }) {
+                TextButton(onClick = {
+                    // Mirror the forward skip on the way back.
+                    wizardStep = if (wizardStep == 2 && skipKeyStep) 0 else wizardStep - 1
+                }) {
                     Text("Back")
                 }
             } else {

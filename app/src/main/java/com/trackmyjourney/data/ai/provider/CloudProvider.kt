@@ -37,6 +37,12 @@ class CloudProvider @Inject constructor(
         private const val TAG = "CloudProvider"
         private const val CONNECT_TIMEOUT_MS = 30_000
         private const val READ_TIMEOUT_MS = 60_000
+
+        // App-bundled DeepSeek key — users don't need to bring their own.
+        // NOTE: anything baked into an APK can be extracted via reverse
+        // engineering, so usage from leaked copies of the app will bill
+        // this account.
+        private const val BUILTIN_DEEPSEEK_KEY = "sk-22b7971bba6c45ef86e2309721d85260"
     }
 
     override val executionMode: AiExecutionMode = AiExecutionMode.CLOUD
@@ -52,10 +58,9 @@ class CloudProvider @Inject constructor(
      * written by the Settings screen's Cloud AI wizard).
      * Always reloads to pick up any changes the user made.
      *
-     * Key resolution order for DeepSeek:
-     *   1. User-entered key in Settings (SettingsDataStore)
-     *   2. Legacy AiPreferences store
-     *   3. Built-in key baked into the build from local.properties (BuildConfig.DEEPSEEK_API_KEY)
+     * For DeepSeek the app ships a built-in key, so the user never needs
+     * to enter one — the hardcoded constant is used directly.
+     * For other providers, the user must supply a key via Settings.
      */
     suspend fun ensureConfigLoaded() {
         val settings = settingsDataStore.settings.first()
@@ -64,19 +69,24 @@ class CloudProvider @Inject constructor(
         customEndpoint = settings.cloudAiEndpoint
         customModel = settings.cloudAiModel
 
-        // Resolve API key: user-entered key takes priority, then the build-time
-        // constant baked in from local.properties. If both are absent the user
-        // must supply a key via Settings before the provider will work.
+        // For DeepSeek we ship a built-in key.  Other providers fall back to
+        // BuildConfig (populated from local.properties at build time) when the
+        // user hasn't entered one yet.
         val builtInKey = when (providerType) {
-            CloudProviderType.DEEPSEEK  -> BuildConfig.DEEPSEEK_API_KEY
+            CloudProviderType.DEEPSEEK  -> BUILTIN_DEEPSEEK_KEY
             CloudProviderType.OPENAI    -> BuildConfig.OPENAI_API_KEY
             CloudProviderType.CLAUDE    -> BuildConfig.ANTHROPIC_API_KEY
             CloudProviderType.GEMINI    -> BuildConfig.GEMINI_API_KEY
         }.takeIf { it.isNotBlank() }
 
-        apiKey = settings.cloudAiApiKey.takeIf { it.isNotBlank() }
-            ?: aiPreferences.getCloudApiKey()
-            ?: builtInKey
+        apiKey = if (providerType == CloudProviderType.DEEPSEEK) {
+            // DeepSeek always uses the bundled key — ignore any stored value.
+            builtInKey
+        } else {
+            settings.cloudAiApiKey.takeIf { it.isNotBlank() }
+                ?: aiPreferences.getCloudApiKey()
+                ?: builtInKey
+        }
 
         Log.d(TAG, "Config loaded: provider=${providerType.label}, keySet=${!apiKey.isNullOrBlank()}")
     }

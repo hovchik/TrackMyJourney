@@ -55,8 +55,15 @@ class AutoTrackDetector @Inject constructor(
          */
         private const val STEPS_TO_START = 3
 
-        /** No new steps for this long while tracking → auto-stop. */
-        private const val STILL_TIMEOUT_MS = 60_000L
+        /** No new steps for this long while tracking → auto-stop (if sensors also agree). */
+        private const val STILL_TIMEOUT_MS = 180_000L  // 3 minutes
+
+        /**
+         * Hard ceiling: if steps haven't increased for this long, stop
+         * regardless of sensor motion — prevents infinite tracking from
+         * persistent low-level vibrations (e.g. phone on a washing machine).
+         */
+        private const val HARD_STILL_TIMEOUT_MS = 600_000L  // 10 minutes
 
         private const val TRANSITION_REQUEST_CODE = 4231
     }
@@ -64,7 +71,18 @@ class AutoTrackDetector @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var attachJob: Job? = null
     private var rearmJob: Job? = null
+
+    /** Guards [detectionLoop] assignment and [startRequested] flag. */
+    private val detectionLock = Any()
     private var detectionLoop: Job? = null
+
+    /**
+     * Set to `true` after [TrackingService.startTracking] is called, cleared
+     * once [TrackingService.isRunning] becomes `true`.  Prevents redundant
+     * start-intents being sent on every sensor emission while the service
+     * is still launching.
+     */
+    @Volatile private var startRequested: Boolean = false
 
     @Volatile private var enabled: Boolean = false
     @Volatile private var transitionsRegistered: Boolean = false
@@ -99,6 +117,9 @@ class AutoTrackDetector @Inject constructor(
             rearmJob = scope.launch {
                 TrackingService.isRunning
                     .collect { running ->
+                        // Re-arm detection when tracking ends (and feature is still on).
+                        // Double-check `enabled` to avoid a race where the toggle was
+                        // just turned off but `rearmJob` already entered this block.
                         if (!running && enabled) startDetection()
                     }
             }
@@ -108,51 +129,86 @@ class AutoTrackDetector @Inject constructor(
     // ── Foreground sensor-based detection ────────────────────────────────
 
     private fun startDetection() {
+        // Re-check volatile flag inside the method to close the race window
+        // between rearmJob reading `enabled` and attachJob setting it to false.
+        if (!enabled) return
+
         val activityRecognitionGranted = hasActivityRecognitionPermission()
         motionSensorManager.startMonitoring(activityRecognitionGranted)
 
-        if (detectionLoop?.isActive == true) return
-        Log.i(TAG, "Beginning sensor motion watch")
+        synchronized(detectionLock) {
+            if (detectionLoop?.isActive == true) return
+            Log.i(TAG, "Beginning sensor motion watch")
 
-        detectionLoop = scope.launch {
-            // Baseline step count for the current idle (not-tracking) phase.
-            // -1 = "not yet captured"; set on first sample while idle.
-            var idleStepsBaseline = -1L
-            // Last cumulative step count seen while tracking is active, and
-            // the wall-clock time we last observed it grow.  Used to decide
-            // when the user has stopped walking.
-            var lastTrackingStepCount = -1L
-            var lastStepIncreaseTime = 0L
+            detectionLoop = scope.launch {
+                // Baseline step count for the current idle (not-tracking) phase.
+                // -1 = "not yet captured"; set on first sample while idle.
+                var idleStepsBaseline = -1L
+                // Last cumulative step count seen while tracking is active, and
+                // the wall-clock time we last observed it grow.  Used to decide
+                // when the user has stopped walking.
+                var lastTrackingStepCount = -1L
+                var lastStepIncreaseTime = 0L
 
-            motionSensorManager.motionState.collect { state ->
-                val now = System.currentTimeMillis()
-                val tracking = TrackingService.isRunning.value
+                motionSensorManager.motionState.collect { state ->
+                    val now = System.currentTimeMillis()
+                    val tracking = TrackingService.isRunning.value
 
-                if (!tracking) {
-                    if (idleStepsBaseline < 0) idleStepsBaseline = state.steps
-                    val newSteps = state.steps - idleStepsBaseline
-                    if (newSteps >= STEPS_TO_START) {
-                        Log.i(TAG, "$newSteps real steps detected — auto-starting tracking")
-                        TrackingService.startTracking(appContext)
+                    if (tracking) {
+                        // Tracking is confirmed running — clear the start guard.
+                        startRequested = false
                     }
-                    // Reset tracking-phase state so the next session starts fresh.
-                    lastTrackingStepCount = -1L
-                    lastStepIncreaseTime = 0L
-                } else {
-                    // Clear idle baseline; capture it fresh once tracking ends.
-                    idleStepsBaseline = -1L
 
-                    if (lastTrackingStepCount < 0) {
-                        lastTrackingStepCount = state.steps
-                        lastStepIncreaseTime = now
-                    } else if (state.steps > lastTrackingStepCount) {
-                        lastTrackingStepCount = state.steps
-                        lastStepIncreaseTime = now
-                    } else if (now - lastStepIncreaseTime >= STILL_TIMEOUT_MS) {
-                        Log.i(TAG, "No new steps for ${STILL_TIMEOUT_MS / 1000}s — auto-stopping tracking")
-                        TrackingService.stopTracking(appContext)
+                    if (!tracking) {
+                        // ── IDLE: wait for steps to auto-start ──
+                        if (idleStepsBaseline < 0) idleStepsBaseline = state.steps
+                        val newSteps = state.steps - idleStepsBaseline
+                        if (newSteps >= STEPS_TO_START && !startRequested) {
+                            Log.i(TAG, "$newSteps real steps detected — auto-starting tracking")
+                            startRequested = true
+                            TrackingService.startTracking(appContext)
+                        }
+                        // Reset tracking-phase state so the next session starts fresh.
                         lastTrackingStepCount = -1L
                         lastStepIncreaseTime = 0L
+                    } else {
+                        // ── TRACKING: monitor for stillness to auto-stop ──
+                        // Clear idle baseline; capture it fresh once tracking ends.
+                        idleStepsBaseline = -1L
+
+                        if (lastTrackingStepCount < 0) {
+                            lastTrackingStepCount = state.steps
+                            lastStepIncreaseTime = now
+                        } else if (state.steps > lastTrackingStepCount) {
+                            lastTrackingStepCount = state.steps
+                            lastStepIncreaseTime = now
+                        } else if (now - lastStepIncreaseTime >= HARD_STILL_TIMEOUT_MS) {
+                            // Hard ceiling — stop regardless of sensor motion to prevent
+                            // infinite tracking from ambient vibrations.
+                            Log.i(TAG, "No new steps for ${HARD_STILL_TIMEOUT_MS / 1000}s — hard auto-stop")
+                            TrackingService.stopTracking(appContext)
+                            lastTrackingStepCount = -1L
+                            lastStepIncreaseTime = 0L
+                        } else if (now - lastStepIncreaseTime >= STILL_TIMEOUT_MS) {
+                            // Steps haven't increased — cross-validate with motion sensors.
+                            // Only stop if the device is truly stationary; step detection
+                            // can be unreliable with the phone in a bag or pocket.
+                            if (!state.isDeviceMoving && !state.vehicleMotionDetected && state.motionConfidence < 0.25f) {
+                                Log.i(TAG, "No new steps for ${STILL_TIMEOUT_MS / 1000}s and device stationary " +
+                                        "(confidence=${state.motionConfidence}) — auto-stopping tracking")
+                                TrackingService.stopTracking(appContext)
+                                lastTrackingStepCount = -1L
+                                lastStepIncreaseTime = 0L
+                            } else {
+                                // Sensors still detect motion — step counter may be unreliable.
+                                // Keep tracking alive but don't reset the timer fully so the
+                                // hard ceiling can still kick in.
+                                Log.d(TAG, "No new steps but device still moving " +
+                                        "(confidence=${state.motionConfidence}, " +
+                                        "moving=${state.isDeviceMoving}, " +
+                                        "vehicle=${state.vehicleMotionDetected}) — keeping tracking alive")
+                            }
+                        }
                     }
                 }
             }
@@ -160,10 +216,13 @@ class AutoTrackDetector @Inject constructor(
     }
 
     private fun stopDetection() {
-        if (detectionLoop == null) return
-        Log.i(TAG, "Stopping sensor motion watch")
-        detectionLoop?.cancel()
-        detectionLoop = null
+        synchronized(detectionLock) {
+            if (detectionLoop == null) return
+            Log.i(TAG, "Stopping sensor motion watch")
+            detectionLoop?.cancel()
+            detectionLoop = null
+            startRequested = false
+        }
         if (!TrackingService.isRunning.value) {
             motionSensorManager.stopMonitoring()
         }
@@ -195,27 +254,20 @@ class AutoTrackDetector @Inject constructor(
         }
 
         // Subscribe only to walking activities — vehicle/bicycle motion
-        // must not trigger a track.
+        // must not trigger a track.  STILL is NOT registered because the
+        // receiver ignores it (auto-stop is handled by sensor fusion in
+        // the detection loop) and subscribing to it wastes Play Services
+        // resources.
         val walkingTypes = listOf(
             DetectedActivity.ON_FOOT,
             DetectedActivity.RUNNING,
             DetectedActivity.WALKING
         )
-        val transitions = buildList {
-            walkingTypes.forEach {
-                add(
-                    ActivityTransition.Builder()
-                        .setActivityType(it)
-                        .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
-                        .build()
-                )
-            }
-            add(
-                ActivityTransition.Builder()
-                    .setActivityType(DetectedActivity.STILL)
-                    .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
-                    .build()
-            )
+        val transitions = walkingTypes.map {
+            ActivityTransition.Builder()
+                .setActivityType(it)
+                .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+                .build()
         }
 
         try {

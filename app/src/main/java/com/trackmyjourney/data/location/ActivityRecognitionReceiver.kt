@@ -10,12 +10,14 @@ import com.google.android.gms.location.DetectedActivity
 import com.trackmyjourney.service.TrackingService
 
 /**
- * Receives ActivityRecognition transition broadcasts and starts or stops
- * [TrackingService] accordingly.  Manifest-registered so transitions are
- * delivered even when the app process is not running.
+ * Receives ActivityRecognition transition broadcasts and starts
+ * [TrackingService] when a walking activity is detected.  Manifest-registered
+ * so transitions are delivered even when the app process is not running.
  *
- * Subscription is owned by [AutoTrackDetector] — when the auto-start toggle
- * is off, no transitions are registered, so this receiver never fires.
+ * Only walking-type ENTER transitions are subscribed (by [AutoTrackDetector]).
+ * Auto-stop is NOT handled here — it is driven by the sensor-fusion logic in
+ * [AutoTrackDetector] which cross-validates step counter, accelerometer, and
+ * gyroscope data for much higher reliability than Play Services transitions.
  */
 class ActivityRecognitionReceiver : BroadcastReceiver() {
 
@@ -37,22 +39,14 @@ class ActivityRecognitionReceiver : BroadcastReceiver() {
         val result = ActivityTransitionResult.extractResult(intent) ?: return
 
         for (event in result.transitionEvents) {
-            val enter = event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER
-            if (!enter) continue
+            if (event.transitionType != ActivityTransition.ACTIVITY_TRANSITION_ENTER) continue
 
-            val tracking = TrackingService.isRunning.value
-            when {
-                isWalkingActivity(event.activityType) && !tracking -> {
-                    Log.i(TAG, "Walking transition (type=${event.activityType}) — starting tracking")
-                    try {
-                        TrackingService.startTracking(context)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to start tracking from background: ${e.message}")
-                    }
-                }
-                event.activityType == DetectedActivity.STILL && tracking -> {
-                    Log.i(TAG, "STILL transition — stopping tracking")
-                    TrackingService.stopTracking(context)
+            if (isWalkingActivity(event.activityType) && !TrackingService.isRunning.value) {
+                Log.i(TAG, "Walking transition (type=${event.activityType}) — starting tracking")
+                try {
+                    TrackingService.startTracking(context)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to start tracking from background: ${e.message}")
                 }
             }
         }

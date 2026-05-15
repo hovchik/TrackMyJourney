@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.trackmyjourney.service.AutoStartKeepAliveWorker
 import com.trackmyjourney.service.AutoStartMonitorService
 
 /**
@@ -41,6 +42,8 @@ class BootReceiver : BroadcastReceiver() {
         if (autoStartEnabled) {
             Log.i(TAG, "Auto-start is enabled — starting monitor service")
             AutoStartMonitorService.start(context)
+            // Re-schedule the keep-alive worker after boot so it survives reboots
+            AutoStartKeepAliveWorker.schedule(context)
         } else {
             Log.i(TAG, "Auto-start is disabled — nothing to do")
         }

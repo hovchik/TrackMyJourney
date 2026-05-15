@@ -294,6 +294,11 @@ class MapViewModel @Inject constructor(
     // ─── TRACKING CONTROLS ──────────────────────────────
 
     fun startTracking(name: String = "") {
+        // When the user manually starts tracking, disable auto-start so the
+        // two mechanisms don't conflict (e.g. auto-stop firing unexpectedly).
+        viewModelScope.launch {
+            settingsDataStore.updateAutoStartTracking(false)
+        }
         TrackingService.startTracking(app.applicationContext, name)
     }
 

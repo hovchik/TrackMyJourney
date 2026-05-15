@@ -3,6 +3,7 @@ package com.trackmyjourney.data.location
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
+import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
 import com.google.android.gms.location.*
@@ -148,6 +149,22 @@ class LocationTracker(
         LocationServices.getFusedLocationProviderClient(context)
 
     /**
+     * Dedicated background looper for location callbacks.
+     * Using the main looper causes missed/delayed callbacks when the app is
+     * backgrounded because the OS deprioritises the main thread.  A dedicated
+     * HandlerThread with its own looper keeps callbacks flowing reliably.
+     */
+    private var locationThread: HandlerThread? = null
+
+    private fun getLocationLooper(): Looper {
+        val thread = locationThread ?: HandlerThread("LocationThread").also {
+            it.start()
+            locationThread = it
+        }
+        return thread.looper
+    }
+
+    /**
      * Emits location updates as a cold Flow with maximum GPS precision.
      * Each call creates a new LocationRequest with the given settings.
      * When the flow is cancelled (e.g. by collectLatest on settings change),
@@ -165,7 +182,9 @@ class LocationTracker(
             setMinUpdateDistanceMeters(settings.minDistanceMeters)
             setWaitForAccurateLocation(true)
             setGranularity(Granularity.GRANULARITY_FINE)
-            setMaxUpdateDelayMillis(settings.recordIntervalMs / 2)
+            // Disable batching — deliver every fix immediately so callback
+            // fires even when the app is in the background.
+            setMaxUpdateDelayMillis(0)
         }.build()
 
         // Use a LOCAL callback — avoids race condition when collectLatest
@@ -181,7 +200,7 @@ class LocationTracker(
         fusedLocationClient.requestLocationUpdates(
             request,
             callback,
-            Looper.getMainLooper()
+            getLocationLooper()
         )
 
         awaitClose {
@@ -216,7 +235,8 @@ class LocationTracker(
                 if (priority == Priority.PRIORITY_HIGH_ACCURACY) Granularity.GRANULARITY_FINE
                 else Granularity.GRANULARITY_PERMISSION_LEVEL
             )
-            setMaxUpdateDelayMillis(intervalMs / 2)
+            // Disable batching for reliable background delivery
+            setMaxUpdateDelayMillis(0)
         }.build()
 
         val callback = object : LocationCallback() {
@@ -230,7 +250,7 @@ class LocationTracker(
         fusedLocationClient.requestLocationUpdates(
             request,
             callback,
-            Looper.getMainLooper()
+            getLocationLooper()
         )
 
         awaitClose {
@@ -251,5 +271,7 @@ class LocationTracker(
     fun stopTracking() {
         // Cleanup is handled by callbackFlow's awaitClose
         Log.i(TAG, "stopTracking called")
+        locationThread?.quitSafely()
+        locationThread = null
     }
 }

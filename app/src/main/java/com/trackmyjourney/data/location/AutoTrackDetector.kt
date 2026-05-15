@@ -14,6 +14,7 @@ import com.google.android.gms.location.ActivityTransitionRequest
 import com.google.android.gms.location.DetectedActivity
 import com.trackmyjourney.data.local.SettingsDataStore
 import com.trackmyjourney.receiver.BootReceiver
+import com.trackmyjourney.service.AutoStartKeepAliveWorker
 import com.trackmyjourney.service.AutoStartMonitorService
 import com.trackmyjourney.service.TrackingService
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +36,8 @@ import javax.inject.Singleton
  *  • [MotionSensorManager] provides faster, foreground-only detection while
  *    the app is open, complementing the higher-latency Play Services events.
  *
+ * Detects all types of motion: walking, running, cycling, and vehicle travel.
+ *
  * Call [attach] once from Application.onCreate; the detector then follows
  * the [SettingsDataStore.AUTO_START_TRACKING] toggle.
  */
@@ -48,19 +51,28 @@ class AutoTrackDetector @Inject constructor(
         private const val TAG = "AutoTrackDetector"
 
         /**
-         * Confirmed steps required to auto-start tracking.  Hardware step
-         * events are the only signal we trust for starting — generic motion
-         * (a phone shaken in hand, a buzzing notification) must not trigger
-         * a track.
+         * Confirmed steps required to auto-start tracking from walking/running.
+         * Hardware step events are unambiguous proof the user is on foot.
          */
         private const val STEPS_TO_START = 3
 
-        /** No new steps for this long while tracking → auto-stop (if sensors also agree). */
+        /**
+         * Sustained vehicle/cycling motion required before auto-starting.
+         * Prevents false triggers from brief vibrations (phone in hand,
+         * notification buzz, placing phone on a table).
+         */
+        private const val VEHICLE_MOTION_CONFIRM_MS = 15_000L  // 15 seconds
+
+        /**
+         * No motion of any kind (steps, vehicle, cycling) for this long
+         * while tracking → auto-stop (if sensors also agree the device
+         * is stationary).
+         */
         private const val STILL_TIMEOUT_MS = 180_000L  // 3 minutes
 
         /**
-         * Hard ceiling: if steps haven't increased for this long, stop
-         * regardless of sensor motion — prevents infinite tracking from
+         * Hard ceiling: if no motion signal of any kind has been detected
+         * for this long, stop regardless — prevents infinite tracking from
          * persistent low-level vibrations (e.g. phone on a washing machine).
          */
         private const val HARD_STILL_TIMEOUT_MS = 600_000L  // 10 minutes
@@ -103,12 +115,17 @@ class AutoTrackDetector @Inject constructor(
                     enabled = on
                     if (on) {
                         registerTransitions()
+                        // Schedule periodic WorkManager job to keep the service
+                        // alive even after aggressive OEM battery optimization
+                        // or swipe-to-close kills it.
+                        AutoStartKeepAliveWorker.schedule(appContext)
                         // Keep the process alive for background motion monitoring
                         AutoStartMonitorService.start(appContext)
                         startDetection()
                     } else {
                         unregisterTransitions()
                         stopDetection()
+                        AutoStartKeepAliveWorker.cancel(appContext)
                         AutoStartMonitorService.stop(appContext)
                     }
                 }
@@ -138,17 +155,23 @@ class AutoTrackDetector @Inject constructor(
 
         synchronized(detectionLock) {
             if (detectionLoop?.isActive == true) return
-            Log.i(TAG, "Beginning sensor motion watch")
+            Log.i(TAG, "Beginning sensor motion watch (all motion types)")
 
             detectionLoop = scope.launch {
-                // Baseline step count for the current idle (not-tracking) phase.
+                // ── Idle-phase state (waiting to auto-start) ──
+                // Baseline step count for the current idle phase.
                 // -1 = "not yet captured"; set on first sample while idle.
                 var idleStepsBaseline = -1L
-                // Last cumulative step count seen while tracking is active, and
-                // the wall-clock time we last observed it grow.  Used to decide
-                // when the user has stopped walking.
+                // Timestamp when sustained vehicle/cycling motion was first detected.
+                // 0 = no vehicle motion seen yet.
+                var vehicleMotionStartTime = 0L
+
+                // ── Tracking-phase state (monitoring for auto-stop) ──
+                // Wall-clock time of the last detected "real" motion event.
+                // This is updated by BOTH step events AND vehicle/cycling motion,
+                // giving a unified "last activity" signal for auto-stop.
+                var lastActivityTime = 0L
                 var lastTrackingStepCount = -1L
-                var lastStepIncreaseTime = 0L
 
                 motionSensorManager.motionState.collect { state ->
                     val now = System.currentTimeMillis()
@@ -160,50 +183,91 @@ class AutoTrackDetector @Inject constructor(
                     }
 
                     if (!tracking) {
-                        // ── IDLE: wait for steps to auto-start ──
+                        // ── IDLE: wait for motion to auto-start ──
+
+                        // 1. Walking/running: trigger on confirmed steps
                         if (idleStepsBaseline < 0) idleStepsBaseline = state.steps
                         val newSteps = state.steps - idleStepsBaseline
                         if (newSteps >= STEPS_TO_START && !startRequested) {
                             Log.i(TAG, "$newSteps real steps detected — auto-starting tracking")
                             startRequested = true
+                            vehicleMotionStartTime = 0L
                             TrackingService.startTracking(appContext)
                         }
+
+                        // 2. Vehicle/cycling: trigger on sustained accelerometer motion
+                        //    without steps.  Requires VEHICLE_MOTION_CONFIRM_MS of
+                        //    continuous vehicle-like motion to prevent false triggers.
+                        if (state.vehicleMotionDetected) {
+                            if (vehicleMotionStartTime == 0L) {
+                                vehicleMotionStartTime = now
+                                Log.d(TAG, "Vehicle motion detected — waiting for confirmation")
+                            } else if (now - vehicleMotionStartTime >= VEHICLE_MOTION_CONFIRM_MS && !startRequested) {
+                                Log.i(TAG, "Sustained vehicle motion for ${(now - vehicleMotionStartTime) / 1000}s — auto-starting tracking")
+                                startRequested = true
+                                TrackingService.startTracking(appContext)
+                            }
+                        } else {
+                            // Vehicle motion stopped before confirmation — reset
+                            if (vehicleMotionStartTime > 0L) {
+                                Log.d(TAG, "Vehicle motion ended before confirmation — resetting")
+                            }
+                            vehicleMotionStartTime = 0L
+                        }
+
                         // Reset tracking-phase state so the next session starts fresh.
                         lastTrackingStepCount = -1L
-                        lastStepIncreaseTime = 0L
+                        lastActivityTime = 0L
                     } else {
                         // ── TRACKING: monitor for stillness to auto-stop ──
                         // Clear idle baseline; capture it fresh once tracking ends.
                         idleStepsBaseline = -1L
+                        vehicleMotionStartTime = 0L
 
-                        if (lastTrackingStepCount < 0) {
+                        // Initialize tracking-phase timestamps on first emission
+                        if (lastActivityTime == 0L) {
+                            lastActivityTime = now
                             lastTrackingStepCount = state.steps
-                            lastStepIncreaseTime = now
-                        } else if (state.steps > lastTrackingStepCount) {
+                        }
+
+                        // Update lastActivityTime for ANY type of real motion:
+                        //  • new steps (walking/running)
+                        //  • vehicle motion detected (driving)
+                        //  • device moving with high confidence (cycling, other)
+                        val stepsIncreased = state.steps > lastTrackingStepCount
+                        if (stepsIncreased) {
                             lastTrackingStepCount = state.steps
-                            lastStepIncreaseTime = now
-                        } else if (now - lastStepIncreaseTime >= HARD_STILL_TIMEOUT_MS) {
-                            // Hard ceiling — stop regardless of sensor motion to prevent
-                            // infinite tracking from ambient vibrations.
-                            Log.i(TAG, "No new steps for ${HARD_STILL_TIMEOUT_MS / 1000}s — hard auto-stop")
+                            lastActivityTime = now
+                        }
+                        if (state.vehicleMotionDetected) {
+                            lastActivityTime = now
+                        }
+                        if (state.isDeviceMoving && state.motionConfidence >= 0.5f) {
+                            lastActivityTime = now
+                        }
+
+                        // Check for stillness
+                        val timeSinceActivity = now - lastActivityTime
+
+                        if (timeSinceActivity >= HARD_STILL_TIMEOUT_MS) {
+                            // Hard ceiling — no motion of any kind for 10 min.
+                            // Stop regardless to prevent infinite tracking
+                            // from persistent low-level vibrations.
+                            Log.i(TAG, "No motion for ${HARD_STILL_TIMEOUT_MS / 1000}s — hard auto-stop")
                             TrackingService.stopTracking(appContext)
                             lastTrackingStepCount = -1L
-                            lastStepIncreaseTime = 0L
-                        } else if (now - lastStepIncreaseTime >= STILL_TIMEOUT_MS) {
-                            // Steps haven't increased — cross-validate with motion sensors.
-                            // Only stop if the device is truly stationary; step detection
-                            // can be unreliable with the phone in a bag or pocket.
+                            lastActivityTime = 0L
+                        } else if (timeSinceActivity >= STILL_TIMEOUT_MS) {
+                            // Soft timeout — cross-validate with current sensor state.
+                            // Only stop if the device is truly stationary right now.
                             if (!state.isDeviceMoving && !state.vehicleMotionDetected && state.motionConfidence < 0.25f) {
-                                Log.i(TAG, "No new steps for ${STILL_TIMEOUT_MS / 1000}s and device stationary " +
+                                Log.i(TAG, "No motion for ${timeSinceActivity / 1000}s and device stationary " +
                                         "(confidence=${state.motionConfidence}) — auto-stopping tracking")
                                 TrackingService.stopTracking(appContext)
                                 lastTrackingStepCount = -1L
-                                lastStepIncreaseTime = 0L
+                                lastActivityTime = 0L
                             } else {
-                                // Sensors still detect motion — step counter may be unreliable.
-                                // Keep tracking alive but don't reset the timer fully so the
-                                // hard ceiling can still kick in.
-                                Log.d(TAG, "No new steps but device still moving " +
+                                Log.d(TAG, "No recent activity but device still moving " +
                                         "(confidence=${state.motionConfidence}, " +
                                         "moving=${state.isDeviceMoving}, " +
                                         "vehicle=${state.vehicleMotionDetected}) — keeping tracking alive")
@@ -253,17 +317,17 @@ class AutoTrackDetector @Inject constructor(
             return
         }
 
-        // Subscribe only to walking activities — vehicle/bicycle motion
-        // must not trigger a track.  STILL is NOT registered because the
-        // receiver ignores it (auto-stop is handled by sensor fusion in
-        // the detection loop) and subscribing to it wastes Play Services
-        // resources.
-        val walkingTypes = listOf(
+        // Subscribe to ALL motion types so auto-start triggers for walking,
+        // running, cycling, and vehicle travel.  STILL is NOT registered
+        // because auto-stop is handled by sensor fusion in the detection loop.
+        val motionTypes = listOf(
             DetectedActivity.ON_FOOT,
             DetectedActivity.RUNNING,
-            DetectedActivity.WALKING
+            DetectedActivity.WALKING,
+            DetectedActivity.IN_VEHICLE,
+            DetectedActivity.ON_BICYCLE
         )
-        val transitions = walkingTypes.map {
+        val transitions = motionTypes.map {
             ActivityTransition.Builder()
                 .setActivityType(it)
                 .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)

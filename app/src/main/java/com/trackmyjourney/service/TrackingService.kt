@@ -10,6 +10,7 @@ import android.location.LocationManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.trackmyjourney.R
@@ -92,6 +93,13 @@ class TrackingService : Service() {
     /** Max time (ms) between recorded points even when stationary, to keep the track alive. */
     private val stationaryMaxGapMs = 60_000L
 
+    /**
+     * Partial WakeLock to keep the CPU active between GPS fixes.
+     * Without this, the CPU can sleep in the background and location
+     * callbacks may be significantly delayed or missed entirely.
+     */
+    private var wakeLock: PowerManager.WakeLock? = null
+
     /** Stops tracking when the device location toggle is switched off. */
     private val locationProviderReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -128,6 +136,10 @@ class TrackingService : Service() {
 
     private fun startTracking(trackName: String) {
         if (trackingJob?.isActive == true) return
+
+        // Acquire a partial WakeLock so the CPU stays active for GPS callbacks
+        // even when the screen is off and the app is in the background.
+        acquireWakeLock()
 
         // Listen for location toggle changes so we can auto-stop
         registerReceiver(
@@ -473,10 +485,36 @@ class TrackingService : Service() {
             motionSensorManager.stopMonitoring()
             batteryMonitor.stopMonitoring()
             wearableManager.disconnect()
+            releaseWakeLock()
             _isRunning.value = false
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "TrackMyJourney::TrackingWakeLock"
+        ).apply {
+            // Timeout after 12 hours as a safety net to avoid battery drain
+            // if stopTracking() is never called for some reason.
+            acquire(12 * 60 * 60 * 1000L)
+        }
+        Log.i(TAG, "WakeLock acquired")
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                Log.i(TAG, "WakeLock released")
+            }
+        }
+        wakeLock = null
     }
 
     private fun getBatteryLevel(): Int? {
@@ -548,6 +586,7 @@ class TrackingService : Service() {
         motionSensorManager.stopMonitoring()
         batteryMonitor.stopMonitoring()
         wearableManager.disconnect()
+        releaseWakeLock()
         _isRunning.value = false
         super.onDestroy()
     }

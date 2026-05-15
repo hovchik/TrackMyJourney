@@ -78,6 +78,10 @@ fun SettingsScreen(
     var showAddActivityDialog by remember { mutableStateOf(false) }
     val showCloudAiWizard by viewModel.showCloudAiWizard.collectAsState()
 
+    // Observe whether the TrackingService is actively running (manual tracking).
+    // When tracking is active, the auto-start toggle is disabled and greyed out.
+    val isTrackingActive by com.trackmyjourney.service.TrackingService.isRunning.collectAsState()
+
     // Cloud AI setup wizard
     if (showCloudAiWizard) {
         CloudAiWizardDialog(
@@ -1830,9 +1834,13 @@ fun SettingsScreen(
                 SettingsSwitch(
                     icon = Icons.Filled.DirectionsRun,
                     title = "Auto-Start Tracking",
-                    subtitle = "Start a track when walking is detected, stop after a minute of no steps",
+                    subtitle = if (isTrackingActive)
+                        "Disabled while tracking is active"
+                    else
+                        "Automatically start recording when motion is detected (walking, driving, cycling). Disabled when you start tracking manually.",
                     checked = settings.autoStartTracking,
-                    onCheckedChange = { viewModel.updateAutoStartTracking(it) }
+                    onCheckedChange = { viewModel.updateAutoStartTracking(it) },
+                    enabled = !isTrackingActive
                 )
             }
         }
@@ -2890,23 +2898,33 @@ private fun SettingsSwitch(
     title: String,
     subtitle: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true
 ) {
+    val contentAlpha = if (enabled) 1f else 0.38f
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
+        Icon(
+            icon, contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+        )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.Medium)
+            Text(
+                title,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+            )
             Text(
                 subtitle,
                 fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
             )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 

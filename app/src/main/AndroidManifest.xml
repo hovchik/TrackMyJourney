@@ -57,6 +57,7 @@
         <service
             android:name=".service.AutoStartMonitorService"
             android:foregroundServiceType="dataSync"
+            android:stopWithTask="false"
             android:exported="false" />
 
         <service

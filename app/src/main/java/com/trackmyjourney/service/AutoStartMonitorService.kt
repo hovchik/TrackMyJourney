@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -45,6 +46,14 @@ class AutoStartMonitorService : Service() {
 
     @Inject lateinit var autoTrackDetector: AutoTrackDetector
 
+    /**
+     * Partial WakeLock to keep the CPU active for sensor callbacks.
+     * Without this, sensor events (step detector, accelerometer) may not
+     * be delivered reliably when the screen is off, preventing auto-start
+     * from detecting motion.
+     */
+    private var wakeLock: PowerManager.WakeLock? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -59,6 +68,17 @@ class AutoStartMonitorService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, buildNotification())
         }
+
+        // Acquire a WakeLock so motion sensor callbacks keep firing
+        // even when the screen is off and the device enters doze.
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "TrackMyJourney::AutoStartMonitorWakeLock"
+        ).apply {
+            acquire()
+        }
+
         Log.i(TAG, "Auto-start monitor service started")
         // attach() is idempotent — safe to call even if the app is also open
         autoTrackDetector.attach()
@@ -69,9 +89,58 @@ class AutoStartMonitorService : Service() {
         return START_STICKY
     }
 
+    /**
+     * Called when the user swipes the app away from the recent-apps screen.
+     * Many OEMs also kill services at this point.  Schedule a quick restart
+     * via AlarmManager so the monitoring resumes without waiting for the
+     * 15-minute WorkManager cadence.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "Task removed (app swiped away) — scheduling restart")
+        scheduleRestart()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+        }
+        wakeLock = null
+        // If auto-start is still enabled, schedule a fast restart so the service
+        // recovers quickly even if START_STICKY fails (aggressive OEM battery optimization).
+        val prefs = getSharedPreferences(
+            com.trackmyjourney.receiver.BootReceiver.PREFS_NAME,
+            MODE_PRIVATE
+        )
+        if (prefs.getBoolean(com.trackmyjourney.receiver.BootReceiver.KEY_AUTO_START, false)) {
+            Log.i(TAG, "Auto-start monitor service destroyed while enabled — scheduling restart")
+            scheduleRestart()
+        }
         Log.i(TAG, "Auto-start monitor service stopped")
         super.onDestroy()
+    }
+
+    /**
+     * Schedules a restart of this service via AlarmManager.
+     * Uses a short delay (5 seconds) so the monitoring resumes quickly
+     * after the OS or the user kills the service.
+     */
+    private fun scheduleRestart() {
+        try {
+            val restartIntent = Intent(this, AutoStartMonitorService::class.java)
+            val pendingIntent = PendingIntent.getService(
+                this, 0, restartIntent,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + 5_000L,
+                pendingIntent
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to schedule restart alarm: ${e.message}")
+        }
     }
 
     private fun createNotificationChannel() {
